@@ -1,0 +1,681 @@
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
+import type { Message, KanbanTask, Deliverable, PlanStep } from '../types'
+import { initialTasks } from '../data/initialTasks'
+
+const API_BASE = '/api'
+
+export interface ActiveAgent {
+  agentId: string
+  agentName: string
+  instanceId: string
+  task: string
+  status: 'working' | 'waiting' | 'done'
+}
+
+export interface ThinkingStep {
+  agentId: string
+  agentName: string
+  instanceId?: string
+  step: string
+  timestamp: number
+}
+
+export interface ProposedPlan {
+  messageId: string
+  text: string
+  steps: PlanStep[]
+}
+
+export interface StepApproval {
+  agentId: string
+  agentName: string
+  instanceId?: string
+  summary: string
+  nextAgentId?: string
+  nextAgentName?: string
+  nextInstanceId?: string
+  nextTask?: string
+  stepIndex: number
+  totalSteps: number
+  conversationId: string
+}
+
+export interface InactiveBotPrompt {
+  botId: string
+  botName: string
+  stepTask: string
+  conversationId: string
+}
+
+export interface ConversationItem {
+  id: string
+  title: string
+  updatedAt: string
+  lastMessage?: string
+}
+
+interface UseChatOptions {
+  onDeliverable?: (d: Deliverable) => void
+  isAuthenticated?: boolean
+}
+
+export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptions = {}) {
+  const [isCoordinating, setIsCoordinating] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [inputText, setInputText] = useState('')
+  const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>(isAuthenticated ? initialTasks : [])
+  const [pendingApproval, setPendingApproval] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [streamingText, setStreamingText] = useState('')
+  const [streamingAgent, setStreamingAgent] = useState<string | null>(null)
+  const [activeAgents, setActiveAgents] = useState<ActiveAgent[]>([])
+  const [proposedPlan, setProposedPlan] = useState<ProposedPlan | null>(null)
+  const [pendingStepApproval, setPendingStepApproval] = useState<StepApproval | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string>('auto')
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([])
+  const [inactiveBotPrompt, setInactiveBotPrompt] = useState<InactiveBotPrompt | null>(null)
+  const [conversations, setConversations] = useState<ConversationItem[]>([])
+  const latestDeliverableRef = useRef<Deliverable | null>(null)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
+  const sseReadyRef = useRef(false)
+
+  const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  useEffect(() => scrollToBottom(), [messages, isCoordinating, streamingText])
+
+  // Fetch conversation list for authenticated users
+  const fetchConversations = useCallback(async () => {
+    if (!isAuthenticated) { setConversations([]); return }
+    try {
+      const token = localStorage.getItem('pluribots_token')
+      const res = await fetch(`${API_BASE}/conversations`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (res.ok) {
+        const items: ConversationItem[] = await res.json()
+        setConversations(items)
+      }
+    } catch (err) {
+      console.error('[Chat] Fetch conversations error:', err)
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => { fetchConversations() }, [fetchConversations])
+
+  const connectSSE = useCallback((convId: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+      }
+
+      sseReadyRef.current = false
+      const token = localStorage.getItem('pluribots_token')
+      const url = `${API_BASE}/chat/${convId}/stream${token ? `?token=${token}` : ''}`
+      const es = new EventSource(url)
+      eventSourceRef.current = es
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          // Use instanceId as key when available, fallback to agentId
+          const key = data.instanceId || data.agentId
+
+          switch (data.type) {
+            case 'connected':
+              sseReadyRef.current = true
+              resolve()
+              break
+
+            case 'agent_thinking':
+              setThinkingSteps(prev => [
+                ...prev,
+                { agentId: data.agentId, agentName: data.agentName, instanceId: data.instanceId, step: data.step, timestamp: Date.now() },
+              ])
+              break
+
+            case 'agent_start':
+              setStreamingAgent(key)
+              setStreamingText('')
+              // Update activeAgents: set this instance to working
+              setActiveAgents(prev => {
+                const existing = prev.find(a => a.instanceId === key)
+                if (existing) {
+                  return prev.map(a => a.instanceId === key ? { ...a, status: 'working' as const, task: data.task || a.task } : a)
+                }
+                return [...prev, { agentId: data.agentId, agentName: data.agentName, instanceId: key, task: data.task || '', status: 'working' as const }]
+              })
+              break
+
+            case 'token':
+              setStreamingText(prev => prev + data.content)
+              break
+
+            case 'agent_end': {
+              const pendingDeliverable = latestDeliverableRef.current
+              latestDeliverableRef.current = null
+
+              const agentName = getAgentDisplayName(data.agentId)
+              let msgText = data.fullText
+              let attachment: Message['attachment'] = undefined
+
+              if (pendingDeliverable) {
+                const htmlIdx = data.fullText.indexOf('```html')
+                if (htmlIdx > 0) {
+                  msgText = data.fullText.substring(0, htmlIdx).trim()
+                } else {
+                  msgText = `${agentName} completo su trabajo.`
+                }
+                attachment = {
+                  type: 'preview',
+                  title: pendingDeliverable.title,
+                  content: 'Ver resultado en el canvas',
+                  deliverable: pendingDeliverable,
+                }
+              }
+
+              setMessages(prev => [...prev, {
+                id: data.messageId,
+                sender: agentName,
+                text: msgText,
+                type: 'agent',
+                botType: data.agentId,
+                attachment,
+              }])
+              setStreamingText('')
+              setStreamingAgent(null)
+              setThinkingSteps([])
+              // Mark instance as done
+              setActiveAgents(prev =>
+                prev.map(a => a.instanceId === key ? { ...a, status: 'done' as const } : a)
+              )
+              break
+            }
+
+            case 'plan_proposal':
+              setPendingApproval(data.messageId)
+              setProposedPlan({
+                messageId: data.messageId,
+                text: data.text,
+                steps: data.steps,
+              })
+              // Set all proposed instances as waiting
+              setActiveAgents(data.steps.map((s: PlanStep) => ({
+                agentId: s.agentId,
+                agentName: s.agentName,
+                instanceId: s.instanceId,
+                task: s.task,
+                status: 'waiting' as const,
+              })))
+              setMessages(prev => [...prev, {
+                id: data.messageId,
+                sender: 'Pluria',
+                text: data.text,
+                type: 'approval',
+                botType: 'base',
+              }])
+              break
+
+            case 'approval_request':
+              setPendingApproval(data.messageId)
+              setMessages(prev => [...prev, {
+                id: data.messageId,
+                sender: 'Pluria',
+                text: data.text,
+                type: 'approval',
+                botType: 'base',
+              }])
+              break
+
+            case 'step_complete':
+              setPendingStepApproval({
+                agentId: data.agentId,
+                agentName: data.agentName,
+                instanceId: data.instanceId,
+                summary: data.summary,
+                nextAgentId: data.nextAgentId,
+                nextAgentName: data.nextAgentName,
+                nextInstanceId: data.nextInstanceId,
+                nextTask: data.nextTask,
+                stepIndex: data.stepIndex,
+                totalSteps: data.totalSteps,
+                conversationId: data.conversationId,
+              })
+              break
+
+            case 'coordination_start':
+              setIsCoordinating(true)
+              break
+
+            case 'coordination_end':
+              setIsCoordinating(false)
+              setPendingStepApproval(null)
+              setThinkingSteps([])
+              break
+
+            case 'deliverable':
+              if (data.deliverable) {
+                latestDeliverableRef.current = data.deliverable
+                onDeliverable?.(data.deliverable)
+              }
+              break
+
+            case 'kanban_update':
+              if (data.task) {
+                setKanbanTasks(prev => {
+                  const existing = prev.find(t => t.id === data.task.id)
+                  if (existing) {
+                    return prev.map(t => t.id === data.task.id ? data.task : t)
+                  }
+                  return [...prev, data.task]
+                })
+              }
+              break
+
+            case 'human_review_requested':
+              setMessages(prev => [...prev, {
+                id: `hr-${Date.now()}`,
+                sender: 'Sistema',
+                text: 'Un agente humano revisará tu caso pronto.',
+                type: 'agent',
+                botType: 'system',
+              }])
+              break
+
+            case 'human_message':
+              setMessages(prev => [...prev, {
+                id: data.messageId,
+                sender: data.agentName,
+                text: data.text,
+                type: 'agent',
+                botType: 'human',
+              }])
+              break
+
+            case 'bot_inactive':
+              setInactiveBotPrompt({
+                botId: data.botId,
+                botName: data.botName,
+                stepTask: data.stepTask,
+                conversationId: data.conversationId,
+              })
+              break
+
+            case 'error':
+              console.error('[SSE] Error from server:', data.message)
+              setIsCoordinating(false)
+              setStreamingAgent(null)
+              setStreamingText('')
+              break
+          }
+        } catch (err) {
+          console.error('[SSE] Parse error:', err)
+        }
+      }
+
+      es.onerror = () => {
+        console.warn('[SSE] Connection error, will retry...')
+        if (!sseReadyRef.current) {
+          setTimeout(resolve, 500)
+        }
+      }
+
+      // Safety timeout
+      setTimeout(() => {
+        if (!sseReadyRef.current) {
+          sseReadyRef.current = true
+          resolve()
+        }
+      }, 2000)
+    })
+  }, [onDeliverable])
+
+  // Cleanup SSE on unmount
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close()
+    }
+  }, [])
+
+  const resetChat = () => {
+    eventSourceRef.current?.close()
+    eventSourceRef.current = null
+    sseReadyRef.current = false
+    setMessages([])
+    setShowWelcome(true)
+    setInputText('')
+    setPendingApproval(null)
+    setConversationId(null)
+    setStreamingText('')
+    setStreamingAgent(null)
+    setIsCoordinating(false)
+    setActiveAgents([])
+    setProposedPlan(null)
+    setPendingStepApproval(null)
+    setThinkingSteps([])
+    setInactiveBotPrompt(null)
+    fetchConversations()
+  }
+
+  const loadConversation = async (convId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${convId}`, {
+        headers: getAuthHeaders(),
+      })
+      if (!res.ok) return
+
+      const data = await res.json()
+
+      // Close existing SSE and reconnect
+      eventSourceRef.current?.close()
+      eventSourceRef.current = null
+      sseReadyRef.current = false
+
+      setConversationId(convId)
+      setShowWelcome(false)
+      setActiveAgents([])
+      setProposedPlan(null)
+      setPendingStepApproval(null)
+      setPendingApproval(null)
+      setStreamingText('')
+      setStreamingAgent(null)
+      setThinkingSteps([])
+      setInactiveBotPrompt(null)
+
+      // Load messages
+      const loadedMessages: Message[] = (data.messages || []).map((m: Record<string, unknown>) => ({
+        id: m.id,
+        sender: m.sender,
+        text: m.text,
+        type: m.type,
+        botType: m.botType,
+        attachment: m.attachment,
+        approved: m.approved,
+      }))
+      setMessages(loadedMessages)
+
+      // Load kanban tasks
+      if (data.kanbanTasks) {
+        setKanbanTasks(data.kanbanTasks)
+      }
+
+      // Reconnect SSE
+      await connectSSE(convId)
+    } catch (err) {
+      console.error('[Chat] Load conversation error:', err)
+    }
+  }
+
+  const deleteConversation = async (convId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/conversations/${convId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      })
+      if (!res.ok) return
+
+      // If we deleted the current conversation, reset chat
+      if (conversationId === convId) {
+        resetChat()
+      }
+
+      // Remove from local list
+      setConversations(prev => prev.filter(c => c.id !== convId))
+      // Remove related kanban tasks
+      setKanbanTasks(prev => prev.filter(t => {
+        // KanbanTask doesn't have conversationId on the frontend type,
+        // so just refresh from the conversations that remain
+        return true
+      }))
+    } catch (err) {
+      console.error('[Chat] Delete conversation error:', err)
+    }
+  }
+
+  const handleActivateBot = async (botId: string) => {
+    setInactiveBotPrompt(null)
+    // Activate bot via API
+    const token = localStorage.getItem('pluribots_token')
+    if (!token) return
+    try {
+      await fetch(`${API_BASE}/user/bots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bots: [{ botId, isActive: true }] }),
+      })
+      // Tell server to continue with this bot
+      if (conversationId) {
+        await fetch(`${API_BASE}/chat/activate-and-continue`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ conversationId, botId }),
+        })
+      }
+    } catch (err) {
+      console.error('[Chat] Activate bot error:', err)
+    }
+  }
+
+  const handleDismissInactiveBot = () => {
+    setInactiveBotPrompt(null)
+  }
+
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('pluribots_token')
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  }
+
+  // selectedAgents now carries instanceIds
+  const handleApprove = async (messageId: string, selectedAgents?: string[]) => {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, approved: true } : m))
+    setPendingApproval(null)
+    setProposedPlan(null)
+
+    // Filter activeAgents by selected instanceIds
+    if (selectedAgents) {
+      setActiveAgents(prev => prev.filter(a => selectedAgents.includes(a.instanceId)))
+    }
+
+    try {
+      await fetch(`${API_BASE}/chat/approve`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ messageId, approved: true, selectedAgents }),
+      })
+    } catch (err) {
+      console.error('[Chat] Approve error:', err)
+    }
+  }
+
+  const handleReject = async (messageId: string) => {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, approved: false } : m))
+    setPendingApproval(null)
+    setProposedPlan(null)
+    setActiveAgents([])
+
+    try {
+      await fetch(`${API_BASE}/chat/approve`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ messageId, approved: false }),
+      })
+    } catch (err) {
+      console.error('[Chat] Reject error:', err)
+    }
+  }
+
+  const handleApproveStep = async (convId: string, approved: boolean) => {
+    setPendingStepApproval(null)
+
+    if (!approved) {
+      setActiveAgents(prev => prev.map(a => a.status === 'waiting' ? { ...a, status: 'done' as const } : a))
+    }
+
+    try {
+      await fetch(`${API_BASE}/chat/approve-step`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ conversationId: convId, approved }),
+      })
+    } catch (err) {
+      console.error('[Chat] Approve-step error:', err)
+    }
+  }
+
+  // Refine mode: user can chat with visual agent during step approval
+  const isRefineMode = !!(pendingStepApproval && ['web', 'dev', 'video'].includes(pendingStepApproval.agentId))
+
+  const handleSendMessage = async (e: FormEvent, imageFile?: File) => {
+    e.preventDefault()
+    if (!inputText.trim()) return
+
+    // If in refine mode, route to refine-step endpoint
+    if (isRefineMode && pendingStepApproval && conversationId) {
+      const msgText = inputText.trim()
+      const tempId = `temp-${Date.now()}`
+
+      setMessages(prev => [...prev, { id: tempId, sender: 'Tu', text: msgText, type: 'user' }])
+      setInputText('')
+      setPendingStepApproval(null) // Hide step card while refining
+
+      try {
+        const res = await fetch(`${API_BASE}/chat/refine-step`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ conversationId, text: msgText, instanceId: pendingStepApproval.instanceId }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.messageId } : m))
+        }
+      } catch (err) {
+        console.error('[Chat] Refine error:', err)
+      }
+      return
+    }
+
+    // Normal flow — block if coordinating or pending approval
+    if (isCoordinating || pendingApproval) return
+
+    const msgText = inputText.trim()
+    const tempId = `temp-${Date.now()}`
+
+    // Upload image if present
+    let uploadedImageUrl: string | undefined
+    if (imageFile) {
+      try {
+        const formData = new FormData()
+        formData.append('image', imageFile)
+        const uploadRes = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData })
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json()
+          uploadedImageUrl = uploadData.url
+        }
+      } catch (err) {
+        console.error('[Chat] Image upload error:', err)
+      }
+    }
+
+    const userMsg: Message = { id: tempId, sender: 'Tu', text: msgText, type: 'user', imageUrl: uploadedImageUrl }
+    setMessages(prev => [...prev, userMsg])
+    setInputText('')
+    setShowWelcome(false)
+    setActiveAgents([])
+
+    try {
+      let convId = conversationId
+
+      if (!convId) {
+        const createRes = await fetch(`${API_BASE}/chat/conversation`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ title: msgText.slice(0, 50) }),
+        })
+        if (!createRes.ok) {
+          throw new Error('Error al crear conversacion')
+        }
+        const createData = await createRes.json()
+        convId = createData.conversationId
+        setConversationId(convId)
+
+        await connectSSE(convId!)
+      }
+
+      const res = await fetch(`${API_BASE}/chat/send`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ conversationId: convId, text: msgText, ...(selectedModel !== 'auto' ? { modelOverride: selectedModel } : {}), ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}) }),
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        console.error('[Chat] Send error:', error)
+        return
+      }
+
+      const data = await res.json()
+
+      setMessages(prev => prev.map(m =>
+        m.id === tempId ? { ...m, id: data.messageId } : m
+      ))
+      // Refresh conversations list so sidebar shows this chat
+      fetchConversations()
+    } catch (err) {
+      console.error('[Chat] Send error:', err)
+      setMessages(prev => [...prev, {
+        id: `err-${Date.now()}`,
+        sender: 'Sistema',
+        text: 'Error al enviar mensaje. Verifica la conexion con el servidor.',
+        type: 'agent',
+        botType: 'base',
+      }])
+    }
+  }
+
+  return {
+    messages,
+    inputText,
+    setInputText,
+    isCoordinating,
+    showWelcome,
+    kanbanTasks,
+    chatEndRef,
+    handleSendMessage,
+    resetChat,
+    handleApprove,
+    handleReject,
+    handleApproveStep,
+    pendingApproval,
+    streamingText,
+    streamingAgent,
+    conversationId,
+    activeAgents,
+    proposedPlan,
+    pendingStepApproval,
+    selectedModel,
+    setSelectedModel,
+    thinkingSteps,
+    isRefineMode,
+    inactiveBotPrompt,
+    handleActivateBot,
+    handleDismissInactiveBot,
+    conversations,
+    loadConversation,
+    deleteConversation,
+  }
+}
+
+function getAgentDisplayName(agentId: string): string {
+  const names: Record<string, string> = {
+    seo: 'Lupa',
+    web: 'Pixel',
+    ads: 'Metric',
+    dev: 'Logic',
+    video: 'Reel',
+    base: 'Pluria',
+  }
+  return names[agentId] ?? agentId
+}

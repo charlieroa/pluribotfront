@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --page: #f1f5f9;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --subtle: #f1f5f9;
+  --inset: #cbd5e1;
+  --edge: #e2e8f0;
+  --edge-soft: #f1f5f9;
+  --ink: #0f172a;
+  --ink-light: #475569;
+  --ink-faint: #94a3b8;
+  --primary-c: #2563eb;
+  --primary-fg-c: #ffffff;
+  --primary-soft-c: #eff6ff;
+  --avatar-ring-c: #ffffff;
+}
+
+.dark {
+  --page: #030712;
+  --surface: #111827;
+  --surface-alt: #1f2937;
+  --subtle: #1e293b;
+  --inset: #374151;
+  --edge: #1f2937;
+  --edge-soft: #111827;
+  --ink: #f1f5f9;
+  --ink-light: #94a3b8;
+  --ink-faint: #64748b;
+  --primary-c: #3b82f6;
+  --primary-fg-c: #ffffff;
+  --primary-soft-c: #172554;
+  --avatar-ring-c: #111827;
+}
+
+@theme {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-subtle: var(--subtle);
+  --color-inset: var(--inset);
+  --color-edge: var(--edge);
+  --color-edge-soft: var(--edge-soft);
+  --color-ink: var(--ink);
+  --color-ink-light: var(--ink-light);
+  --color-ink-faint: var(--ink-faint);
+  --color-primary: var(--primary-c);
+  --color-primary-fg: var(--primary-fg-c);
+  --color-primary-soft: var(--primary-soft-c);
+  --color-avatar-ring: var(--avatar-ring-c);
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: var(--page);
+  color: var(--ink);
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--inset);
+    border-radius: 10px;
+  }
+}

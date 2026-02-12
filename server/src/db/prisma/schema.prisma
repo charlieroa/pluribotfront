@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String
+  name           String
+  planId         String         @default("starter")
+  profession     String?
+  onboardingDone Boolean        @default(false)
+  role           String         @default("user") // 'user' | 'agent' | 'org_admin' | 'superadmin'
+  organizationId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  conversations  Conversation[]
+  usageRecords   UsageRecord[]
+  userBots       UserBot[]
+  organization   Organization?  @relation(fields: [organizationId], references: [id])
+  assignedConversations Conversation[] @relation("AssignedConversations")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  members   User[]
+}
+
+model UserBot {
+  id        String   @id @default(uuid())
+  userId    String
+  botId     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, botId])
+}
+
+model Conversation {
+  id               String    @id @default(uuid())
+  userId           String
+  title            String    @default("Nueva conversación")
+  needsHumanReview Boolean   @default(false)
+  assignedAgentId  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id])
+  assignedAgent    User?     @relation("AssignedConversations", fields: [assignedAgentId], references: [id])
+  messages         Message[]
+  deliverables     Deliverable[]
+  kanbanTasks      KanbanTask[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  sender         String
+  text           String
+  type           String   // 'user' | 'agent' | 'approval'
+  botType        String?
+  attachmentJson String?  // JSON string of MessageAttachmentWire
+  approved       Boolean?
+  createdAt      DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+}
+
+model Deliverable {
+  id             String   @id @default(uuid())
+  conversationId String
+  title          String
+  type           String   // 'report' | 'code' | 'design' | 'copy'
+  content        String
+  agent          String
+  botType        String
+  instanceId     String?
+  createdAt      DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  kanbanTask     KanbanTask?
+}
+
+model KanbanTask {
+  id             String   @id @default(uuid())
+  conversationId String
+  title          String
+  agent          String
+  status         String   @default("todo") // 'todo' | 'doing' | 'done'
+  botType        String
+  deliverableId  String?  @unique
+  instanceId     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  deliverable    Deliverable? @relation(fields: [deliverableId], references: [id])
+}
+
+model UsageRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  agentId      String
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model ApiKey {
+  id       String  @id @default(uuid())
+  provider String  // 'anthropic' | 'openai'
+  key      String
+  isActive Boolean @default(true)
+}
