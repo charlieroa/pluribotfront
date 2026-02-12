@@ -69,7 +69,45 @@ router.post('/send', optionalAuth, async (req, res) => {
   }
 
   try {
-    // Save user message
+    // Check if user is an assigned agent on this conversation
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { assignedAgentId: true, needsHumanReview: true, userId: true },
+    })
+
+    const senderUser = userId !== 'anonymous'
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true, name: true } })
+      : null
+
+    const isAssignedAgent = conversation?.assignedAgentId === userId && senderUser && ['superadmin', 'org_admin', 'agent'].includes(senderUser.role)
+    const isHumanConversation = conversation?.assignedAgentId && conversation?.needsHumanReview
+
+    // ─── Case 1: Admin/agent writes in assigned conversation → human agent message, no AI ───
+    if (isAssignedAgent && senderUser) {
+      const message = await prisma.message.create({
+        data: {
+          id: uuid(),
+          conversationId,
+          sender: 'human_agent',
+          text,
+          type: 'agent',
+          botType: userId,
+        },
+      })
+
+      broadcast(conversationId, {
+        type: 'human_message',
+        agentName: senderUser.name,
+        agentRole: senderUser.role === 'superadmin' ? 'Supervisor' : senderUser.role === 'org_admin' ? 'Administrador' : 'Agente',
+        text,
+        messageId: message.id,
+      })
+
+      res.json({ conversationId, messageId: message.id } as SendMessageResponse)
+      return
+    }
+
+    // ─── Normal user message ───
     const userMessage = await prisma.message.create({
       data: {
         id: uuid(),
@@ -103,7 +141,6 @@ router.post('/send', optionalAuth, async (req, res) => {
         where: { id: conversationId },
         data: { needsHumanReview: true },
       })
-      // Save system message
       const sysMsg = await prisma.message.create({
         data: {
           id: uuid(),
@@ -123,7 +160,19 @@ router.post('/send', optionalAuth, async (req, res) => {
       })
     }
 
-    // Process async — SSE is already connected
+    // ─── Case 2: Client replies in a human-supervised conversation → no AI ───
+    if (isHumanConversation) {
+      // Just broadcast the user message to the admin, don't trigger AI
+      broadcast(conversationId, {
+        type: 'agent_end',
+        agentId: 'system',
+        messageId: userMessage.id,
+        fullText: text,
+      })
+      return
+    }
+
+    // ─── Case 3: Normal flow → trigger AI ───
     processMessage(conversationId, text, userId, modelOverride, imageUrl).catch(err => {
       console.error('[Chat] Error processing message:', err)
       broadcast(conversationId, { type: 'error', message: 'Error procesando mensaje' })
