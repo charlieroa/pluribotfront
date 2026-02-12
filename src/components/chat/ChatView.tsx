@@ -1,7 +1,7 @@
 import type { FormEvent, RefObject } from 'react'
 import type { Agent, Message, QuickAction, Deliverable } from '../../types'
 import type { ProposedPlan, StepApproval, ThinkingStep, InactiveBotPrompt } from '../../hooks/useChat'
-import { Zap, X } from 'lucide-react'
+import { Zap, X, UserCircle } from 'lucide-react'
 import WelcomeScreen from './WelcomeScreen'
 import MessageBubble, { StepApprovalCard } from './MessageBubble'
 import ChatInput from './ChatInput'
@@ -35,6 +35,7 @@ interface ChatViewProps {
   inactiveBotPrompt?: InactiveBotPrompt | null
   onActivateBot?: (botId: string) => void
   onDismissInactiveBot?: () => void
+  assignedHumanAgent?: { name: string; role: string } | null
 }
 
 const agentMeta: Record<string, { name: string; color: string }> = {
@@ -48,8 +49,20 @@ const agentMeta: Record<string, { name: string; color: string }> = {
   system: { name: 'Sistema', color: '#6b7280' },
 }
 
-const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot }: ChatViewProps) => (
+const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot, assignedHumanAgent }: ChatViewProps) => (
   <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
+    {/* Human agent banner */}
+    {assignedHumanAgent && (
+      <div className="px-6 py-2 bg-violet-50 dark:bg-violet-950/30 border-b border-violet-200 dark:border-violet-800 flex items-center gap-2">
+        <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-white">
+          <UserCircle size={14} />
+        </div>
+        <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+          {assignedHumanAgent.name} ({assignedHumanAgent.role}) esta en el chat
+        </span>
+        <div className="w-2 h-2 bg-violet-500 rounded-full animate-pulse" />
+      </div>
+    )}
     <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar bg-page min-h-0">
       {showWelcome && (
         <WelcomeScreen quickActions={quickActions} setInputText={setInputText} onOpenMarketplace={onOpenMarketplace} />

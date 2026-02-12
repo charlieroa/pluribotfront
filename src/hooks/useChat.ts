@@ -76,6 +76,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([])
   const [inactiveBotPrompt, setInactiveBotPrompt] = useState<InactiveBotPrompt | null>(null)
   const [conversations, setConversations] = useState<ConversationItem[]>([])
+  const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string } | null>(null)
   const latestDeliverableRef = useRef<Deliverable | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -282,6 +283,17 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
               }])
               break
 
+            case 'human_agent_joined':
+              setAssignedHumanAgent({ name: data.agentName, role: data.agentRole })
+              setMessages(prev => [...prev, {
+                id: `haj-${Date.now()}`,
+                sender: 'Sistema',
+                text: `${data.agentName} (${data.agentRole}) se ha unido al chat.`,
+                type: 'agent',
+                botType: 'system',
+              }])
+              break
+
             case 'human_message':
               setMessages(prev => [...prev, {
                 id: data.messageId,
@@ -354,6 +366,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     setPendingStepApproval(null)
     setThinkingSteps([])
     setInactiveBotPrompt(null)
+    setAssignedHumanAgent(null)
     fetchConversations()
   }
 
@@ -378,6 +391,12 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
       setPendingStepApproval(null)
       setPendingApproval(null)
       setStreamingText('')
+      // Load assigned human agent
+      if (data.assignedAgent) {
+        setAssignedHumanAgent({ name: data.assignedAgent.name, role: data.assignedAgent.role === 'superadmin' ? 'Supervisor' : data.assignedAgent.role === 'org_admin' ? 'Administrador' : 'Agente' })
+      } else {
+        setAssignedHumanAgent(null)
+      }
       setStreamingAgent(null)
       setThinkingSteps([])
       setInactiveBotPrompt(null)
@@ -665,6 +684,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     conversations,
     loadConversation,
     deleteConversation,
+    assignedHumanAgent,
   }
 }
 

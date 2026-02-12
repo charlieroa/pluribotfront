@@ -65,6 +65,7 @@ export type SSEEvent =
   | { type: 'coordination_end' }
   | { type: 'bot_inactive'; botId: string; botName: string; stepTask: string; conversationId: string }
   | { type: 'human_review_requested'; conversationId: string }
+  | { type: 'human_agent_joined'; agentName: string; agentRole: string }
   | { type: 'human_message'; agentName: string; agentRole: string; text: string; messageId: string }
   | { type: 'error'; message: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number }

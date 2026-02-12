@@ -5,14 +5,31 @@ import type { ConversationListItem } from '../../../shared/types.js'
 
 const router = Router()
 
-// List conversations for the current user
+// List conversations for the current user (+ assigned conversations for admin/agent roles)
 router.get('/', optionalAuth, async (req, res) => {
   const userId = req.auth?.userId ?? 'anonymous'
 
+  // Check if user has admin/agent role
+  const user = userId !== 'anonymous'
+    ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    : null
+  const isAdmin = user && ['superadmin', 'org_admin', 'agent'].includes(user.role)
+
+  // Build where clause: own conversations + assigned/flagged conversations for admins
+  let where: any = { userId }
+  if (user?.role === 'superadmin') {
+    // Superadmin sees own + all flagged + all assigned to them
+    where = { OR: [{ userId }, { needsHumanReview: true }, { assignedAgentId: userId }] }
+  } else if (isAdmin) {
+    // Agent/org_admin sees own + assigned to them
+    where = { OR: [{ userId }, { assignedAgentId: userId }] }
+  }
+
   const conversations: any[] = await prisma.conversation.findMany({
-    where: { userId },
+    where,
     orderBy: { updatedAt: 'desc' },
     include: {
+      user: { select: { name: true } },
       messages: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -23,7 +40,7 @@ router.get('/', optionalAuth, async (req, res) => {
 
   const items: ConversationListItem[] = conversations.map((c: any) => ({
     id: c.id,
-    title: c.title,
+    title: c.userId !== userId ? `[${c.user?.name}] ${c.title}` : c.title,
     updatedAt: c.updatedAt.toISOString(),
     lastMessage: c.messages[0]?.text,
   }))
@@ -37,6 +54,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
   const conversation: any = await prisma.conversation.findUnique({
     where: { id },
     include: {
+      assignedAgent: { select: { id: true, name: true, role: true } },
       messages: { orderBy: { createdAt: 'asc' } },
       deliverables: true,
       kanbanTasks: { include: { deliverable: true } },
@@ -51,6 +69,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
   res.json({
     id: conversation.id,
     title: conversation.title,
+    needsHumanReview: conversation.needsHumanReview,
+    assignedAgent: conversation.assignedAgent,
     messages: conversation.messages.map((m: any) => ({
       id: m.id,
       conversationId: m.conversationId,

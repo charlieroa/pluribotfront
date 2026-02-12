@@ -19,11 +19,12 @@ interface SidebarProps {
   currentConversationId?: string | null
   onLoadConversation?: (id: string) => void
   onDeleteConversation?: (id: string) => void
+  assignedHumanAgent?: { name: string; role: string } | null
 }
 
 type SidebarSection = 'chats' | 'bots'
 
-const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation }: SidebarProps) => {
+const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, assignedHumanAgent }: SidebarProps) => {
   const { isDark, toggle } = useTheme()
   const { user, activeBots } = useAuth()
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null)
@@ -360,6 +361,22 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                   )
                 })}
               </div>
+
+              {/* Assigned human agent */}
+              {assignedHumanAgent && (
+                <div className="mt-2 w-full flex items-center gap-3 p-3 rounded-xl bg-violet-500/5 border-l-4 border-violet-500">
+                  <div className="w-10 h-10 rounded-xl bg-violet-600 flex-shrink-0 flex items-center justify-center text-white">
+                    <Shield size={18} />
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-ink truncate">{assignedHumanAgent.name}</p>
+                    </div>
+                    <p className="text-xs text-violet-600 truncate">{assignedHumanAgent.role} — En linea</p>
+                  </div>
+                  <div className="w-2.5 h-2.5 bg-violet-500 rounded-full animate-pulse flex-shrink-0" />
+                </div>
+              )}
 
               {/* Marketplace link */}
               <button

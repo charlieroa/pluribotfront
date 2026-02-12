@@ -176,8 +176,18 @@ router.post('/conversations/:id/assign', adminAuth, async (req, res) => {
     const conversation: any = await prisma.conversation.update({
       where: { id },
       data: { assignedAgentId: assignTo },
-      include: { assignedAgent: { select: { id: true, name: true } } },
+      include: { assignedAgent: { select: { id: true, name: true, role: true } } },
     })
+
+    // Notify client that a human agent has joined
+    const agent = conversation.assignedAgent
+    if (agent) {
+      broadcast(id, {
+        type: 'human_agent_joined',
+        agentName: agent.name,
+        agentRole: agent.role === 'superadmin' ? 'Supervisor' : agent.role === 'org_admin' ? 'Administrador' : 'Agente',
+      })
+    }
 
     res.json({
       id: conversation.id,

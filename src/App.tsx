@@ -86,6 +86,7 @@ const App = () => {
     inactiveBotPrompt: chat.inactiveBotPrompt,
     onActivateBot: chat.handleActivateBot,
     onDismissInactiveBot: chat.handleDismissInactiveBot,
+    assignedHumanAgent: chat.assignedHumanAgent,
   }
 
   return (
@@ -110,6 +111,7 @@ const App = () => {
           currentConversationId={chat.conversationId}
           onLoadConversation={handleLoadConversation}
           onDeleteConversation={chat.deleteConversation}
+          assignedHumanAgent={chat.assignedHumanAgent}
         />
 
         <main className="flex-1 flex flex-col relative overflow-hidden bg-surface">
