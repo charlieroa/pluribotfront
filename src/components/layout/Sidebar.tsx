@@ -63,8 +63,8 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
       <>
         <aside className="w-16 bg-surface border-r border-edge flex flex-col items-center py-4 gap-2">
           {/* Logo */}
-          <button onClick={onToggleCollapse} className="mb-2 hover:opacity-80 transition-opacity">
-            <BotAvatar3D seed="Pluria" color="#6366f1" isActive={true} size="sm" />
+          <button onClick={onToggleCollapse} className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20 mb-2 hover:opacity-80 transition-opacity">
+            <Bot size={18} className="text-white" />
           </button>
 
           {/* New Chat */}
@@ -181,7 +181,9 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
         {/* Logo + Collapse */}
         <div className="p-4 pb-3 border-b border-edge-soft flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BotAvatar3D seed="Pluria" color="#6366f1" isActive={true} size="sm" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+              <Bot size={16} className="text-white" />
+            </div>
             <span className="text-xl font-bold tracking-tight text-ink">Pluribots</span>
           </div>
           <button

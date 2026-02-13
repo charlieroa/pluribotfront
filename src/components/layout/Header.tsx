@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { LayoutList, Settings, LogIn, UserPlus, Store, LogOut, Shield, Menu } from 'lucide-react'
+import { LayoutList, Settings, LogIn, UserPlus, Store, LogOut, Bot, Shield, Menu } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import AuthModal from '../auth/AuthModal'
-import BotAvatar3D from '../avatars/BotAvatar3D'
 
 interface HeaderProps {
   isCoordinating: boolean
@@ -31,7 +30,9 @@ const Header = ({ isCoordinating, activeTab, onMobileMenuToggle }: HeaderProps) 
           )}
           <div className="hidden sm:flex">
             {isChat ? (
-              <BotAvatar3D seed="Pluria" color="#6366f1" isActive={true} size="md" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
+                <Bot size={20} className="text-white" />
+              </div>
             ) : (
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-primary-fg ${activeTab === 'admin' ? 'bg-violet-600' : 'bg-primary'}`}>
                 {activeTab === 'marketplace' ? <Store size={20} /> : activeTab === 'tasks' ? <LayoutList size={20} /> : activeTab === 'admin' ? <Shield size={20} /> : <Settings size={20} />}
