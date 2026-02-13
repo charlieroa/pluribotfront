@@ -128,7 +128,7 @@ const AdminDashboard = () => {
     <div className="flex-1 flex flex-col overflow-hidden bg-page">
       {/* Stats bar */}
       {stats && (
-        <div className="px-8 py-4 border-b border-edge bg-surface flex gap-6">
+        <div className="px-4 md:px-8 py-3 md:py-4 border-b border-edge bg-surface flex flex-wrap gap-4 md:gap-6">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
               <AlertCircle size={16} className="text-red-500" />
@@ -148,8 +148,8 @@ const AdminDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <Users size={16} className="text-blue-500" />
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+              <Users size={16} className="text-indigo-500" />
             </div>
             <div>
               <p className="text-lg font-bold text-ink">{stats.totalUsers}</p>

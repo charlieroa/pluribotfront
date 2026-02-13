@@ -8,7 +8,7 @@ interface WorkspacePanelProps {
 }
 
 const typeConfig: Record<Deliverable['type'], { icon: ReactNode; label: string; color: string }> = {
-  report: { icon: <FileText size={18} />, label: 'Reporte', color: 'text-blue-500 bg-blue-500/10' },
+  report: { icon: <FileText size={18} />, label: 'Reporte', color: 'text-indigo-500 bg-indigo-500/10' },
   code: { icon: <Code size={18} />, label: 'Codigo', color: 'text-emerald-500 bg-emerald-500/10' },
   design: { icon: <Palette size={18} />, label: 'Diseno', color: 'text-purple-500 bg-purple-500/10' },
   copy: { icon: <MessageSquare size={18} />, label: 'Copy', color: 'text-amber-500 bg-amber-500/10' },

@@ -23,6 +23,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('chat')
   const [activeDeliverable, setActiveDeliverable] = useState<Deliverable | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const chat = useChat({ onDeliverable: setActiveDeliverable, isAuthenticated })
   const { specialists } = useSpecialists()
@@ -98,36 +99,48 @@ const App = () => {
       )}
 
       <div className="flex h-screen bg-page text-ink font-['Plus_Jakarta_Sans'] overflow-hidden">
-        <Sidebar
-          activeTab={activeTab}
-          setActiveTab={handleSetActiveTab}
-          agents={agents}
-          onNewChat={handleNewChat}
-          activeAgents={chat.activeAgents}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-          conversations={chat.conversations}
-          currentConversationId={chat.conversationId}
-          onLoadConversation={handleLoadConversation}
-          onDeleteConversation={chat.deleteConversation}
-          assignedHumanAgent={chat.assignedHumanAgent}
-          specialists={specialists}
-        />
+        {/* Mobile sidebar overlay */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMobileMenuOpen(false)}>
+            <div className="absolute inset-0 bg-black/50" />
+          </div>
+        )}
 
-        <main className="flex-1 flex flex-col relative overflow-hidden bg-surface">
-          <Header isCoordinating={chat.isCoordinating} activeTab={activeTab} />
+        {/* Sidebar - hidden on mobile unless menu open */}
+        <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden'} md:relative md:block`}>
+          <Sidebar
+            activeTab={activeTab}
+            setActiveTab={(tab) => { handleSetActiveTab(tab); setMobileMenuOpen(false) }}
+            agents={agents}
+            onNewChat={() => { handleNewChat(); setMobileMenuOpen(false) }}
+            activeAgents={chat.activeAgents}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
+            conversations={chat.conversations}
+            currentConversationId={chat.conversationId}
+            onLoadConversation={(id) => { handleLoadConversation(id); setMobileMenuOpen(false) }}
+            onDeleteConversation={chat.deleteConversation}
+            assignedHumanAgent={chat.assignedHumanAgent}
+            specialists={specialists}
+          />
+        </div>
+
+        <main className="flex-1 flex flex-col relative overflow-hidden bg-surface min-w-0">
+          <Header isCoordinating={chat.isCoordinating} activeTab={activeTab} onMobileMenuToggle={() => setMobileMenuOpen(prev => !prev)} />
 
           <div className="flex-1 flex overflow-hidden">
             {activeDeliverable ? (
               <>
-                {/* Split view: Chat + Workspace */}
-                <div className="w-[42%] flex flex-col border-r border-edge min-w-0 overflow-hidden">
+                {/* Split view: Chat + Workspace — stack on mobile */}
+                <div className="w-full md:w-[42%] flex flex-col border-r border-edge min-w-0 overflow-hidden">
                   <ChatView {...chatViewProps} />
                 </div>
-                <WorkspacePanel
-                  deliverable={activeDeliverable}
-                  onClose={() => setActiveDeliverable(null)}
-                />
+                <div className="hidden md:flex flex-1">
+                  <WorkspacePanel
+                    deliverable={activeDeliverable}
+                    onClose={() => setActiveDeliverable(null)}
+                  />
+                </div>
               </>
             ) : activeTab === 'chat' ? (
               <ChatView {...chatViewProps} />

@@ -21,7 +21,7 @@ const agentColors: Record<string, string> = {
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',
-  base: '#2563eb',
+  base: '#6366f1',
   human: '#8b5cf6',
   system: '#6b7280',
 }
@@ -49,7 +49,7 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
     return (
       <div className="flex gap-4 max-w-2xl">
         <BotAvatar3D
-          color={agent?.color || '#2563eb'}
+          color={agent?.color || '#6366f1'}
           seed={agent?.name || m.botType || 'base'}
           isActive={true}
           size="sm"
@@ -105,7 +105,7 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
           </div>
         ) : (
           <BotAvatar3D
-            color={agent?.color || agentColors[m.botType || ''] || '#2563eb'}
+            color={agent?.color || agentColors[m.botType || ''] || '#6366f1'}
             seed={agent?.name || m.botType || 'base'}
             isActive={true}
             size="sm"
@@ -305,7 +305,7 @@ const PlanProposalCard = ({ plan, agent, botType, sender, onApprove, onReject }:
   return (
     <div className="flex gap-4 max-w-2xl">
       <BotAvatar3D
-        color={agent?.color || '#2563eb'}
+        color={agent?.color || '#6366f1'}
         seed={agent?.name || botType || 'base'}
         isActive={true}
         size="sm"

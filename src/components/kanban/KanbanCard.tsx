@@ -25,7 +25,7 @@ const KanbanCard = ({ task, agents, onTaskClick }: KanbanCardProps) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <BotAvatar3D
-            color={agent?.color || '#2563eb'}
+            color={agent?.color || '#6366f1'}
             seed={task.agent}
             isActive={task.status === 'doing'}
             size="sm"
@@ -39,7 +39,7 @@ const KanbanCard = ({ task, agents, onTaskClick }: KanbanCardProps) => {
           task.status === 'doing'
             ? 'bg-emerald-500/10 text-emerald-500'
             : task.status === 'done'
-              ? 'bg-blue-500/10 text-blue-500'
+              ? 'bg-indigo-500/10 text-indigo-500'
               : 'bg-subtle text-ink-faint'
         }`}>
           <Clock size={10} />

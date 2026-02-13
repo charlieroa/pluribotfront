@@ -37,7 +37,7 @@ const agentColors: Record<string, string> = {
   web: '#a855f7',
   ads: '#10b981',
   dev: '#f59e0b',
-  base: '#2563eb',
+  base: '#6366f1',
 }
 
 const SettingsView = () => {
@@ -546,7 +546,7 @@ const WhiteLabelSection = () => {
   const { organization, updateOrganization } = useOrganization()
   const [orgName, setOrgName] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
-  const [primaryColor, setPrimaryColor] = useState('#2563eb')
+  const [primaryColor, setPrimaryColor] = useState('#6366f1')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -555,7 +555,7 @@ const WhiteLabelSection = () => {
     if (organization) {
       setOrgName(organization.name)
       setLogoUrl(organization.logoUrl || '')
-      setPrimaryColor(organization.primaryColor || '#2563eb')
+      setPrimaryColor(organization.primaryColor || '#6366f1')
     }
   }, [organization])
 

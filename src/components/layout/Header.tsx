@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { LayoutList, Settings, LogIn, UserPlus, Store, LogOut, Bot, Shield } from 'lucide-react'
+import { LayoutList, Settings, LogIn, UserPlus, Store, LogOut, Bot, Shield, Menu } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import AuthModal from '../auth/AuthModal'
 
 interface HeaderProps {
   isCoordinating: boolean
   activeTab: string
+  onMobileMenuToggle?: () => void
 }
 
-const Header = ({ isCoordinating, activeTab }: HeaderProps) => {
+const Header = ({ isCoordinating, activeTab, onMobileMenuToggle }: HeaderProps) => {
   const { user, logout } = useAuth()
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -20,14 +21,19 @@ const Header = ({ isCoordinating, activeTab }: HeaderProps) => {
 
   return (
     <>
-      <header className="h-16 border-b border-edge px-8 flex items-center justify-between bg-surface">
-        <div className="flex items-center gap-4">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-primary-fg ${activeTab === 'admin' ? 'bg-violet-600' : 'bg-primary'}`}>
+      <header className="h-14 md:h-16 border-b border-edge px-4 md:px-8 flex items-center justify-between bg-surface">
+        <div className="flex items-center gap-3 md:gap-4">
+          {onMobileMenuToggle && (
+            <button onClick={onMobileMenuToggle} className="md:hidden p-1.5 text-ink-faint hover:text-ink rounded-lg hover:bg-subtle transition-all">
+              <Menu size={20} />
+            </button>
+          )}
+          <div className={`hidden sm:flex w-10 h-10 rounded-xl items-center justify-center text-primary-fg ${activeTab === 'admin' ? 'bg-violet-600' : 'bg-primary'}`}>
             {isChat ? <Bot size={20} /> : activeTab === 'marketplace' ? <Store size={20} /> : activeTab === 'tasks' ? <LayoutList size={20} /> : activeTab === 'admin' ? <Shield size={20} /> : <Settings size={20} />}
           </div>
           <div>
-            <h2 className="font-bold text-ink">
-              {isChat ? 'Pluria' : activeTab === 'marketplace' ? 'Marketplace de Agentes' : activeTab === 'tasks' ? 'Pipeline de Entregables' : activeTab === 'admin' ? 'Panel de Administración' : 'Configuracion'}
+            <h2 className="font-bold text-ink text-sm md:text-base">
+              {isChat ? 'Pluria' : activeTab === 'marketplace' ? 'Marketplace' : activeTab === 'tasks' ? 'Tareas' : activeTab === 'admin' ? 'Admin' : 'Config'}
             </h2>
             {isChat ? (
               <p className={`text-xs font-semibold flex items-center gap-1 ${isCoordinating ? 'text-amber-500' : 'text-emerald-500'}`}>
@@ -43,10 +49,10 @@ const Header = ({ isCoordinating, activeTab }: HeaderProps) => {
         </div>
 
         {/* Auth section */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2">
           {user ? (
             <>
-              <div className="flex items-center gap-2 px-3 py-1.5">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5">
                 <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold">
                   {user.name.charAt(0).toUpperCase()}
                 </div>
@@ -59,27 +65,27 @@ const Header = ({ isCoordinating, activeTab }: HeaderProps) => {
               </div>
               <button
                 onClick={logout}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-ink-light hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
+                className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs font-semibold text-ink-light hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
               >
                 <LogOut size={14} />
-                Salir
+                <span className="hidden sm:inline">Salir</span>
               </button>
             </>
           ) : (
             <>
               <button
                 onClick={openLogin}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-ink-light hover:text-ink transition-colors rounded-lg hover:bg-subtle"
+                className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs font-semibold text-ink-light hover:text-ink transition-colors rounded-lg hover:bg-subtle"
               >
                 <LogIn size={14} />
-                Iniciar sesion
+                <span className="hidden sm:inline">Iniciar sesion</span>
               </button>
               <button
                 onClick={openRegister}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg hover:from-blue-600 hover:to-indigo-600 transition-all shadow-sm"
+                className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all shadow-sm"
               >
                 <UserPlus size={14} />
-                Registrate gratis
+                <span className="hidden sm:inline">Registrate gratis</span>
               </button>
             </>
           )}

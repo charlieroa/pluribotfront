@@ -129,7 +129,7 @@ const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-page">
       {/* Date filter bar */}
-      <div className="px-6 pt-5 pb-4 border-b border-edge bg-surface">
+      <div className="px-4 md:px-6 pt-4 md:pt-5 pb-3 md:pb-4 border-b border-edge bg-surface">
         <div className="flex items-center gap-4">
           {/* Date navigation */}
           <div className="flex items-center gap-1 bg-subtle rounded-xl p-1">
@@ -218,8 +218,8 @@ const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
       </div>
 
       {/* Kanban columns */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
-        <div className="flex gap-5 h-full min-w-[900px]">
+      <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 md:p-6">
+        <div className="flex gap-4 md:gap-5 h-full min-w-[700px] md:min-w-[900px]">
           {columns.map(col => {
             const colTasks = tasksByStatus[col.id] || []
 

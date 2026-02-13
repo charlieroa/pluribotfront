@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import BotAvatar3D from '../avatars/BotAvatar3D'
 
 interface AuthModalProps {
   isOpen: boolean
@@ -67,7 +68,9 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'login' }: AuthModalProps) =
           </button>
 
           <div className="text-center mb-6">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-primary-fg font-bold text-sm mx-auto mb-2">P</div>
+            <div className="mx-auto mb-2 flex justify-center">
+              <BotAvatar3D seed="Pluria" color="#6366f1" isActive={true} size="md" />
+            </div>
             <h2 className="text-lg font-bold text-ink">
               {isRegister ? 'Crear Cuenta' : 'Iniciar Sesion'}
             </h2>

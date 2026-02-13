@@ -17,7 +17,7 @@ const botCards = [
     color: '#3b82f6',
     icon: <Search size={18} />,
     tag: 'Popular',
-    tagColor: 'text-blue-600 bg-blue-500/10',
+    tagColor: 'text-indigo-600 bg-indigo-500/10',
     category: 'Marketing',
     prompt: 'Analiza el SEO de mi sitio web',
   },
@@ -81,15 +81,15 @@ const WelcomeScreen = ({ setInputText, onOpenMarketplace }: WelcomeScreenProps) 
     : botCards
 
   return (
-  <div className="max-w-5xl mx-auto py-6 px-4">
+  <div className="max-w-5xl mx-auto py-4 md:py-6 px-3 md:px-4">
     {/* Hero: Pluria */}
-    <div className="relative mb-10 p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-white/10 overflow-hidden">
+    <div className="relative mb-6 md:mb-10 p-5 md:p-8 rounded-2xl md:rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-white/10 overflow-hidden">
       <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl" />
-      <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/15 rounded-full blur-3xl" />
+      <div className="absolute bottom-0 left-0 w-48 h-48 bg-purple-500/15 rounded-full blur-3xl" />
 
-      <div className="relative flex items-start gap-6">
+      <div className="relative flex flex-col sm:flex-row items-start gap-4 md:gap-6">
         <div className="flex-shrink-0 hidden sm:block">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xl shadow-indigo-500/30">
+          <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xl shadow-indigo-500/30">
             <Bot size={36} className="text-white" />
           </div>
         </div>
@@ -103,10 +103,10 @@ const WelcomeScreen = ({ setInputText, onOpenMarketplace }: WelcomeScreenProps) 
           <p className="text-sm text-slate-300 leading-relaxed max-w-2xl mb-4">
             Soy tu director creativo con IA. Describi lo que necesitas y yo coordino automaticamente al equipo de bots especializados. Puedo activar a uno o varios agentes segun tu proyecto.
           </p>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 md:gap-3">
             <button
               onClick={() => setInputText('Quiero crear una landing page completa para mi negocio')}
-              className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-xs font-semibold rounded-lg border border-white/10 transition-all"
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-[11px] md:text-xs font-semibold rounded-lg border border-white/10 transition-all"
             >
               <Sparkles size={14} className="text-indigo-400" />
               Crear landing page
@@ -131,8 +131,8 @@ const WelcomeScreen = ({ setInputText, onOpenMarketplace }: WelcomeScreenProps) 
     </div>
 
     {/* Active Agents Section */}
-    <div className="mb-8">
-      <div className="flex items-center justify-between mb-5">
+    <div className="mb-6 md:mb-8">
+      <div className="flex items-center justify-between mb-4 md:mb-5">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold text-ink">Tus Agentes Activos</h2>
           <button
@@ -152,14 +152,14 @@ const WelcomeScreen = ({ setInputText, onOpenMarketplace }: WelcomeScreenProps) 
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
         {filteredBotCards.map((bot) => {
           const isBotOff = !isAuthenticated
           return (
             <button
               key={bot.id}
               onClick={() => !isBotOff && setInputText(bot.prompt)}
-              className={`bg-surface p-5 rounded-2xl border transition-all group text-left ${
+              className={`bg-surface p-4 md:p-5 rounded-2xl border transition-all group text-left ${
                 isBotOff
                   ? 'border-edge opacity-50 cursor-default'
                   : 'border-edge hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5'
@@ -206,15 +206,15 @@ const WelcomeScreen = ({ setInputText, onOpenMarketplace }: WelcomeScreenProps) 
     </div>
 
     {/* What can Pluria do */}
-    <div className="mb-8 p-6 rounded-2xl bg-subtle border border-edge">
+    <div className="mb-6 md:mb-8 p-4 md:p-6 rounded-2xl bg-subtle border border-edge">
       <h3 className="text-sm font-bold text-ink mb-4 flex items-center gap-2">
         <Zap size={16} className="text-primary" />
         Que puede hacer Pluria por ti
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="flex gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-            <Search size={14} className="text-blue-500" />
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+            <Search size={14} className="text-indigo-500" />
           </div>
           <div>
             <p className="text-xs font-bold text-ink">Analisis y Estrategia</p>
@@ -243,20 +243,20 @@ const WelcomeScreen = ({ setInputText, onOpenMarketplace }: WelcomeScreenProps) 
     </div>
 
     {/* Trust badges */}
-    <div className="flex items-center justify-center gap-6 px-8 py-4 border border-edge rounded-2xl bg-surface">
-      <div className="flex items-center gap-2 text-ink-faint">
-        <ShieldCheck size={16} className="text-primary" />
-        <span className="text-xs font-medium">Datos Encriptados</span>
+    <div className="flex flex-wrap items-center justify-center gap-3 md:gap-6 px-4 md:px-8 py-3 md:py-4 border border-edge rounded-2xl bg-surface">
+      <div className="flex items-center gap-1.5 md:gap-2 text-ink-faint">
+        <ShieldCheck size={14} className="text-primary" />
+        <span className="text-[11px] md:text-xs font-medium">Datos Encriptados</span>
       </div>
-      <div className="w-px h-5 bg-edge" />
-      <div className="flex items-center gap-2 text-ink-faint">
-        <Zap size={16} className="text-emerald-500" />
-        <span className="text-xs font-medium">IA de Ultima Generacion</span>
+      <div className="hidden sm:block w-px h-5 bg-edge" />
+      <div className="flex items-center gap-1.5 md:gap-2 text-ink-faint">
+        <Zap size={14} className="text-emerald-500" />
+        <span className="text-[11px] md:text-xs font-medium">IA de Ultima Generacion</span>
       </div>
-      <div className="w-px h-5 bg-edge" />
-      <div className="flex items-center gap-2 text-ink-faint">
-        <Users size={16} className="text-amber-500" />
-        <span className="text-xs font-medium">5 Agentes Especializados</span>
+      <div className="hidden sm:block w-px h-5 bg-edge" />
+      <div className="flex items-center gap-1.5 md:gap-2 text-ink-faint">
+        <Users size={14} className="text-amber-500" />
+        <span className="text-[11px] md:text-xs font-medium">5 Agentes Especializados</span>
       </div>
     </div>
   </div>

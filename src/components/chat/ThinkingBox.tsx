@@ -12,7 +12,7 @@ const agentColors: Record<string, string> = {
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',
-  base: '#2563eb',
+  base: '#6366f1',
 }
 
 const ThinkingBox = ({ steps }: ThinkingBoxProps) => {

@@ -25,7 +25,7 @@ const bots = [
     icon: <Search size={20} />,
     category: 'marketing',
     tag: 'Popular',
-    tagColor: 'text-blue-600 bg-blue-500/10',
+    tagColor: 'text-indigo-600 bg-indigo-500/10',
     rating: 4.8,
     uses: '2.4k',
     capabilities: ['Keyword Research', 'Backlink Audit', 'Analisis Competencia', 'SEO On-Page'],

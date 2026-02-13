@@ -63,7 +63,7 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
   }
 
   return (
-    <div className="p-6 border-t border-edge-soft bg-surface">
+    <div className="p-3 md:p-6 border-t border-edge-soft bg-surface">
       {/* Image preview */}
       {imagePreview && (
         <div className="mb-2 flex items-center gap-2 px-4">
@@ -180,7 +180,7 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
         <button
           type="submit"
           disabled={isCoordinating}
-          className="bg-primary text-primary-fg p-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg shadow-blue-500/10 disabled:bg-inset disabled:shadow-none"
+          className="bg-primary text-primary-fg p-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg shadow-indigo-500/10 disabled:bg-inset disabled:shadow-none"
         >
           <Send size={18} />
         </button>

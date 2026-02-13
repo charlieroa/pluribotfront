@@ -44,7 +44,7 @@ const agentMeta: Record<string, { name: string; color: string }> = {
   ads: { name: 'Metric', color: '#10b981' },
   dev: { name: 'Logic', color: '#f59e0b' },
   video: { name: 'Reel', color: '#ef4444' },
-  base: { name: 'Pluria', color: '#2563eb' },
+  base: { name: 'Pluria', color: '#6366f1' },
   human: { name: 'Agente Humano', color: '#8b5cf6' },
   system: { name: 'Sistema', color: '#6b7280' },
 }
@@ -69,7 +69,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         </div>
       )
     })()}
-    <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar bg-page min-h-0">
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 custom-scrollbar bg-page min-h-0">
       {showWelcome && (
         <WelcomeScreen quickActions={quickActions} setInputText={setInputText} onOpenMarketplace={onOpenMarketplace} />
       )}
@@ -97,7 +97,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
       {streamingAgent && streamingText && (
         <div className="flex gap-4 max-w-2xl">
           <BotAvatar3D
-            color={agentMeta[streamingAgent]?.color ?? '#2563eb'}
+            color={agentMeta[streamingAgent]?.color ?? '#6366f1'}
             seed={agentMeta[streamingAgent]?.name ?? 'base'}
             isActive={true}
             size="sm"

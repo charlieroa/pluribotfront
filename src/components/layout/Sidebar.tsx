@@ -63,8 +63,8 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
       <>
         <aside className="w-16 bg-surface border-r border-edge flex flex-col items-center py-4 gap-2">
           {/* Logo */}
-          <button onClick={onToggleCollapse} className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center text-primary-fg font-bold text-sm mb-2 hover:opacity-80 transition-opacity">
-            P
+          <button onClick={onToggleCollapse} className="mb-2 hover:opacity-80 transition-opacity">
+            <BotAvatar3D seed="Pluria" color="#6366f1" isActive={true} size="sm" />
           </button>
 
           {/* New Chat */}
@@ -181,7 +181,7 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
         {/* Logo + Collapse */}
         <div className="p-4 pb-3 border-b border-edge-soft flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-fg font-bold text-sm">P</div>
+            <BotAvatar3D seed="Pluria" color="#6366f1" isActive={true} size="sm" />
             <span className="text-xl font-bold tracking-tight text-ink">Pluribots</span>
           </div>
           <button
@@ -515,7 +515,7 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                 </button>
                 <button
                   onClick={openRegister}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg hover:from-blue-600 hover:to-indigo-600 transition-all"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all"
                 >
                   <UserPlus size={12} />
                   Registrate

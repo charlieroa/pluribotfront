@@ -175,7 +175,7 @@ const OrganizationSettings = () => {
   const roleColors: Record<string, string> = {
     superadmin: 'bg-red-500/10 text-red-600',
     org_admin: 'bg-violet-500/10 text-violet-600',
-    agent: 'bg-blue-500/10 text-blue-600',
+    agent: 'bg-indigo-500/10 text-indigo-600',
     user: 'bg-slate-500/10 text-slate-600',
   }
 
