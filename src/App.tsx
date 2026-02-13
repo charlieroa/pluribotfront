@@ -107,7 +107,7 @@ const App = () => {
         )}
 
         {/* Sidebar - hidden on mobile unless menu open */}
-        <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden'} md:relative md:block`}>
+        <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden'} md:relative md:flex md:flex-shrink-0 h-full`}>
           <Sidebar
             activeTab={activeTab}
             setActiveTab={(tab) => { handleSetActiveTab(tab); setMobileMenuOpen(false) }}
