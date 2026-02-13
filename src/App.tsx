@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { agents } from './data/agents'
 import { quickActions } from './data/quickActions'
 import { useChat } from './hooks/useChat'
+import { useSpecialists } from './hooks/useSpecialists'
 import { useAuth } from './contexts/AuthContext'
 import type { Deliverable } from './types'
 import Sidebar from './components/layout/Sidebar'
@@ -24,9 +25,7 @@ const App = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const chat = useChat({ onDeliverable: setActiveDeliverable, isAuthenticated })
-
-  const lastAgentId = chat.messages[chat.messages.length - 1]?.botType
-  const activeAgent = agents.find(a => a.id === lastAgentId) || agents[0]
+  const { specialists } = useSpecialists()
 
   const handleSetActiveTab = (tab: string) => {
     setActiveTab(tab)
@@ -112,6 +111,7 @@ const App = () => {
           onLoadConversation={handleLoadConversation}
           onDeleteConversation={chat.deleteConversation}
           assignedHumanAgent={chat.assignedHumanAgent}
+          specialists={specialists}
         />
 
         <main className="flex-1 flex flex-col relative overflow-hidden bg-surface">

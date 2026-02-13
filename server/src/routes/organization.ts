@@ -32,9 +32,9 @@ router.patch('/', orgAdminAuth, async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.auth!.userId } })
     if (!user?.organizationId) {
       // Create org if doesn't exist
-      const { name, logoUrl } = req.body as { name?: string; logoUrl?: string }
+      const { name, logoUrl, primaryColor } = req.body as { name?: string; logoUrl?: string; primaryColor?: string }
       const org = await prisma.organization.create({
-        data: { name: name || 'Mi Organización', logoUrl },
+        data: { name: name || 'Mi Organización', logoUrl, primaryColor },
       })
       await prisma.user.update({
         where: { id: user!.id },
@@ -44,12 +44,13 @@ router.patch('/', orgAdminAuth, async (req, res) => {
       return
     }
 
-    const { name, logoUrl } = req.body as { name?: string; logoUrl?: string }
+    const { name, logoUrl, primaryColor } = req.body as { name?: string; logoUrl?: string; primaryColor?: string }
     const org = await prisma.organization.update({
       where: { id: user.organizationId },
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(logoUrl !== undefined ? { logoUrl } : {}),
+        ...(primaryColor !== undefined ? { primaryColor } : {}),
       },
     })
     res.json({ organization: org })
@@ -70,7 +71,7 @@ router.get('/members', orgAdminAuth, async (req, res) => {
 
     const members = await prisma.user.findMany({
       where: { organizationId: user.organizationId },
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     })
 
@@ -84,7 +85,7 @@ router.get('/members', orgAdminAuth, async (req, res) => {
 // Invite member (create user with agent role)
 router.post('/members', orgAdminAuth, async (req, res) => {
   try {
-    const { email, name, role } = req.body as { email: string; name: string; role?: string }
+    const { email, name, role, specialty, specialtyColor, specialtyKeywords } = req.body as { email: string; name: string; role?: string; specialty?: string; specialtyColor?: string; specialtyKeywords?: string }
     if (!email || !name) {
       res.status(400).json({ error: 'Email y nombre son requeridos' })
       return
@@ -113,11 +114,14 @@ router.post('/members', orgAdminAuth, async (req, res) => {
         data: {
           organizationId: orgId,
           role: role || 'agent',
+          ...(specialty !== undefined ? { specialty } : {}),
+          ...(specialtyColor !== undefined ? { specialtyColor } : {}),
+          ...(specialtyKeywords !== undefined ? { specialtyKeywords } : {}),
         },
       })
       const updated = await prisma.user.findUnique({
         where: { email },
-        select: { id: true, name: true, email: true, role: true, createdAt: true },
+        select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, createdAt: true },
       })
       res.json({ member: updated })
       return
@@ -136,16 +140,72 @@ router.post('/members', orgAdminAuth, async (req, res) => {
         organizationId: orgId,
         planId: 'starter',
         onboardingDone: true,
+        ...(specialty ? { specialty } : {}),
+        ...(specialtyColor ? { specialtyColor } : {}),
+        ...(specialtyKeywords ? { specialtyKeywords } : {}),
       },
     })
 
     res.json({
-      member: { id: member.id, name: member.name, email: member.email, role: member.role, createdAt: member.createdAt },
+      member: { id: member.id, name: member.name, email: member.email, role: member.role, specialty: member.specialty, specialtyColor: member.specialtyColor, createdAt: member.createdAt },
       tempPassword,
     })
   } catch (err) {
     console.error('[Org] Error inviting member:', err)
     res.status(500).json({ error: 'Error al invitar miembro' })
+  }
+})
+
+// Update member specialty
+router.patch('/members/:id', orgAdminAuth, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.auth!.userId } })
+    const memberId = req.params.id as string
+    const member = await prisma.user.findUnique({ where: { id: memberId } })
+
+    if (!member || member.organizationId !== user?.organizationId) {
+      res.status(404).json({ error: 'Miembro no encontrado' })
+      return
+    }
+
+    const { specialty, specialtyColor, specialtyKeywords } = req.body as {
+      specialty?: string
+      specialtyColor?: string
+      specialtyKeywords?: string
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: memberId },
+      data: {
+        ...(specialty !== undefined ? { specialty: specialty || null } : {}),
+        ...(specialtyColor !== undefined ? { specialtyColor: specialtyColor || null } : {}),
+        ...(specialtyKeywords !== undefined ? { specialtyKeywords: specialtyKeywords || null } : {}),
+      },
+      select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, createdAt: true },
+    })
+
+    res.json({ member: updated })
+  } catch (err) {
+    console.error('[Org] Error updating member:', err)
+    res.status(500).json({ error: 'Error al actualizar miembro' })
+  }
+})
+
+// List available specialists (public)
+router.get('/specialists', async (req, res) => {
+  try {
+    const specialists = await prisma.user.findMany({
+      where: {
+        role: 'agent',
+        specialty: { not: null },
+      },
+      select: { id: true, name: true, specialty: true, specialtyColor: true },
+    })
+
+    res.json({ specialists })
+  } catch (err) {
+    console.error('[Org] Error fetching specialists:', err)
+    res.status(500).json({ error: 'Error al obtener especialistas' })
   }
 })
 

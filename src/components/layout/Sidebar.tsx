@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Moon, Sun, Plus, Clock, CheckCircle2, Loader2, Store, LogIn, UserPlus, PanelLeftClose, PanelLeftOpen, MessageSquare, Bot, Settings, LayoutGrid, Trash2, Shield } from 'lucide-react'
+import { Moon, Sun, Plus, Clock, CheckCircle2, Loader2, Store, LogIn, UserPlus, PanelLeftClose, PanelLeftOpen, MessageSquare, Bot, Settings, LayoutGrid, Trash2, Shield, UserCircle } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import AuthModal from '../auth/AuthModal'
 import type { Agent } from '../../types'
 import type { ActiveAgent, ConversationItem } from '../../hooks/useChat'
+import type { Specialist } from '../../hooks/useSpecialists'
 
 interface SidebarProps {
   activeTab: string
@@ -19,12 +20,13 @@ interface SidebarProps {
   currentConversationId?: string | null
   onLoadConversation?: (id: string) => void
   onDeleteConversation?: (id: string) => void
-  assignedHumanAgent?: { name: string; role: string } | null
+  assignedHumanAgent?: { name: string; role: string; specialty?: string; specialtyColor?: string } | null
+  specialists?: Specialist[]
 }
 
 type SidebarSection = 'chats' | 'bots'
 
-const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, assignedHumanAgent }: SidebarProps) => {
+const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, assignedHumanAgent, specialists = [] }: SidebarProps) => {
   const { isDark, toggle } = useTheme()
   const { user, activeBots } = useAuth()
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null)
@@ -127,6 +129,18 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
               </div>
             )
           })}
+
+          {/* Specialist avatars (collapsed) */}
+          {specialists.slice(0, 3).map(spec => (
+            <div
+              key={spec.id}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
+              style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
+              title={`${spec.name} — ${spec.specialty}`}
+            >
+              <UserCircle size={16} />
+            </div>
+          ))}
 
           {/* Spacer */}
           <div className="flex-1" />
@@ -362,21 +376,53 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                 })}
               </div>
 
-              {/* Assigned human agent */}
-              {assignedHumanAgent && (
-                <div className="mt-2 w-full flex items-center gap-3 p-3 rounded-xl bg-violet-500/5 border-l-4 border-violet-500">
-                  <div className="w-10 h-10 rounded-xl bg-violet-600 flex-shrink-0 flex items-center justify-center text-white">
-                    <Shield size={18} />
+              {/* Specialists */}
+              {specialists.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wide mb-1.5 px-1">Especialistas</p>
+                  <div className="space-y-1">
+                    {specialists.map(spec => (
+                      <div
+                        key={spec.id}
+                        className="flex items-center gap-3 p-3 rounded-xl border-l-4"
+                        style={{ borderColor: spec.specialtyColor || '#8b5cf6', backgroundColor: `${spec.specialtyColor || '#8b5cf6'}08` }}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
+                          style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
+                        >
+                          <UserCircle size={18} />
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <p className="text-sm font-bold text-ink truncate">{spec.name}</p>
+                          <p className="text-xs truncate" style={{ color: spec.specialtyColor || '#8b5cf6' }}>
+                            {spec.specialty} — Disponible
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex-1 overflow-hidden">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-bold text-ink truncate">{assignedHumanAgent.name}</p>
-                    </div>
-                    <p className="text-xs text-violet-600 truncate">{assignedHumanAgent.role} — En linea</p>
-                  </div>
-                  <div className="w-2.5 h-2.5 bg-violet-500 rounded-full animate-pulse flex-shrink-0" />
                 </div>
               )}
+
+              {/* Assigned human agent */}
+              {assignedHumanAgent && (() => {
+                const agentColor = assignedHumanAgent.specialtyColor || '#8b5cf6'
+                return (
+                  <div className="mt-2 w-full flex items-center gap-3 p-3 rounded-xl border-l-4" style={{ borderColor: agentColor, backgroundColor: `${agentColor}08` }}>
+                    <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: agentColor }}>
+                      <Shield size={18} />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-bold text-ink truncate">{assignedHumanAgent.name}</p>
+                      </div>
+                      <p className="text-xs truncate" style={{ color: agentColor }}>{assignedHumanAgent.specialty || assignedHumanAgent.role} — En linea</p>
+                    </div>
+                    <div className="w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0" style={{ backgroundColor: agentColor }} />
+                  </div>
+                )
+              })()}
 
               {/* Marketplace link */}
               <button

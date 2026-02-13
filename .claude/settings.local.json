@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 10 npx vite:*)",
+      "Bash(npm run dev:*)",
+      "Bash(node -e:*)",
+      "Bash(curl:*)",
+      "Bash(npx vite:*)",
+      "WebSearch",
+      "Bash(dir:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx tsx:*)",
+      "Bash(netstat:*)",
+      "Bash(powershell -c \"Get-NetTCPConnection -State Listen | Where-Object {$_LocalPort -ge 5170 -and $_LocalPort -le 5180} | Select-Object LocalPort\")",
+      "Bash(powershell -c:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(findstr:*)",
+      "Bash(node:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(cmd /c \"del /F C:\\\\proyectos\\\\pluribots\\\\server\\\\node_modules\\\\.prisma\\\\client\\\\query_engine-windows.dll.node\")",
+      "Bash(cmd /c \"rename C:\\\\proyectos\\\\pluribots\\\\server\\\\node_modules\\\\.prisma\\\\client\\\\query_engine-windows.dll.node.tmp21628 query_engine-windows.dll.node\")",
+      "Bash(cmd /c \"rmdir /S /Q C:\\\\proyectos\\\\pluribots\\\\server\\\\node_modules\\\\.prisma\")",
+      "Bash(cmd /c \"dir C:\\\\proyectos\\\\pluribots\\\\server\\\\node_modules\\\\.prisma\\\\client\\\\query_engine*\")",
+      "Bash(git init:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

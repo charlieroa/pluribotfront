@@ -75,15 +75,14 @@ router.post('/send', optionalAuth, async (req, res) => {
       select: { assignedAgentId: true, needsHumanReview: true, userId: true },
     })
 
-    const senderUser = userId !== 'anonymous'
-      ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true, name: true } })
+    const senderFull = userId !== 'anonymous'
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true, name: true, specialty: true, specialtyColor: true } })
       : null
-
-    const isAssignedAgent = conversation?.assignedAgentId === userId && senderUser && ['superadmin', 'org_admin', 'agent'].includes(senderUser.role)
-    const isHumanConversation = conversation?.assignedAgentId && conversation?.needsHumanReview
+    const isAssignedAgent = conversation?.assignedAgentId === userId && senderFull && ['superadmin', 'org_admin', 'agent'].includes(senderFull.role)
+    const isHumanConversation = conversation?.needsHumanReview
 
     // ─── Case 1: Admin/agent writes in assigned conversation → human agent message, no AI ───
-    if (isAssignedAgent && senderUser) {
+    if (isAssignedAgent && senderFull) {
       const message = await prisma.message.create({
         data: {
           id: uuid(),
@@ -97,10 +96,12 @@ router.post('/send', optionalAuth, async (req, res) => {
 
       broadcast(conversationId, {
         type: 'human_message',
-        agentName: senderUser.name,
-        agentRole: senderUser.role === 'superadmin' ? 'Supervisor' : senderUser.role === 'org_admin' ? 'Administrador' : 'Agente',
+        agentName: senderFull.name,
+        agentRole: senderFull.specialty || (senderFull.role === 'superadmin' ? 'Supervisor' : senderFull.role === 'org_admin' ? 'Administrador' : 'Agente'),
         text,
         messageId: message.id,
+        specialty: senderFull.specialty ?? undefined,
+        specialtyColor: senderFull.specialtyColor ?? undefined,
       })
 
       res.json({ conversationId, messageId: message.id } as SendMessageResponse)
@@ -158,17 +159,64 @@ router.post('/send', optionalAuth, async (req, res) => {
         messageId: sysMsg.id,
         fullText: sysMsg.text,
       })
+
+      // Auto-assign specialist by keywords
+      try {
+        const chatUser = await prisma.user.findUnique({ where: { id: userId !== 'anonymous' ? userId : '' } })
+        const orgId = chatUser?.organizationId
+
+        const specialists = await prisma.user.findMany({
+          where: {
+            role: 'agent',
+            specialty: { not: null },
+            ...(orgId ? { organizationId: orgId } : {}),
+          },
+        })
+
+        if (specialists.length > 0) {
+          const lowerText = text.toLowerCase()
+          const allMessages = await prisma.message.findMany({ where: { conversationId }, take: 10 })
+          const conversationContext = allMessages.map((m: { text: string }) => m.text).join(' ').toLowerCase()
+
+          let bestMatch: { specialist: typeof specialists[0]; score: number } | null = null
+          for (const spec of specialists) {
+            const keywords = (spec.specialtyKeywords || spec.specialty || '').toLowerCase().split(',').map((k: string) => k.trim())
+            const matchScore = keywords.filter((k: string) => k && (lowerText.includes(k) || conversationContext.includes(k))).length
+            if (matchScore > 0 && (!bestMatch || matchScore > bestMatch.score)) {
+              bestMatch = { specialist: spec, score: matchScore }
+            }
+          }
+
+          if (bestMatch) {
+            await prisma.conversation.update({
+              where: { id: conversationId },
+              data: { assignedAgentId: bestMatch.specialist.id },
+            })
+            broadcast(conversationId, {
+              type: 'human_agent_joined',
+              agentName: bestMatch.specialist.name,
+              agentRole: bestMatch.specialist.specialty || 'Especialista',
+              specialty: bestMatch.specialist.specialty ?? undefined,
+              specialtyColor: bestMatch.specialist.specialtyColor ?? undefined,
+            })
+          }
+        }
+      } catch (autoErr) {
+        console.error('[Chat] Auto-assign specialist error:', autoErr)
+      }
     }
 
     // ─── Case 2: Client replies in a human-supervised conversation → no AI ───
-    if (isHumanConversation) {
-      // Just broadcast the user message to the admin, don't trigger AI
-      broadcast(conversationId, {
-        type: 'agent_end',
-        agentId: 'system',
-        messageId: userMessage.id,
-        fullText: text,
-      })
+    if (isHumanConversation || needsHuman) {
+      if (!needsHuman) {
+        // Only broadcast user echo for already-flagged conversations (not freshly detected)
+        broadcast(conversationId, {
+          type: 'agent_end',
+          agentId: 'system',
+          messageId: userMessage.id,
+          fullText: text,
+        })
+      }
       return
     }
 

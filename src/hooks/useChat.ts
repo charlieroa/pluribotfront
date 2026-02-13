@@ -76,7 +76,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([])
   const [inactiveBotPrompt, setInactiveBotPrompt] = useState<InactiveBotPrompt | null>(null)
   const [conversations, setConversations] = useState<ConversationItem[]>([])
-  const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string } | null>(null)
+  const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string } | null>(null)
   const latestDeliverableRef = useRef<Deliverable | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -284,11 +284,22 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
               break
 
             case 'human_agent_joined':
-              setAssignedHumanAgent({ name: data.agentName, role: data.agentRole })
+              setAssignedHumanAgent({ name: data.agentName, role: data.agentRole, specialty: data.specialty, specialtyColor: data.specialtyColor })
               setMessages(prev => [...prev, {
                 id: `haj-${Date.now()}`,
                 sender: 'Sistema',
                 text: `${data.agentName} (${data.agentRole}) se ha unido al chat.`,
+                type: 'agent',
+                botType: 'system',
+              }])
+              break
+
+            case 'human_agent_left':
+              setAssignedHumanAgent(null)
+              setMessages(prev => [...prev, {
+                id: `hal-${Date.now()}`,
+                sender: 'Sistema',
+                text: 'El agente humano ha devuelto el control a la IA.',
                 type: 'agent',
                 botType: 'system',
               }])
@@ -301,6 +312,8 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
                 text: data.text,
                 type: 'agent',
                 botType: 'human',
+                specialty: data.specialty,
+                specialtyColor: data.specialtyColor,
               }])
               break
 
@@ -441,7 +454,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
       // Remove from local list
       setConversations(prev => prev.filter(c => c.id !== convId))
       // Remove related kanban tasks
-      setKanbanTasks(prev => prev.filter(t => {
+      setKanbanTasks(prev => prev.filter(_t => {
         // KanbanTask doesn't have conversationId on the frontend type,
         // so just refresh from the conversations that remain
         return true

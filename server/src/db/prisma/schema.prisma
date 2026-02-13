@@ -15,7 +15,10 @@ model User {
   planId         String         @default("starter")
   profession     String?
   onboardingDone Boolean        @default(false)
-  role           String         @default("user") // 'user' | 'agent' | 'org_admin' | 'superadmin'
+  role              String         @default("user") // 'user' | 'agent' | 'org_admin' | 'superadmin'
+  specialty         String?        // "Desarrollador", "Ilustrador", etc.
+  specialtyColor    String?        // Color hex para sidebar/chat (ej: "#8b5cf6")
+  specialtyKeywords String?        // Palabras clave para auto-asignación, separadas por coma
   organizationId String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -27,11 +30,12 @@ model User {
 }
 
 model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  logoUrl   String?
-  createdAt DateTime @default(now())
-  members   User[]
+  id           String   @id @default(uuid())
+  name         String
+  logoUrl      String?
+  primaryColor String?
+  createdAt    DateTime @default(now())
+  members      User[]
 }
 
 model UserBot {

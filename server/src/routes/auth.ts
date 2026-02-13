@@ -33,7 +33,7 @@ router.post('/register', async (req, res) => {
 
   const response: AuthResponse = {
     token,
-    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role },
+    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role, organizationId: user.organizationId ?? undefined },
   }
 
   res.json(response)
@@ -67,7 +67,7 @@ router.post('/login', async (req, res) => {
 
   const response: AuthResponse = {
     token,
-    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role },
+    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role, organizationId: user.organizationId ?? undefined },
   }
 
   res.json(response)

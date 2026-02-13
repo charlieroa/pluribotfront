@@ -100,7 +100,7 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
         {m.type === 'user' ? (
           <div className="w-8 h-8 rounded-lg bg-slate-800 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">YO</div>
         ) : m.sender === 'human_agent' || m.botType === 'human' ? (
-          <div className="w-8 h-8 rounded-lg bg-violet-600 flex-shrink-0 flex items-center justify-center text-white">
+          <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: m.specialtyColor || '#8b5cf6' }}>
             <UserCircle size={18} />
           </div>
         ) : (
@@ -117,14 +117,16 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
               m.type === 'user'
                 ? 'bg-primary rounded-2xl rounded-tr-none text-primary-fg'
                 : (m.sender === 'human_agent' || m.botType === 'human')
-                  ? 'bg-violet-50 dark:bg-violet-950/30 rounded-2xl rounded-tl-none border border-violet-200 dark:border-violet-800 text-ink'
+                  ? `rounded-2xl rounded-tl-none border text-ink ${m.specialtyColor ? 'bg-slate-50 dark:bg-slate-950/30 border-slate-200 dark:border-slate-700' : 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800'}`
                   : 'bg-surface rounded-2xl rounded-tl-none border border-edge text-ink'
             }`}
           >
             {m.type === 'agent' && (m.sender === 'human_agent' || m.botType === 'human') && (
               <div className="flex items-center gap-1.5 mb-1">
-                <p className="text-xs font-bold text-violet-600">{m.sender === 'human_agent' ? 'Agente Humano' : m.sender}</p>
-                <span className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-500/10 text-violet-600 rounded-full">Agente Humano</span>
+                <p className="text-xs font-bold" style={{ color: m.specialtyColor || '#8b5cf6' }}>{m.sender === 'human_agent' ? (m.specialty ? m.sender : 'Agente Humano') : m.sender}</p>
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full text-white" style={{ backgroundColor: m.specialtyColor || '#8b5cf6' }}>
+                  {m.specialty || 'Agente Humano'}
+                </span>
               </div>
             )}
             {m.type === 'agent' && m.sender !== 'human_agent' && m.botType !== 'human' && (
@@ -329,7 +331,6 @@ const PlanProposalCard = ({ plan, agent, botType, sender, onApprove, onReject }:
                 {/* Steps in this phase */}
                 <div className="space-y-2">
                   {group.map((step) => {
-                    const stepAgent = plan.steps.find(s => s.instanceId === step.instanceId)
                     const agentColor = agentColors[step.agentId] ?? '#6b7280'
                     const isSelected = selected[step.instanceId]
 

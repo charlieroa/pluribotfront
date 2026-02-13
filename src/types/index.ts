@@ -25,6 +25,8 @@ export interface Message {
   attachment?: MessageAttachment
   approved?: boolean
   imageUrl?: string
+  specialty?: string
+  specialtyColor?: string
 }
 
 export interface Deliverable {

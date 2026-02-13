@@ -271,7 +271,7 @@ const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
                                 seed={agent?.name || task.agent}
                                 color={agent?.color || agentColorMap[task.botType] || '#6b7280'}
                                 isActive={task.status === 'doing'}
-                                size="xs"
+                                size="sm"
                               />
                             </div>
                             <span className="text-[11px] font-semibold" style={{ color: agentColorMap[task.botType] || '#6b7280' }}>

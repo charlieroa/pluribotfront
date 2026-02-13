@@ -8,6 +8,7 @@ interface User {
   onboardingDone?: boolean
   profession?: string
   role?: string
+  organizationId?: string
 }
 
 const ALL_BOT_IDS = ['seo', 'web', 'ads', 'dev', 'video']
@@ -24,6 +25,8 @@ interface AuthContextValue {
   fetchActiveBots: () => Promise<void>
   updateActiveBots: (bots: Array<{ botId: string; isActive: boolean }>) => Promise<void>
   completeOnboarding: (profession: string, botIds: string[]) => Promise<void>
+  upgradeToAgency: () => Promise<void>
+  downgradeFromAgency: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -154,6 +157,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const upgradeToAgency = async () => {
+    if (!token) return
+    try {
+      const res = await fetch('/api/user/upgrade-agency', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al hacer upgrade')
+      }
+      const data = await res.json()
+      setUser(data.user)
+      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      setError(msg)
+      throw err
+    }
+  }
+
+  const downgradeFromAgency = async () => {
+    if (!token) return
+    try {
+      const res = await fetch('/api/user/downgrade-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al hacer downgrade')
+      }
+      const data = await res.json()
+      setUser(data.user)
+      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      setError(msg)
+      throw err
+    }
+  }
+
   const completeOnboarding = async (profession: string, botIds: string[]) => {
     if (!token) return
     try {
@@ -174,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading, error, activeBots, fetchActiveBots, updateActiveBots, completeOnboarding }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading, error, activeBots, fetchActiveBots, updateActiveBots, completeOnboarding, upgradeToAgency, downgradeFromAgency }}>
       {children}
     </AuthContext.Provider>
   )

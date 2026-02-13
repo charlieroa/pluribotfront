@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Trash2, Plus, Building2, Image } from 'lucide-react'
+import { Users, Trash2, Plus, Building2, Image, Pencil } from 'lucide-react'
 
 interface OrgMember {
   id: string
   name: string
   email: string
   role: string
+  specialty?: string | null
+  specialtyColor?: string | null
   createdAt: string
 }
 
@@ -17,16 +19,23 @@ interface Organization {
 }
 
 const OrganizationSettings = () => {
-  const [org, setOrg] = useState<Organization | null>(null)
+  const [_org, setOrg] = useState<Organization | null>(null)
   const [members, setMembers] = useState<OrgMember[]>([])
   const [orgName, setOrgName] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
   const [inviteRole, setInviteRole] = useState('agent')
+  const [inviteSpecialty, setInviteSpecialty] = useState('')
+  const [inviteSpecialtyColor, setInviteSpecialtyColor] = useState('#8b5cf6')
+  const [inviteSpecialtyKeywords, setInviteSpecialtyKeywords] = useState('')
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [tempPassword, setTempPassword] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [editSpecialty, setEditSpecialty] = useState('')
+  const [editSpecialtyColor, setEditSpecialtyColor] = useState('#8b5cf6')
+  const [editSpecialtyKeywords, setEditSpecialtyKeywords] = useState('')
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('pluribots_token')
@@ -91,19 +100,56 @@ const OrganizationSettings = () => {
       const res = await fetch('/api/organization/members', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ email: inviteEmail.trim(), name: inviteName.trim(), role: inviteRole }),
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          name: inviteName.trim(),
+          role: inviteRole,
+          ...(inviteSpecialty.trim() ? { specialty: inviteSpecialty.trim() } : {}),
+          ...(inviteSpecialty.trim() ? { specialtyColor: inviteSpecialtyColor } : {}),
+          ...(inviteSpecialtyKeywords.trim() ? { specialtyKeywords: inviteSpecialtyKeywords.trim() } : {}),
+        }),
       })
       if (res.ok) {
         const data = await res.json()
         if (data.tempPassword) setTempPassword(data.tempPassword)
         setInviteEmail('')
         setInviteName('')
+        setInviteSpecialty('')
+        setInviteSpecialtyColor('#8b5cf6')
+        setInviteSpecialtyKeywords('')
         setShowInviteForm(false)
         fetchMembers()
         fetchOrg()
       }
     } catch (err) {
       console.error('[Org] Invite error:', err)
+    }
+  }
+
+  const handleStartEdit = (member: OrgMember) => {
+    setEditingMemberId(member.id)
+    setEditSpecialty(member.specialty || '')
+    setEditSpecialtyColor(member.specialtyColor || '#8b5cf6')
+    setEditSpecialtyKeywords('')
+  }
+
+  const handleSaveEdit = async (memberId: string) => {
+    try {
+      const res = await fetch(`/api/organization/members/${memberId}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          specialty: editSpecialty.trim() || '',
+          specialtyColor: editSpecialty.trim() ? editSpecialtyColor : '',
+          specialtyKeywords: editSpecialtyKeywords.trim() || '',
+        }),
+      })
+      if (res.ok) {
+        setEditingMemberId(null)
+        fetchMembers()
+      }
+    } catch (err) {
+      console.error('[Org] Edit member error:', err)
     }
   }
 
@@ -251,6 +297,43 @@ const OrganizationSettings = () => {
                 <option value="org_admin">Admin de Organización</option>
               </select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-semibold text-ink-faint mb-1">Especialidad (opcional)</label>
+                <input
+                  type="text"
+                  value={inviteSpecialty}
+                  onChange={(e) => setInviteSpecialty(e.target.value)}
+                  placeholder="Desarrollador, Ilustrador..."
+                  className="w-full px-3 py-2 text-sm bg-surface border border-edge rounded-lg focus:outline-none focus:border-primary text-ink"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-ink-faint mb-1">Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={inviteSpecialtyColor}
+                    onChange={(e) => setInviteSpecialtyColor(e.target.value)}
+                    className="w-9 h-9 rounded-lg border border-edge cursor-pointer"
+                  />
+                  <span className="text-[11px] text-ink-faint font-mono">{inviteSpecialtyColor}</span>
+                </div>
+              </div>
+            </div>
+            {inviteSpecialty.trim() && (
+              <div>
+                <label className="block text-[10px] font-semibold text-ink-faint mb-1">Palabras clave para auto-asignación</label>
+                <input
+                  type="text"
+                  value={inviteSpecialtyKeywords}
+                  onChange={(e) => setInviteSpecialtyKeywords(e.target.value)}
+                  placeholder="desarrollo, código, programar, bug"
+                  className="w-full px-3 py-2 text-sm bg-surface border border-edge rounded-lg focus:outline-none focus:border-primary text-ink"
+                />
+                <p className="text-[9px] text-ink-faint mt-0.5">Separadas por coma. Se usan para asignar automáticamente este especialista.</p>
+              </div>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={handleInvite}
@@ -278,28 +361,103 @@ const OrganizationSettings = () => {
         ) : (
           <div className="space-y-2">
             {members.map(member => (
-              <div key={member.id} className="flex items-center justify-between p-3 bg-page border border-edge rounded-lg group">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
-                    {member.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-ink">{member.name}</p>
-                      <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-full ${roleColors[member.role] || roleColors.user}`}>
-                        {roleLabels[member.role] || member.role}
-                      </span>
+              <div key={member.id} className="p-3 bg-page border border-edge rounded-lg group">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={member.specialty ? 'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white' : 'w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-xs font-bold'}
+                      style={member.specialty ? { backgroundColor: member.specialtyColor || '#8b5cf6' } : {}}
+                    >
+                      {member.name.charAt(0).toUpperCase()}
                     </div>
-                    <p className="text-[11px] text-ink-faint">{member.email}</p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-ink">{member.name}</p>
+                        <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-full ${roleColors[member.role] || roleColors.user}`}>
+                          {roleLabels[member.role] || member.role}
+                        </span>
+                        {member.specialty && (
+                          <span
+                            className="px-1.5 py-0.5 text-[9px] font-bold rounded-full text-white"
+                            style={{ backgroundColor: member.specialtyColor || '#8b5cf6' }}
+                          >
+                            {member.specialty}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-ink-faint">{member.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => editingMemberId === member.id ? setEditingMemberId(null) : handleStartEdit(member)}
+                      className="p-1.5 text-ink-faint/0 group-hover:text-ink-faint hover:!text-primary rounded transition-all"
+                      title="Editar especialidad"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleRemoveMember(member.id)}
+                      className="p-1.5 text-ink-faint/0 group-hover:text-ink-faint hover:!text-red-500 rounded transition-all"
+                      title="Remover"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleRemoveMember(member.id)}
-                  className="p-1.5 text-ink-faint/0 group-hover:text-ink-faint hover:!text-red-500 rounded transition-all"
-                  title="Remover"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {/* Edit specialty inline form */}
+                {editingMemberId === member.id && (
+                  <div className="mt-3 pt-3 border-t border-edge space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-semibold text-ink-faint mb-0.5">Especialidad</label>
+                        <input
+                          type="text"
+                          value={editSpecialty}
+                          onChange={(e) => setEditSpecialty(e.target.value)}
+                          placeholder="Desarrollador, Ilustrador..."
+                          className="w-full px-2 py-1.5 text-xs bg-surface border border-edge rounded-lg focus:outline-none focus:border-primary text-ink"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-semibold text-ink-faint mb-0.5">Color</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={editSpecialtyColor}
+                            onChange={(e) => setEditSpecialtyColor(e.target.value)}
+                            className="w-8 h-8 rounded border border-edge cursor-pointer"
+                          />
+                          <span className="text-[10px] text-ink-faint font-mono">{editSpecialtyColor}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-ink-faint mb-0.5">Palabras clave</label>
+                      <input
+                        type="text"
+                        value={editSpecialtyKeywords}
+                        onChange={(e) => setEditSpecialtyKeywords(e.target.value)}
+                        placeholder="desarrollo, código, programar"
+                        className="w-full px-2 py-1.5 text-xs bg-surface border border-edge rounded-lg focus:outline-none focus:border-primary text-ink"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSaveEdit(member.id)}
+                        className="px-3 py-1.5 text-[10px] font-bold text-white bg-primary rounded-lg hover:opacity-90 transition-all"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        onClick={() => setEditingMemberId(null)}
+                        className="px-3 py-1.5 text-[10px] font-semibold text-ink-faint hover:text-ink bg-subtle rounded-lg transition-all"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -176,7 +176,7 @@ router.post('/conversations/:id/assign', adminAuth, async (req, res) => {
     const conversation: any = await prisma.conversation.update({
       where: { id },
       data: { assignedAgentId: assignTo },
-      include: { assignedAgent: { select: { id: true, name: true, role: true } } },
+      include: { assignedAgent: { select: { id: true, name: true, role: true, specialty: true, specialtyColor: true } } },
     })
 
     // Notify client that a human agent has joined
@@ -185,7 +185,9 @@ router.post('/conversations/:id/assign', adminAuth, async (req, res) => {
       broadcast(id, {
         type: 'human_agent_joined',
         agentName: agent.name,
-        agentRole: agent.role === 'superadmin' ? 'Supervisor' : agent.role === 'org_admin' ? 'Administrador' : 'Agente',
+        agentRole: agent.specialty || (agent.role === 'superadmin' ? 'Supervisor' : agent.role === 'org_admin' ? 'Administrador' : 'Agente'),
+        specialty: agent.specialty ?? undefined,
+        specialtyColor: agent.specialtyColor ?? undefined,
       })
     }
 
@@ -246,10 +248,44 @@ router.post('/conversations/:id/message', adminAuth, async (req, res) => {
     broadcast(conversationId, {
       type: 'human_message',
       agentName: agent.name,
-      agentRole: agent.role === 'superadmin' ? 'Supervisor' : agent.role === 'org_admin' ? 'Administrador' : 'Agente',
+      agentRole: agent.specialty || (agent.role === 'superadmin' ? 'Supervisor' : agent.role === 'org_admin' ? 'Administrador' : 'Agente'),
       text: text.trim(),
       messageId: message.id,
+      specialty: agent.specialty ?? undefined,
+      specialtyColor: agent.specialtyColor ?? undefined,
     })
+
+    // Detect "resume AI" commands
+    const RESUME_AI_PATTERNS = [/continuar con ia/i, /reanudar ia/i, /resume ai/i, /devolver a la ia/i, /seguir proceso con ia/i]
+    const shouldResumeAI = RESUME_AI_PATTERNS.some(p => p.test(text.trim()))
+
+    if (shouldResumeAI) {
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { needsHumanReview: false, assignedAgentId: null },
+      })
+
+      broadcast(conversationId, { type: 'human_agent_left' })
+
+      // Create system message
+      const sysMsg = await prisma.message.create({
+        data: {
+          id: uuid(),
+          conversationId,
+          sender: 'Sistema',
+          text: 'El agente humano ha devuelto el control a la IA.',
+          type: 'agent',
+          botType: 'system',
+        },
+      })
+
+      broadcast(conversationId, {
+        type: 'agent_end',
+        agentId: 'system',
+        messageId: sysMsg.id,
+        fullText: sysMsg.text,
+      })
+    }
 
     res.json({
       id: message.id,
