@@ -786,7 +786,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     // Project artifact found — bundle for preview
     deliverableContentRaw = bundleToHtml(parsedArtifact, supabaseConfig)
     deliverableType = 'project'
-    console.log(`[${agentConfig.name}:${step.instanceId}] Artifact parsed: ${parsedArtifact.files.length} files`)
+    console.log(`[${agentConfig.name}:${step.instanceId}] Artifact parsed: ${parsedArtifact.files.length} files — ${parsedArtifact.files.map(f => `${f.filePath}(${f.content.length}ch)`).join(', ')}`)
+    console.log(`[${agentConfig.name}:${step.instanceId}] Bundled HTML size: ${deliverableContentRaw.length} chars, has __UI: ${deliverableContentRaw.includes('window.__UI')}, has designSystem: ${deliverableContentRaw.includes('--primary')}`)
   } else {
     deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
     // If dev agent didn't produce an artifact, fall back to 'code' type
