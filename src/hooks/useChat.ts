@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import type { Message, KanbanTask, Deliverable, PlanStep } from '../types'
+import type { Message, KanbanTask, Deliverable, PlanStep, ProjectArtifact, ArtifactFile } from '../types'
 import { initialTasks } from '../data/initialTasks'
 
 const API_BASE = '/api'
@@ -47,6 +47,12 @@ export interface InactiveBotPrompt {
   conversationId: string
 }
 
+export interface CoordinationAgent {
+  agentId: string
+  agentName: string
+  task: string
+}
+
 export interface ConversationItem {
   id: string
   title: string
@@ -57,10 +63,12 @@ export interface ConversationItem {
 interface UseChatOptions {
   onDeliverable?: (d: Deliverable) => void
   isAuthenticated?: boolean
+  onCreditUpdate?: (balance: number) => void
 }
 
-export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptions = {}) {
+export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate }: UseChatOptions = {}) {
   const [isCoordinating, setIsCoordinating] = useState(false)
+  const [creditsExhausted, setCreditsExhausted] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
@@ -74,9 +82,12 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
   const [pendingStepApproval, setPendingStepApproval] = useState<StepApproval | null>(null)
   const [selectedModel, setSelectedModel] = useState<string>('auto')
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([])
+  const [coordinationAgents, setCoordinationAgents] = useState<CoordinationAgent[]>([])
   const [inactiveBotPrompt, setInactiveBotPrompt] = useState<InactiveBotPrompt | null>(null)
   const [conversations, setConversations] = useState<ConversationItem[]>([])
-  const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string } | null>(null)
+  const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null>(null)
+  const [humanRequested, setHumanRequested] = useState(false)
+  const [buildingArtifact, setBuildingArtifact] = useState<ProjectArtifact | null>(null)
   const latestDeliverableRef = useRef<Deliverable | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -84,6 +95,39 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
 
   const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   useEffect(() => scrollToBottom(), [messages, isCoordinating, streamingText])
+
+  // Reset all chat state on logout (isAuthenticated goes false)
+  const prevAuthRef = useRef(isAuthenticated)
+  useEffect(() => {
+    const wasAuth = prevAuthRef.current
+    prevAuthRef.current = isAuthenticated
+    if (wasAuth && !isAuthenticated) {
+      // User logged out — close SSE and clear everything
+      eventSourceRef.current?.close()
+      eventSourceRef.current = null
+      sseReadyRef.current = false
+      setConversationId(null)
+      setMessages([])
+      setShowWelcome(true)
+      setInputText('')
+      setPendingApproval(null)
+      setStreamingText('')
+      setStreamingAgent(null)
+      setIsCoordinating(false)
+      setCoordinationAgents([])
+      setActiveAgents([])
+      setProposedPlan(null)
+      setPendingStepApproval(null)
+      setThinkingSteps([])
+      setInactiveBotPrompt(null)
+      setAssignedHumanAgent(null)
+      setHumanRequested(false)
+      setCreditsExhausted(false)
+      setBuildingArtifact(null)
+      setKanbanTasks([])
+      setConversations([])
+    }
+  }, [isAuthenticated])
 
   // Fetch conversation list for authenticated users
   const fetchConversations = useCallback(async () => {
@@ -152,6 +196,36 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
               setStreamingText(prev => prev + data.content)
               break
 
+            case 'artifact_start':
+              // Artifact block detected — clear chat text and initialize empty artifact to open workspace immediately
+              setStreamingText('')
+              setBuildingArtifact(prev => prev ?? { id: `building-${Date.now()}`, title: 'Proyecto', files: [] })
+              break
+
+            case 'file_update':
+              // Clear streaming text - workspace is now showing the files
+              setStreamingText('')
+              // Progressive file streaming from project agents (supports partial + complete)
+              setBuildingArtifact(prev => {
+                const newFile: ArtifactFile = {
+                  filePath: data.filePath,
+                  content: data.content,
+                  language: data.language,
+                }
+                if (!prev) {
+                  return { id: `building-${Date.now()}`, title: 'Proyecto', files: [newFile] }
+                }
+                const existingIdx = prev.files.findIndex(f => f.filePath === data.filePath)
+                const files = [...prev.files]
+                if (existingIdx !== -1) {
+                  files[existingIdx] = newFile // Update content (partial or complete)
+                } else {
+                  files.push(newFile)
+                }
+                return { ...prev, files }
+              })
+              break
+
             case 'agent_end': {
               const pendingDeliverable = latestDeliverableRef.current
               latestDeliverableRef.current = null
@@ -182,10 +256,15 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
                 type: 'agent',
                 botType: data.agentId,
                 attachment,
+                model: data.model,
+                inputTokens: data.inputTokens,
+                outputTokens: data.outputTokens,
+                creditsCost: data.creditsCost,
               }])
               setStreamingText('')
               setStreamingAgent(null)
               setThinkingSteps([])
+              setBuildingArtifact(null) // Clear building artifact when agent finishes
               // Mark instance as done
               setActiveAgents(prev =>
                 prev.map(a => a.instanceId === key ? { ...a, status: 'done' as const } : a)
@@ -246,12 +325,14 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
 
             case 'coordination_start':
               setIsCoordinating(true)
+              setCoordinationAgents(data.agents || [])
               break
 
             case 'coordination_end':
               setIsCoordinating(false)
               setPendingStepApproval(null)
               setThinkingSteps([])
+              setCoordinationAgents([])
               break
 
             case 'deliverable':
@@ -284,7 +365,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
               break
 
             case 'human_agent_joined':
-              setAssignedHumanAgent({ name: data.agentName, role: data.agentRole, specialty: data.specialty, specialtyColor: data.specialtyColor })
+              setAssignedHumanAgent({ name: data.agentName, role: data.agentRole, specialty: data.specialty, specialtyColor: data.specialtyColor, avatarUrl: data.avatarUrl })
               setMessages(prev => [...prev, {
                 id: `haj-${Date.now()}`,
                 sender: 'Sistema',
@@ -296,13 +377,6 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
 
             case 'human_agent_left':
               setAssignedHumanAgent(null)
-              setMessages(prev => [...prev, {
-                id: `hal-${Date.now()}`,
-                sender: 'Sistema',
-                text: 'El agente humano ha devuelto el control a la IA.',
-                type: 'agent',
-                botType: 'system',
-              }])
               break
 
             case 'human_message':
@@ -314,6 +388,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
                 botType: 'human',
                 specialty: data.specialty,
                 specialtyColor: data.specialtyColor,
+                avatarUrl: data.avatarUrl,
               }])
               break
 
@@ -326,9 +401,20 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
               })
               break
 
+            case 'credits_exhausted':
+              setCreditsExhausted(true)
+              setIsCoordinating(false)
+              onCreditUpdate?.(data.balance)
+              break
+
+            case 'credit_update':
+              onCreditUpdate?.(data.balance)
+              break
+
             case 'error':
               console.error('[SSE] Error from server:', data.message)
               setIsCoordinating(false)
+              setCoordinationAgents([])
               setStreamingAgent(null)
               setStreamingText('')
               break
@@ -362,6 +448,26 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     }
   }, [])
 
+  const handleAbort = async () => {
+    if (!conversationId) return
+    try {
+      await fetch(`${API_BASE}/chat/abort`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ conversationId }),
+      })
+    } catch (err) {
+      console.error('[Chat] Abort error:', err)
+    }
+    setIsCoordinating(false)
+    setCoordinationAgents([])
+    setStreamingAgent(null)
+    setStreamingText('')
+    setThinkingSteps([])
+    setActiveAgents(prev => prev.map(a => ({ ...a, status: 'done' as const })))
+    setBuildingArtifact(null)
+  }
+
   const resetChat = () => {
     eventSourceRef.current?.close()
     eventSourceRef.current = null
@@ -374,12 +480,16 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     setStreamingText('')
     setStreamingAgent(null)
     setIsCoordinating(false)
+    setCoordinationAgents([])
     setActiveAgents([])
     setProposedPlan(null)
     setPendingStepApproval(null)
     setThinkingSteps([])
     setInactiveBotPrompt(null)
     setAssignedHumanAgent(null)
+    setHumanRequested(false)
+    setCreditsExhausted(false)
+    setBuildingArtifact(null)
     fetchConversations()
   }
 
@@ -406,7 +516,13 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
       setStreamingText('')
       // Load assigned human agent
       if (data.assignedAgent) {
-        setAssignedHumanAgent({ name: data.assignedAgent.name, role: data.assignedAgent.role === 'superadmin' ? 'Supervisor' : data.assignedAgent.role === 'org_admin' ? 'Administrador' : 'Agente' })
+        setAssignedHumanAgent({
+          name: data.assignedAgent.name,
+          role: data.assignedAgent.specialty || (data.assignedAgent.role === 'superadmin' ? 'Supervisor' : data.assignedAgent.role === 'org_admin' ? 'Administrador' : 'Agente'),
+          specialty: data.assignedAgent.specialty,
+          specialtyColor: data.assignedAgent.specialtyColor,
+          avatarUrl: data.assignedAgent.avatarUrl,
+        })
       } else {
         setAssignedHumanAgent(null)
       }
@@ -492,6 +608,43 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     setInactiveBotPrompt(null)
   }
 
+  const finalizeTask = async (taskId: string) => {
+    if (!conversationId) return
+    try {
+      await fetch(`${API_BASE}/conversations/${conversationId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: 'done' }),
+      })
+    } catch (err) {
+      console.error('[Chat] Finalize task error:', err)
+    }
+  }
+
+  const requestHumanAssistance = async () => {
+    if (!conversationId) return
+    try {
+      const token = localStorage.getItem('pluribots_token')
+      await fetch(`${API_BASE}/chat/${conversationId}/request-human`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      setHumanRequested(true)
+      setMessages(prev => [...prev, {
+        id: `rh-${Date.now()}`,
+        sender: 'Sistema',
+        text: 'Has solicitado asistencia humana. Un agente revisará tu caso pronto.',
+        type: 'agent',
+        botType: 'system',
+      }])
+    } catch (err) {
+      console.error('[Chat] Request human error:', err)
+    }
+  }
+
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('pluribots_token')
     return {
@@ -558,7 +711,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
   }
 
   // Refine mode: user can chat with visual agent during step approval
-  const isRefineMode = !!(pendingStepApproval && ['web', 'dev', 'video'].includes(pendingStepApproval.agentId))
+  const isRefineMode = !!(pendingStepApproval && ['brand', 'web', 'social', 'dev', 'video'].includes(pendingStepApproval.agentId))
 
   const handleSendMessage = async (e: FormEvent, imageFile?: File) => {
     e.preventDefault()
@@ -645,6 +798,22 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
       if (!res.ok) {
         const error = await res.json()
         console.error('[Chat] Send error:', error)
+        // Reset conversationId so next message creates a fresh conversation
+        if (res.status === 404) {
+          setConversationId(null)
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close()
+            eventSourceRef.current = null
+          }
+          sseReadyRef.current = false
+        }
+        setMessages(prev => [...prev, {
+          id: `err-${Date.now()}`,
+          sender: 'Sistema',
+          text: error.error || 'Error al enviar mensaje.',
+          type: 'agent' as const,
+          botType: 'base',
+        }])
         return
       }
 
@@ -664,6 +833,34 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
         type: 'agent',
         botType: 'base',
       }])
+    }
+  }
+
+  // Programmatic refine message (used by auto-fix)
+  const sendRefineMessage = async (text: string) => {
+    if (!conversationId) return
+
+    // Determine instanceId: from pendingStepApproval, or last completed dev step
+    let instanceId = pendingStepApproval?.instanceId
+    if (!instanceId) {
+      const lastDevStep = [...activeAgents].reverse().find(a =>
+        a.agentId === 'dev' && (a.status === 'done' || a.status === 'working')
+      )
+      instanceId = lastDevStep?.instanceId
+    }
+
+    if (pendingStepApproval) {
+      setPendingStepApproval(null) // Hide step card while refining
+    }
+
+    try {
+      await fetch(`${API_BASE}/chat/refine-step`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ conversationId, text, ...(instanceId ? { instanceId } : {}) }),
+      })
+    } catch (err) {
+      console.error('[Chat] Auto-fix refine error:', err)
     }
   }
 
@@ -690,6 +887,7 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     selectedModel,
     setSelectedModel,
     thinkingSteps,
+    coordinationAgents,
     isRefineMode,
     inactiveBotPrompt,
     handleActivateBot,
@@ -698,13 +896,22 @@ export function useChat({ onDeliverable, isAuthenticated = false }: UseChatOptio
     loadConversation,
     deleteConversation,
     assignedHumanAgent,
+    finalizeTask,
+    requestHumanAssistance,
+    humanRequested,
+    creditsExhausted,
+    buildingArtifact,
+    sendRefineMessage,
+    handleAbort,
   }
 }
 
 function getAgentDisplayName(agentId: string): string {
   const names: Record<string, string> = {
     seo: 'Lupa',
+    brand: 'Nova',
     web: 'Pixel',
+    social: 'Spark',
     ads: 'Metric',
     dev: 'Logic',
     video: 'Reel',

@@ -71,7 +71,7 @@ router.get('/members', orgAdminAuth, async (req, res) => {
 
     const members = await prisma.user.findMany({
       where: { organizationId: user.organizationId },
-      select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, avatarUrl: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     })
 
@@ -85,7 +85,7 @@ router.get('/members', orgAdminAuth, async (req, res) => {
 // Invite member (create user with agent role)
 router.post('/members', orgAdminAuth, async (req, res) => {
   try {
-    const { email, name, role, specialty, specialtyColor, specialtyKeywords } = req.body as { email: string; name: string; role?: string; specialty?: string; specialtyColor?: string; specialtyKeywords?: string }
+    const { email, name, role, specialty, specialtyColor, specialtyKeywords, avatarUrl } = req.body as { email: string; name: string; role?: string; specialty?: string; specialtyColor?: string; specialtyKeywords?: string; avatarUrl?: string }
     if (!email || !name) {
       res.status(400).json({ error: 'Email y nombre son requeridos' })
       return
@@ -117,11 +117,12 @@ router.post('/members', orgAdminAuth, async (req, res) => {
           ...(specialty !== undefined ? { specialty } : {}),
           ...(specialtyColor !== undefined ? { specialtyColor } : {}),
           ...(specialtyKeywords !== undefined ? { specialtyKeywords } : {}),
+          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
         },
       })
       const updated = await prisma.user.findUnique({
         where: { email },
-        select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, createdAt: true },
+        select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, avatarUrl: true, createdAt: true },
       })
       res.json({ member: updated })
       return
@@ -143,11 +144,12 @@ router.post('/members', orgAdminAuth, async (req, res) => {
         ...(specialty ? { specialty } : {}),
         ...(specialtyColor ? { specialtyColor } : {}),
         ...(specialtyKeywords ? { specialtyKeywords } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
       },
     })
 
     res.json({
-      member: { id: member.id, name: member.name, email: member.email, role: member.role, specialty: member.specialty, specialtyColor: member.specialtyColor, createdAt: member.createdAt },
+      member: { id: member.id, name: member.name, email: member.email, role: member.role, specialty: member.specialty, specialtyColor: member.specialtyColor, avatarUrl: member.avatarUrl, createdAt: member.createdAt },
       tempPassword,
     })
   } catch (err) {
@@ -168,10 +170,11 @@ router.patch('/members/:id', orgAdminAuth, async (req, res) => {
       return
     }
 
-    const { specialty, specialtyColor, specialtyKeywords } = req.body as {
+    const { specialty, specialtyColor, specialtyKeywords, avatarUrl } = req.body as {
       specialty?: string
       specialtyColor?: string
       specialtyKeywords?: string
+      avatarUrl?: string | null
     }
 
     const updated = await prisma.user.update({
@@ -180,8 +183,9 @@ router.patch('/members/:id', orgAdminAuth, async (req, res) => {
         ...(specialty !== undefined ? { specialty: specialty || null } : {}),
         ...(specialtyColor !== undefined ? { specialtyColor: specialtyColor || null } : {}),
         ...(specialtyKeywords !== undefined ? { specialtyKeywords: specialtyKeywords || null } : {}),
+        ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl || null } : {}),
       },
-      select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, specialty: true, specialtyColor: true, avatarUrl: true, createdAt: true },
     })
 
     res.json({ member: updated })
@@ -199,7 +203,7 @@ router.get('/specialists', async (req, res) => {
         role: 'agent',
         specialty: { not: null },
       },
-      select: { id: true, name: true, specialty: true, specialtyColor: true },
+      select: { id: true, name: true, specialty: true, specialtyColor: true, avatarUrl: true },
     })
 
     res.json({ specialists })

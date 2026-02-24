@@ -10,10 +10,18 @@ export interface LLMMessage {
   images?: LLMMessageImage[]
 }
 
+export interface LLMUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheCreationInputTokens?: number
+  cacheReadInputTokens?: number
+}
+
 export interface LLMStreamCallbacks {
   onToken: (token: string) => void
-  onComplete: (fullText: string, usage: { inputTokens: number; outputTokens: number }) => void
+  onComplete: (fullText: string, usage: LLMUsage) => void
   onError: (error: Error) => void
+  onThinking?: (text: string) => void
 }
 
 export interface ToolDefinition {
@@ -36,6 +44,9 @@ export interface LLMProviderConfig {
   provider: 'anthropic' | 'openai' | 'google'
   model: string
   apiKey?: string
+  maxTokens?: number
+  temperature?: number
+  budgetTokens?: number
 }
 
 export interface LLMProvider {

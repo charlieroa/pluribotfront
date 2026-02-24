@@ -7,9 +7,10 @@ interface HeaderProps {
   isCoordinating: boolean
   activeTab: string
   onMobileMenuToggle?: () => void
+  setActiveTab?: (tab: string) => void
 }
 
-const Header = ({ isCoordinating, activeTab, onMobileMenuToggle }: HeaderProps) => {
+const Header = ({ isCoordinating, activeTab, onMobileMenuToggle, setActiveTab: _setActiveTab }: HeaderProps) => {
   const { user, logout } = useAuth()
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
@@ -35,22 +36,22 @@ const Header = ({ isCoordinating, activeTab, onMobileMenuToggle }: HeaderProps) 
               </div>
             ) : (
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-primary-fg ${activeTab === 'admin' ? 'bg-violet-600' : 'bg-primary'}`}>
-                {activeTab === 'marketplace' ? <Store size={20} /> : activeTab === 'tasks' ? <LayoutList size={20} /> : activeTab === 'admin' ? <Shield size={20} /> : <Settings size={20} />}
+                {activeTab === 'marketplace' ? <Store size={20} /> : activeTab === 'portfolio' ? <LayoutList size={20} /> : activeTab === 'tasks' ? <LayoutList size={20} /> : activeTab === 'admin' ? <Shield size={20} /> : <Settings size={20} />}
               </div>
             )}
           </div>
           <div>
             <h2 className="font-bold text-ink text-sm md:text-base">
-              {isChat ? 'Pluria' : activeTab === 'marketplace' ? 'Marketplace' : activeTab === 'tasks' ? 'Tareas' : activeTab === 'admin' ? 'Admin' : 'Config'}
+              {isChat ? 'Pluribots' : activeTab === 'marketplace' ? 'Marketplace' : activeTab === 'portfolio' ? 'Proyectos' : activeTab === 'tasks' ? 'Tareas' : activeTab === 'admin' ? 'Admin' : 'Ajustes'}
             </h2>
             {isChat ? (
               <p className={`text-xs font-semibold flex items-center gap-1 ${isCoordinating ? 'text-amber-500' : 'text-emerald-500'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${isCoordinating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-                {isCoordinating ? 'Coordinando agentes...' : 'Orquestador IA en linea'}
+                {isCoordinating ? 'Trabajando en tu proyecto...' : 'Tu equipo esta listo'}
               </p>
             ) : (
               <p className="text-xs text-ink-faint">
-                {activeTab === 'marketplace' ? 'Descubre y activa bots especializados' : activeTab === 'tasks' ? 'Monitoreo en tiempo real' : activeTab === 'admin' ? 'Supervisión de conversaciones' : 'Preferencias y perfil'}
+                {activeTab === 'marketplace' ? 'Arma tu equipo de agentes IA' : activeTab === 'portfolio' ? 'Ejemplos de lo que puedes crear' : activeTab === 'tasks' ? 'Monitoreo en tiempo real' : activeTab === 'admin' ? 'Supervisión de conversaciones' : 'Preferencias y perfil'}
               </p>
             )}
           </div>
@@ -86,14 +87,14 @@ const Header = ({ isCoordinating, activeTab, onMobileMenuToggle }: HeaderProps) 
                 className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs font-semibold text-ink-light hover:text-ink transition-colors rounded-lg hover:bg-subtle"
               >
                 <LogIn size={14} />
-                <span className="hidden sm:inline">Iniciar sesion</span>
+                <span className="hidden sm:inline">Iniciar sesión</span>
               </button>
               <button
                 onClick={openRegister}
                 className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all shadow-sm"
               >
                 <UserPlus size={14} />
-                <span className="hidden sm:inline">Registrate gratis</span>
+                <span className="hidden sm:inline">Regístrate gratis</span>
               </button>
             </>
           )}

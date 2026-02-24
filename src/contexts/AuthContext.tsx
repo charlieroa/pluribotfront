@@ -9,9 +9,10 @@ interface User {
   profession?: string
   role?: string
   organizationId?: string
+  creditBalance?: number
 }
 
-const ALL_BOT_IDS = ['seo', 'web', 'ads', 'dev', 'video']
+const ALL_BOT_IDS = ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video']
 
 interface AuthContextValue {
   user: User | null
@@ -27,6 +28,8 @@ interface AuthContextValue {
   completeOnboarding: (profession: string, botIds: string[]) => Promise<void>
   upgradeToAgency: () => Promise<void>
   downgradeFromAgency: () => Promise<void>
+  changePlan: (planId: string) => Promise<void>
+  updateCreditBalance: (balance: number) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -178,6 +181,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const updateCreditBalance = (balance: number) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, creditBalance: balance }
+      localStorage.setItem('pluribots_user', JSON.stringify(updated))
+      return updated
+    })
+  }
+
   const downgradeFromAgency = async () => {
     if (!token) return
     try {
@@ -188,6 +200,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Error al hacer downgrade')
+      }
+      const data = await res.json()
+      setUser(data.user)
+      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido'
+      setError(msg)
+      throw err
+    }
+  }
+
+  const changePlan = async (planId: string) => {
+    if (!token) return
+    try {
+      const res = await fetch('/api/user/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planId }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error al cambiar de plan')
       }
       const data = await res.json()
       setUser(data.user)
@@ -219,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading, error, activeBots, fetchActiveBots, updateActiveBots, completeOnboarding, upgradeToAgency, downgradeFromAgency }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading, error, activeBots, fetchActiveBots, updateActiveBots, completeOnboarding, upgradeToAgency, downgradeFromAgency, changePlan, updateCreditBalance }}>
       {children}
     </AuthContext.Provider>
   )

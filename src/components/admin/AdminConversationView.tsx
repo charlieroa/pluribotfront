@@ -36,7 +36,9 @@ interface Props {
 
 const agentColors: Record<string, string> = {
   seo: '#3b82f6',
+  brand: '#ec4899',
   web: '#a855f7',
+  social: '#f97316',
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',
@@ -47,7 +49,9 @@ const agentColors: Record<string, string> = {
 
 const agentNames: Record<string, string> = {
   seo: 'Lupa',
+  brand: 'Nova',
   web: 'Pixel',
+  social: 'Spark',
   ads: 'Metric',
   dev: 'Logic',
   video: 'Reel',

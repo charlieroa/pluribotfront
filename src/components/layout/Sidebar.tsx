@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Moon, Sun, Plus, Clock, CheckCircle2, Loader2, Store, LogIn, UserPlus, PanelLeftClose, PanelLeftOpen, MessageSquare, Bot, Settings, LayoutGrid, Trash2, Shield, UserCircle } from 'lucide-react'
+import { Moon, Sun, Plus, Clock, CheckCircle2, Loader2, Store, LogIn, UserPlus, PanelLeftClose, PanelLeftOpen, MessageSquare, Bot, Settings, Trash2, Shield, UserCircle, Zap, Users, Building2, CreditCard, Wifi, Star } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -7,6 +7,7 @@ import AuthModal from '../auth/AuthModal'
 import type { Agent } from '../../types'
 import type { ActiveAgent, ConversationItem } from '../../hooks/useChat'
 import type { Specialist } from '../../hooks/useSpecialists'
+import type { AdminTab } from '../admin/AdminDashboard'
 
 interface SidebarProps {
   activeTab: string
@@ -20,19 +21,30 @@ interface SidebarProps {
   currentConversationId?: string | null
   onLoadConversation?: (id: string) => void
   onDeleteConversation?: (id: string) => void
-  assignedHumanAgent?: { name: string; role: string; specialty?: string; specialtyColor?: string } | null
+  assignedHumanAgent?: { name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null
   specialists?: Specialist[]
+  adminSubTab?: AdminTab
+  onAdminSubTabChange?: (tab: AdminTab) => void
 }
 
 type SidebarSection = 'chats' | 'bots'
 
-const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, assignedHumanAgent, specialists = [] }: SidebarProps) => {
+const adminTabs: { id: AdminTab; label: string; icon: typeof Users }[] = [
+  { id: 'users', label: 'Usuarios', icon: Users },
+  { id: 'agencies', label: 'Agencias', icon: Building2 },
+  { id: 'bots', label: 'Bots', icon: Bot },
+  { id: 'credits', label: 'Creditos', icon: CreditCard },
+  { id: 'apis', label: 'APIs', icon: Wifi },
+  { id: 'senior', label: 'Senior', icon: Star },
+]
+
+const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, assignedHumanAgent, specialists = [], adminSubTab = 'users', onAdminSubTabChange }: SidebarProps) => {
   const { isDark, toggle } = useTheme()
   const { user, activeBots } = useAuth()
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [sidebarSection, setSidebarSection] = useState<SidebarSection>('chats')
+  const [sidebarSection, setSidebarSection] = useState<SidebarSection>('bots')
 
   const activeByAgentId = new Map<string, ActiveAgent[]>()
   for (const a of activeAgents) {
@@ -84,20 +96,6 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
           >
             <MessageSquare size={18} />
           </button>
-          <button
-            onClick={() => setActiveTab('marketplace')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${activeTab === 'marketplace' ? 'bg-primary text-primary-fg' : 'text-ink-faint hover:text-ink hover:bg-subtle'}`}
-            title="Marketplace"
-          >
-            <Store size={18} />
-          </button>
-          <button
-            onClick={() => setActiveTab('tasks')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${activeTab === 'tasks' ? 'bg-primary text-primary-fg' : 'text-ink-faint hover:text-ink hover:bg-subtle'}`}
-            title="Tareas"
-          >
-            <LayoutGrid size={18} />
-          </button>
           {user && ['superadmin', 'org_admin', 'agent'].includes(user.role || '') && (
             <button
               onClick={() => setActiveTab('admin')}
@@ -111,36 +109,68 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
           {/* Separator */}
           <div className="w-6 h-px bg-edge my-1" />
 
-          {/* Active bot avatars */}
-          {agents.slice(0, 5).map(agent => {
-            const instances = activeByAgentId.get(agent.id) || []
-            const isWorking = instances.some(i => i.status === 'working')
-            const isBotActive = isAuthenticated ? activeBots.includes(agent.id) : false
-            if (!isAuthenticated && !isWorking) return null
-            if (isAuthenticated && !isBotActive && !isWorking) return null
-            return (
-              <div key={agent.id} className="relative" title={agent.name}>
-                <BotAvatar3D seed={agent.name} color={agent.color} isActive={isWorking} size="sm" />
-                {isWorking && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full flex items-center justify-center">
-                    <Loader2 size={8} className="text-white animate-spin" />
+          {activeTab === 'admin' ? (
+            /* Admin sub-tab icons (collapsed) */
+            <>
+              {adminTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => onAdminSubTabChange?.(tab.id)}
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                    adminSubTab === tab.id
+                      ? 'bg-violet-600 text-white'
+                      : 'text-violet-400 hover:text-violet-500 hover:bg-violet-500/10'
+                  }`}
+                  title={tab.label}
+                >
+                  <tab.icon size={16} />
+                </button>
+              ))}
+            </>
+          ) : (
+            /* Active bot avatars */
+            <>
+              {agents.slice(0, 5).map(agent => {
+                const instances = activeByAgentId.get(agent.id) || []
+                const isWorking = instances.some(i => i.status === 'working')
+                const isBotActive = isAuthenticated ? activeBots.includes(agent.id) : false
+                if (!isAuthenticated && !isWorking) return null
+                if (isAuthenticated && !isBotActive && !isWorking) return null
+                return (
+                  <div key={agent.id} className="relative" title={agent.name}>
+                    <BotAvatar3D seed={agent.name} color={agent.color} isActive={isWorking} size="sm" />
+                    {isWorking && (
+                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full flex items-center justify-center">
+                        <Loader2 size={8} className="text-white animate-spin" />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )
-          })}
+                )
+              })}
 
-          {/* Specialist avatars (collapsed) */}
-          {specialists.slice(0, 3).map(spec => (
-            <div
-              key={spec.id}
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
-              style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
-              title={`${spec.name} — ${spec.specialty}`}
-            >
-              <UserCircle size={16} />
-            </div>
-          ))}
+              {/* Specialist avatars (collapsed) */}
+              {specialists.slice(0, 3).map(spec => (
+                spec.avatarUrl ? (
+                  <img
+                    key={spec.id}
+                    src={spec.avatarUrl}
+                    alt={spec.name}
+                    className="w-9 h-9 rounded-lg object-cover"
+                    title={`${spec.name} — ${spec.specialty}`}
+                  />
+                ) : (
+                  <div
+                    key={spec.id}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
+                    style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
+                    title={`${spec.name} — ${spec.specialty}`}
+                  >
+                    <UserCircle size={16} />
+                  </div>
+                )
+              ))}
+            </>
+          )}
 
           {/* Spacer */}
           <div className="flex-1" />
@@ -163,7 +193,7 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
           <button
             onClick={() => setActiveTab('settings')}
             className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${activeTab === 'settings' ? 'text-primary' : 'text-ink-faint hover:text-ink hover:bg-subtle'}`}
-            title="Configuracion"
+            title="Configuración"
           >
             <Settings size={16} />
           </button>
@@ -195,51 +225,74 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
           </button>
         </div>
 
-        {/* New Chat + Section Tabs */}
-        <div className="px-4 pt-3 pb-2">
-          <button
-            onClick={() => { onNewChat(); setActiveTab('chat') }}
-            className="w-full flex items-center justify-center gap-2 p-2.5 bg-primary text-primary-fg rounded-xl font-semibold text-sm mb-3 hover:opacity-90 transition-all"
-          >
-            <Plus size={18} /> Nuevo Chat
-          </button>
+        {/* New Chat + Section Tabs (hidden in admin mode) */}
+        {activeTab !== 'admin' && (
+          <div className="px-4 pt-3 pb-2">
+            <button
+              onClick={() => { onNewChat(); setActiveTab('chat') }}
+              className="w-full flex items-center justify-center gap-2 p-2.5 bg-primary text-primary-fg rounded-xl font-semibold text-sm mb-3 hover:opacity-90 transition-all"
+            >
+              <Plus size={18} /> Nuevo Chat
+            </button>
 
-          <div className="flex gap-1 bg-subtle rounded-lg p-0.5">
-            <button
-              onClick={() => setSidebarSection('chats')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
-                sidebarSection === 'chats' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'
-              }`}
-            >
-              <MessageSquare size={13} />
-              Chats
-            </button>
-            <button
-              onClick={() => setSidebarSection('bots')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
-                sidebarSection === 'bots' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'
-              }`}
-            >
-              <Bot size={13} />
-              Bots
-              {hasActiveAgents && (
-                <span className="w-4 h-4 text-[9px] font-bold bg-primary text-primary-fg rounded-full flex items-center justify-center">
-                  {activeAgents.filter(a => a.status === 'working').length || activeAgents.length}
-                </span>
-              )}
-            </button>
+            <div className="flex gap-1 bg-subtle rounded-lg p-0.5">
+              <button
+                onClick={() => setSidebarSection('bots')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
+                  sidebarSection === 'bots' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'
+                }`}
+              >
+                <Bot size={13} />
+                Bots
+                {hasActiveAgents && (
+                  <span className="w-4 h-4 text-[9px] font-bold bg-primary text-primary-fg rounded-full flex items-center justify-center">
+                    {activeAgents.filter(a => a.status === 'working').length || activeAgents.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setSidebarSection('chats')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
+                  sidebarSection === 'chats' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'
+                }`}
+              >
+                <MessageSquare size={13} />
+                Chats
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Scrollable content area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {sidebarSection === 'chats' ? (
+          {activeTab === 'admin' ? (
+            // ─── Admin navigation ───
+            <div className="px-4 py-2">
+              <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wide mb-2 px-1">Panel Admin</p>
+              <div className="space-y-0.5">
+                {adminTabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => onAdminSubTabChange?.(tab.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+                      adminSubTab === tab.id
+                        ? 'bg-violet-600/10 text-violet-600 border-l-4 border-violet-600'
+                        : 'text-ink-faint hover:text-ink hover:bg-subtle border-l-4 border-transparent'
+                    }`}
+                  >
+                    <tab.icon size={16} className={adminSubTab === tab.id ? 'text-violet-600' : ''} />
+                    <span className="text-sm font-semibold">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : sidebarSection === 'chats' ? (
             // ─── Chats section ───
             <div className="px-4 py-2">
               {!isAuthenticated ? (
                 <div className="text-center py-8">
                   <MessageSquare size={32} className="mx-auto text-ink-faint/30 mb-3" />
-                  <p className="text-xs text-ink-faint mb-1">Registrate para guardar tus chats</p>
+                  <p className="text-xs text-ink-faint mb-1">Regístrate para guardar tus chats</p>
                   <button onClick={openRegister} className="text-xs font-semibold text-primary hover:underline">
                     Crear cuenta
                   </button>
@@ -389,12 +442,16 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                         className="flex items-center gap-3 p-3 rounded-xl border-l-4"
                         style={{ borderColor: spec.specialtyColor || '#8b5cf6', backgroundColor: `${spec.specialtyColor || '#8b5cf6'}08` }}
                       >
-                        <div
-                          className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
-                          style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
-                        >
-                          <UserCircle size={18} />
-                        </div>
+                        {spec.avatarUrl ? (
+                          <img src={spec.avatarUrl} alt={spec.name} className="w-10 h-10 rounded-xl flex-shrink-0 object-cover" />
+                        ) : (
+                          <div
+                            className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
+                            style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
+                          >
+                            <UserCircle size={18} />
+                          </div>
+                        )}
                         <div className="flex-1 overflow-hidden">
                           <p className="text-sm font-bold text-ink truncate">{spec.name}</p>
                           <p className="text-xs truncate" style={{ color: spec.specialtyColor || '#8b5cf6' }}>
@@ -412,9 +469,13 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                 const agentColor = assignedHumanAgent.specialtyColor || '#8b5cf6'
                 return (
                   <div className="mt-2 w-full flex items-center gap-3 p-3 rounded-xl border-l-4" style={{ borderColor: agentColor, backgroundColor: `${agentColor}08` }}>
-                    <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: agentColor }}>
-                      <Shield size={18} />
-                    </div>
+                    {assignedHumanAgent.avatarUrl ? (
+                      <img src={assignedHumanAgent.avatarUrl} alt={assignedHumanAgent.name} className="w-10 h-10 rounded-xl flex-shrink-0 object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: agentColor }}>
+                        <Shield size={18} />
+                      </div>
+                    )}
                     <div className="flex-1 overflow-hidden">
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-bold text-ink truncate">{assignedHumanAgent.name}</p>
@@ -450,50 +511,79 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
             Chat
           </button>
           <button
-            onClick={() => setActiveTab('tasks')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${
-              activeTab === 'tasks' ? 'text-primary bg-primary/10' : 'text-ink-faint hover:text-ink hover:bg-subtle'
-            }`}
-          >
-            <LayoutGrid size={13} />
-            Tareas
-          </button>
-          <button
             onClick={() => setActiveTab('settings')}
             className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${
               activeTab === 'settings' ? 'text-primary bg-primary/10' : 'text-ink-faint hover:text-ink hover:bg-subtle'
             }`}
           >
             <Settings size={13} />
-            Config
+            Ajustes
           </button>
-          {user && ['superadmin', 'org_admin', 'agent'].includes(user.role || '') && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${
-                activeTab === 'admin' ? 'text-violet-600 bg-violet-500/10' : 'text-violet-500/70 hover:text-violet-600 hover:bg-violet-500/10'
-              }`}
-            >
-              <Shield size={13} />
-              Admin
-            </button>
-          )}
         </div>
 
         {/* User Profile / Auth Section */}
         <div className="p-4 border-t border-edge-soft">
           {user ? (
-            <div className="bg-subtle rounded-2xl p-3 flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-fg text-xs font-bold">
-                {user.name.charAt(0).toUpperCase()}
+            <div className="bg-subtle rounded-2xl p-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-fg text-xs font-bold">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                <button onClick={() => setActiveTab('settings')} className="flex-1 overflow-hidden text-left hover:opacity-80 transition-opacity">
+                  <p className="text-xs font-bold text-ink truncate">{user.name}</p>
+                  <p className="text-[10px] text-ink-faint truncate">{user.email}</p>
+                </button>
+                <button onClick={toggle} className="p-1.5 text-ink-faint hover:text-primary transition-colors">
+                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
+                </button>
               </div>
-              <button onClick={() => setActiveTab('settings')} className="flex-1 overflow-hidden text-left hover:opacity-80 transition-opacity">
-                <p className="text-xs font-bold text-ink truncate">{user.name}</p>
-                <p className="text-[10px] text-ink-faint truncate">{user.email}</p>
-              </button>
-              <button onClick={toggle} className="p-1.5 text-ink-faint hover:text-primary transition-colors">
-                {isDark ? <Sun size={16} /> : <Moon size={16} />}
-              </button>
+              {/* Credit balance indicator */}
+              {user.creditBalance != null && (() => {
+                const planCredits: Record<string, number> = { starter: 50, pro: 500, agency: 2500, enterprise: 10000 }
+                const max = planCredits[user.planId] ?? 100
+                const balance = Math.max(0, user.creditBalance)
+                const pct = Math.min((balance / max) * 100, 100)
+                const isLow = pct < 20
+                return (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-[10px] mb-0.5">
+                      <span className="flex items-center gap-0.5 text-ink-faint font-medium">
+                        <Zap size={9} className={isLow ? 'text-red-500' : 'text-amber-500'} />
+                        Creditos
+                      </span>
+                      <span className={`font-bold ${isLow ? 'text-red-500' : 'text-ink-light'}`}>
+                        {balance} / {max}
+                      </span>
+                    </div>
+                    <div className="w-full bg-inset h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${isLow ? 'bg-red-500' : pct < 50 ? 'bg-amber-500' : 'bg-primary'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })()}
+              {/* Admin access / back to user view */}
+              {['superadmin', 'org_admin', 'agent'].includes(user.role || '') && (
+                activeTab === 'admin' ? (
+                  <button
+                    onClick={() => setActiveTab('chat')}
+                    className="w-full flex items-center justify-center gap-1.5 mt-2 py-1.5 text-[11px] font-bold rounded-lg transition-all text-primary bg-primary/10 hover:bg-primary/20"
+                  >
+                    <MessageSquare size={12} />
+                    Ver como usuario
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setActiveTab('admin')}
+                    className="w-full flex items-center justify-center gap-1.5 mt-2 py-1.5 text-[11px] font-bold rounded-lg transition-all text-violet-500 bg-violet-500/10 hover:bg-violet-500/20"
+                  >
+                    <Shield size={12} />
+                    Panel Admin
+                  </button>
+                )
+              )}
             </div>
           ) : (
             <div className="bg-subtle rounded-2xl p-3">
@@ -501,7 +591,7 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                 <div className="w-8 h-8 bg-slate-300 rounded-lg flex items-center justify-center text-slate-500 text-xs font-bold">?</div>
                 <div className="flex-1">
                   <p className="text-xs font-bold text-ink">Invitado</p>
-                  <p className="text-[10px] text-ink-faint">Registrate para activar bots</p>
+                  <p className="text-[10px] text-ink-faint">Regístrate para activar bots</p>
                 </div>
                 <button onClick={toggle} className="p-1.5 text-ink-faint hover:text-primary transition-colors">
                   {isDark ? <Sun size={16} /> : <Moon size={16} />}
@@ -513,14 +603,14 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold text-ink-light hover:text-ink bg-surface rounded-lg border border-edge hover:border-primary/30 transition-all"
                 >
                   <LogIn size={12} />
-                  Iniciar sesion
+                  Iniciar sesión
                 </button>
                 <button
                   onClick={openRegister}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all"
                 >
                   <UserPlus size={12} />
-                  Registrate
+                  Regístrate
                 </button>
               </div>
             </div>

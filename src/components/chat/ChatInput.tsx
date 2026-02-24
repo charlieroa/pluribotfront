@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type FormEvent, type DragEvent } from 'react'
-import { Send, ChevronDown, Sparkles, Paperclip, X } from 'lucide-react'
+import { Send, ChevronDown, Sparkles, Paperclip, X, Square } from 'lucide-react'
 import { AVAILABLE_MODELS } from '../../types'
 
 interface ChatInputProps {
@@ -7,13 +7,15 @@ interface ChatInputProps {
   setInputText: (text: string) => void
   isCoordinating: boolean
   onSubmit: (e: FormEvent, imageFile?: File) => void
+  onAbort?: () => void
   selectedModel?: string
   onModelChange?: (model: string) => void
   refineMode?: boolean
   refineAgentName?: string
+  disabledProviders?: string[]
 }
 
-const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selectedModel, onModelChange, refineMode, refineAgentName }: ChatInputProps) => {
+const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort, selectedModel, onModelChange, refineMode, refineAgentName, disabledProviders = [] }: ChatInputProps) => {
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -21,8 +23,11 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
   const menuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const disabledSet = new Set(disabledProviders)
+  const availableModels = AVAILABLE_MODELS.filter(m => !disabledSet.has(m.provider))
+
   const isAuto = selectedModel === 'auto'
-  const currentModel = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+  const currentModel = availableModels.find(m => m.id === selectedModel)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -62,6 +67,12 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
     clearImage()
   }
 
+  // Get the display label for current model
+  const getDisplayLabel = () => {
+    if (isAuto) return 'Auto'
+    return currentModel?.label ?? currentModel?.name ?? 'Auto'
+  }
+
   return (
     <div className="p-3 md:p-6 border-t border-edge-soft bg-surface">
       {/* Image preview */}
@@ -99,12 +110,12 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
             }`}
           >
             {isAuto && <Sparkles size={12} />}
-            {isAuto ? 'Auto' : currentModel?.name ?? 'Auto'}
+            {getDisplayLabel()}
             <ChevronDown size={12} />
           </button>
 
           {showModelMenu && (
-            <div className="absolute bottom-full left-0 mb-2 bg-surface border border-edge rounded-xl shadow-lg overflow-hidden z-50 min-w-[200px]">
+            <div className="absolute bottom-full left-0 mb-2 bg-surface border border-edge rounded-xl shadow-lg overflow-hidden z-50 min-w-[240px]">
               {/* Auto option */}
               <button
                 type="button"
@@ -120,16 +131,16 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
               >
                 <Sparkles size={14} className={isAuto ? 'text-purple-500' : 'text-ink-faint'} />
                 <div>
-                  <p>Auto</p>
-                  <p className="text-[10px] text-ink-faint mt-0.5">La IA elige el mejor modelo</p>
+                  <p className="font-semibold">Auto (recomendado)</p>
+                  <p className="text-[10px] text-ink-faint mt-0.5">La IA elige el mejor modelo para tu tarea</p>
                 </div>
               </button>
 
               {/* Separator */}
               <div className="border-t border-edge mx-3 my-1" />
 
-              {/* Manual models */}
-              {AVAILABLE_MODELS.map(model => (
+              {/* Manual models (filtered by available providers) */}
+              {availableModels.map(model => (
                 <button
                   key={model.id}
                   type="button"
@@ -143,8 +154,11 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
                       : 'text-ink hover:bg-subtle font-medium'
                   }`}
                 >
-                  <p>{model.name}</p>
-                  <p className="text-[10px] text-ink-faint mt-0.5">{model.provider === 'anthropic' ? 'Anthropic' : model.provider === 'google' ? 'Google' : 'OpenAI'}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{model.label}</p>
+                    <span className="text-[9px] text-ink-faint font-mono">{model.name}</span>
+                  </div>
+                  <p className="text-[10px] text-ink-faint mt-0.5">{model.desc}</p>
                 </button>
               ))}
             </div>
@@ -156,7 +170,7 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
           value={inputText}
           disabled={isCoordinating}
           onChange={(e) => setInputText(e.target.value)}
-          placeholder={refineMode ? `Pide cambios a ${refineAgentName ?? 'Pixel'}... (ej: "mas oscuro", "cambia los colores")` : isCoordinating ? 'Los agentes estan dialogando...' : 'Escribe instrucciones para Pluribots...'}
+          placeholder={refineMode ? `Pide cambios a ${refineAgentName ?? 'Pixel'}... (ej: "más oscuro", "cambia los colores")` : isCoordinating ? 'Los agentes están trabajando...' : 'Describe lo que necesitas para tu negocio...'}
           className="flex-1 bg-transparent border-none outline-none text-sm py-2 text-ink placeholder:text-ink-faint disabled:opacity-40"
         />
 
@@ -177,13 +191,24 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, selected
           <Paperclip size={18} />
         </button>
 
-        <button
-          type="submit"
-          disabled={isCoordinating}
-          className="bg-primary text-primary-fg p-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg shadow-indigo-500/10 disabled:bg-inset disabled:shadow-none"
-        >
-          <Send size={18} />
-        </button>
+        {isCoordinating && onAbort ? (
+          <button
+            type="button"
+            onClick={onAbort}
+            className="bg-red-500 text-white p-2.5 rounded-xl hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+            title="Detener ejecucion"
+          >
+            <Square size={18} />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={isCoordinating}
+            className="bg-primary text-primary-fg p-2.5 rounded-xl hover:opacity-90 transition-all shadow-lg shadow-indigo-500/10 disabled:bg-inset disabled:shadow-none"
+          >
+            <Send size={18} />
+          </button>
+        )}
       </form>
     </div>
   )

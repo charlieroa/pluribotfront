@@ -1,0 +1,189 @@
+import JSZip from 'jszip'
+import sdk from '@stackblitz/sdk'
+import type { ProjectArtifact } from '../types'
+
+export async function exportProjectAsZip(artifact: ProjectArtifact): Promise<void> {
+  const zip = new JSZip()
+
+  for (const file of artifact.files) {
+    zip.file(file.filePath, file.content)
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${artifact.title.replace(/[^a-zA-Z0-9-_]/g, '_')}.zip`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Export as a complete Vite + React + TypeScript + Tailwind project
+ */
+export async function exportAsViteProject(artifact: ProjectArtifact): Promise<void> {
+  const zip = new JSZip()
+
+  // Add all artifact files
+  for (const file of artifact.files) {
+    zip.file(file.filePath, file.content)
+  }
+
+  // Ensure essential Vite files exist
+  if (!artifact.files.some(f => f.filePath === 'package.json')) {
+    zip.file('package.json', JSON.stringify({
+      name: artifact.title.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+      private: true,
+      version: '0.1.0',
+      type: 'module',
+      scripts: {
+        dev: 'vite',
+        build: 'tsc -b && vite build',
+        preview: 'vite preview',
+      },
+      dependencies: {
+        'react': '^18.3.1',
+        'react-dom': '^18.3.1',
+        'lucide-react': '^0.460.0',
+      },
+      devDependencies: {
+        '@types/react': '^18.3.12',
+        '@types/react-dom': '^18.3.1',
+        '@vitejs/plugin-react': '^4.3.4',
+        'autoprefixer': '^10.4.20',
+        'postcss': '^8.4.49',
+        'tailwindcss': '^3.4.15',
+        'typescript': '^5.6.3',
+        'vite': '^6.0.0',
+      },
+    }, null, 2))
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'vite.config.ts')) {
+    zip.file('vite.config.ts', `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+`)
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'tsconfig.json')) {
+    zip.file('tsconfig.json', JSON.stringify({
+      compilerOptions: {
+        target: 'ES2020',
+        useDefineForClassFields: true,
+        lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+        module: 'ESNext',
+        skipLibCheck: true,
+        moduleResolution: 'bundler',
+        allowImportingTsExtensions: true,
+        isolatedModules: true,
+        moduleDetection: 'force',
+        noEmit: true,
+        jsx: 'react-jsx',
+        strict: true,
+        noUnusedLocals: false,
+        noUnusedParameters: false,
+        noFallthroughCasesInSwitch: true,
+      },
+      include: ['src'],
+    }, null, 2))
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'tailwind.config.ts' || f.filePath === 'tailwind.config.js')) {
+    zip.file('tailwind.config.ts', `import type { Config } from 'tailwindcss'
+
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: { extend: {} },
+  plugins: [],
+} satisfies Config
+`)
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'postcss.config.js' || f.filePath === 'postcss.config.cjs')) {
+    zip.file('postcss.config.js', `export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+`)
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'index.html')) {
+    zip.file('index.html', `<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${artifact.title}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+`)
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'src/main.tsx')) {
+    zip.file('src/main.tsx', `import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)
+`)
+  }
+
+  if (!artifact.files.some(f => f.filePath === 'src/index.css')) {
+    zip.file('src/index.css', `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+`)
+  }
+
+  // Add README
+  zip.file('README.md', `# ${artifact.title}
+
+Generado por Pluribots Logic.
+
+## Inicio rapido
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+Abre [http://localhost:5173](http://localhost:5173) en tu navegador.
+`)
+
+  const blob = await zip.generateAsync({ type: 'blob' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${artifact.title.replace(/[^a-zA-Z0-9-_]/g, '_')}-vite.zip`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function openInStackBlitz(artifact: ProjectArtifact): void {
+  const files: Record<string, string> = {}
+  for (const file of artifact.files) {
+    files[file.filePath] = file.content
+  }
+
+  sdk.openProject({
+    title: artifact.title,
+    files,
+    template: 'node',
+    description: `Generated by Pluribots Logic`,
+  }, { newWindow: true })
+}

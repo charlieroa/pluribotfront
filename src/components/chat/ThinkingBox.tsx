@@ -8,7 +8,9 @@ interface ThinkingBoxProps {
 
 const agentColors: Record<string, string> = {
   seo: '#3b82f6',
+  brand: '#ec4899',
   web: '#a855f7',
+  social: '#f97316',
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',

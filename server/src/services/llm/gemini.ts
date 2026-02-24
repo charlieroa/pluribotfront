@@ -4,10 +4,12 @@ import type { LLMProvider, LLMMessage, LLMStreamCallbacks, LLMStreamWithToolsCal
 export class GeminiProvider implements LLMProvider {
   private client: GoogleGenAI
   private model: string
+  private temperature: number | undefined
 
-  constructor(apiKey: string, model: string) {
+  constructor(apiKey: string, model: string, temperature?: number) {
     this.client = new GoogleGenAI({ apiKey })
     this.model = model
+    this.temperature = temperature
   }
 
   private buildContents(messages: LLMMessage[]): Content[] {
@@ -54,6 +56,7 @@ export class GeminiProvider implements LLMProvider {
         config: {
           systemInstruction: systemPrompt,
           maxOutputTokens: 32768,
+          ...(this.temperature !== undefined && { temperature: this.temperature }),
         },
       })
 
@@ -105,6 +108,7 @@ export class GeminiProvider implements LLMProvider {
           config: {
             systemInstruction: systemPrompt,
             maxOutputTokens: 32768,
+            ...(this.temperature !== undefined && { temperature: this.temperature }),
             tools: [{ functionDeclarations }],
           },
         })
@@ -117,7 +121,7 @@ export class GeminiProvider implements LLMProvider {
         totalOutputTokens += Math.ceil(JSON.stringify(candidate.content.parts).length / 4)
 
         const assistantParts: Part[] = []
-        let hasToolCalls = false
+        const functionCallParts: Part[] = []
 
         for (const part of candidate.content.parts) {
           if (part.text) {
@@ -125,38 +129,46 @@ export class GeminiProvider implements LLMProvider {
             callbacks.onToken(part.text)
             assistantParts.push(part)
           } else if (part.functionCall) {
-            hasToolCalls = true
             assistantParts.push(part)
-
-            const toolResult = await callbacks.onToolCall({
-              id: part.functionCall.name ?? 'unknown',
-              name: part.functionCall.name ?? 'unknown',
-              input: (part.functionCall.args ?? {}) as Record<string, unknown>,
-            })
-
-            // Add assistant message with tool call
-            conversationContents.push({
-              role: 'model',
-              parts: assistantParts,
-            })
-
-            // Add tool result
-            conversationContents.push({
-              role: 'user',
-              parts: [{
-                functionResponse: {
-                  name: part.functionCall.name ?? 'unknown',
-                  response: { result: toolResult },
-                },
-              }],
-            })
-
-            continueLoop = true
-            break
+            functionCallParts.push(part)
           }
         }
 
-        if (!hasToolCalls) {
+        if (functionCallParts.length > 0) {
+          // Execute ALL tool calls in parallel
+          const toolResults = await Promise.all(
+            functionCallParts.map(async (part) => {
+              const result = await callbacks.onToolCall({
+                id: part.functionCall!.name ?? 'unknown',
+                name: part.functionCall!.name ?? 'unknown',
+                input: (part.functionCall!.args ?? {}) as Record<string, unknown>,
+              })
+              return {
+                name: part.functionCall!.name ?? 'unknown',
+                result,
+              }
+            })
+          )
+
+          // Add assistant message with all parts
+          conversationContents.push({
+            role: 'model',
+            parts: assistantParts,
+          })
+
+          // Add all tool results in a single user message
+          conversationContents.push({
+            role: 'user',
+            parts: toolResults.map(r => ({
+              functionResponse: {
+                name: r.name,
+                response: { result: r.result },
+              },
+            })),
+          })
+
+          continueLoop = true
+        } else {
           if (assistantParts.length > 0) {
             conversationContents.push({
               role: 'model',

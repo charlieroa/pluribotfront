@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Layout, TrendingUp, Code, Film, Star, ArrowRight, Zap, Eye, MessageSquare, Sparkles, Power } from 'lucide-react'
+import { Search, Layout, TrendingUp, Code, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Palette, Info } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -10,7 +10,7 @@ interface MarketplaceViewProps {
 const categories = [
   { id: 'all', label: 'Todos' },
   { id: 'marketing', label: 'Marketing' },
-  { id: 'diseno', label: 'Diseno' },
+  { id: 'diseno', label: 'Diseño' },
   { id: 'desarrollo', label: 'Desarrollo' },
   { id: 'contenido', label: 'Contenido' },
 ]
@@ -20,64 +20,72 @@ const bots = [
     id: 'seo',
     name: 'Lupa',
     role: 'Estratega SEO',
-    desc: 'Auditorias SEO completas, investigacion de keywords, analisis de backlinks, estudio de competencia y estrategias de posicionamiento en Google.',
+    desc: 'Auditorías SEO completas, investigación de keywords, análisis de backlinks, estudio de competencia y estrategias de posicionamiento en Google.',
     color: '#3b82f6',
     icon: <Search size={20} />,
     category: 'marketing',
-    tag: 'Popular',
-    tagColor: 'text-indigo-600 bg-indigo-500/10',
-    rating: 4.8,
-    uses: '2.4k',
-    capabilities: ['Keyword Research', 'Backlink Audit', 'Analisis Competencia', 'SEO On-Page'],
+    capabilities: ['Keyword Research', 'Backlink Audit', 'Análisis Competencia', 'SEO On-Page'],
     prompt: 'Analiza el SEO de mi sitio web',
+    featured: true,
+  },
+  {
+    id: 'brand',
+    name: 'Nova',
+    role: 'Especialista en Branding',
+    desc: 'Logos profesionales, identidad visual, paletas de color, tipografía y manual de marca completo con IA generativa.',
+    color: '#ec4899',
+    icon: <Palette size={20} />,
+    category: 'diseno',
+    capabilities: ['Logos con IA', 'Paletas de Color', 'Manual de Marca', 'Identidad Visual'],
+    prompt: 'Diseña un logo para mi negocio',
     featured: true,
   },
   {
     id: 'web',
     name: 'Pixel',
-    role: 'Disenador Visual & UX',
-    desc: 'Logos profesionales, banners con IA generativa, landing pages, posts para Instagram/Facebook/TikTok, flyers, pendones y cualquier pieza grafica.',
+    role: 'Diseñador Web',
+    desc: 'Landing pages y sitios web completos, interactivos, responsivos, con SEO on-page, animaciones y Alpine.js.',
     color: '#a855f7',
     icon: <Layout size={20} />,
     category: 'diseno',
-    tag: 'Estrella',
-    tagColor: 'text-purple-600 bg-purple-500/10',
-    rating: 4.9,
-    uses: '5.1k',
-    capabilities: ['Logos & Branding', 'Banners con IA', 'Posts Redes', 'Landing Pages'],
-    prompt: 'Disena un logo para mi negocio',
+    capabilities: ['Landing Pages', 'Sitios Web', 'SEO On-Page', 'Responsive'],
+    prompt: 'Crea una landing page para mi negocio',
+    featured: false,
+  },
+  {
+    id: 'social',
+    name: 'Spark',
+    role: 'Diseñador de Contenido Social',
+    desc: 'Banners, posts para Instagram/Facebook/TikTok, flyers, stories, carruseles y piezas gráficas para redes sociales.',
+    color: '#f97316',
+    icon: <Sparkles size={20} />,
+    category: 'diseno',
+    capabilities: ['Posts Redes', 'Banners con IA', 'Stories', 'Flyers'],
+    prompt: 'Diseña un post para Instagram de mi negocio',
     featured: true,
   },
   {
     id: 'ads',
     name: 'Metric',
     role: 'Especialista en Publicidad',
-    desc: 'Campanas de Meta Ads y Google Ads optimizadas, copywriting publicitario, segmentacion de audiencias y optimizacion de ROAS.',
+    desc: 'Campañas de Meta Ads y Google Ads optimizadas, copywriting publicitario, segmentación de audiencias y optimización de ROAS.',
     color: '#10b981',
     icon: <TrendingUp size={20} />,
     category: 'marketing',
-    tag: 'Pro',
-    tagColor: 'text-emerald-600 bg-emerald-500/10',
-    rating: 4.7,
-    uses: '1.8k',
     capabilities: ['Meta Ads', 'Google Ads', 'Copywriting', 'A/B Testing'],
-    prompt: 'Crea una campana publicitaria para mi producto',
+    prompt: 'Crea una campaña publicitaria para mi producto',
     featured: false,
   },
   {
     id: 'dev',
     name: 'Logic',
     role: 'Desarrollador Full-Stack',
-    desc: 'Paginas web completas y funcionales con HTML/CSS/JS, responsive, con interactividad avanzada, SEO on-page y codigo limpio.',
+    desc: 'Páginas web completas y funcionales con HTML/CSS/JS, responsive, con interactividad avanzada, SEO on-page y código limpio.',
     color: '#f59e0b',
     icon: <Code size={20} />,
     category: 'desarrollo',
-    tag: 'Tech',
-    tagColor: 'text-amber-600 bg-amber-500/10',
-    rating: 4.6,
-    uses: '1.2k',
-    capabilities: ['HTML/CSS/JS', 'Responsive', 'Interactividad', 'SEO Tecnico'],
-    prompt: 'Construye una pagina web para mi negocio',
+    capabilities: ['HTML/CSS/JS', 'Responsive', 'Interactividad', 'SEO Técnico'],
+    prompt: 'Construye una página web para mi negocio',
     featured: false,
   },
   {
@@ -88,10 +96,6 @@ const bots = [
     color: '#ef4444',
     icon: <Film size={20} />,
     category: 'contenido',
-    tag: 'Nuevo',
-    tagColor: 'text-rose-600 bg-rose-500/10',
-    rating: 4.5,
-    uses: '890',
     capabilities: ['Reels IA', 'Clips Producto', 'Videos Promo', 'Stories'],
     prompt: 'Crea un reel promocional para mi producto',
     featured: true,
@@ -133,10 +137,20 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-ink tracking-tight">Marketplace de Agentes</h1>
-              <p className="text-sm text-ink-faint">Descubre y activa bots especializados para tu negocio</p>
+              <p className="text-sm text-ink-faint">Arma tu equipo de agentes de IA especializados</p>
             </div>
           </div>
         </div>
+
+        {/* Activation explainer */}
+        {isAuthenticated && (
+          <div className="flex items-start gap-3 p-4 mb-6 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
+            <Info size={16} className="text-indigo-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
+              <strong>Cada agente es un miembro de tu equipo digital.</strong> Activalos para que participen automaticamente cuando les pidas crear logos, webs, campanas, videos o codigo.
+            </p>
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative mb-6">
@@ -192,16 +206,9 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                       </div>
                     </div>
                     <p className="text-xs text-ink-light leading-relaxed mb-3 line-clamp-2">{bot.desc}</p>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        <Star size={12} className="text-amber-400 fill-amber-400" />
-                        <span className="text-[11px] font-bold text-ink">{bot.rating}</span>
-                        <span className="text-[10px] text-ink-faint ml-1">{bot.uses} usos</span>
-                      </div>
-                      <span className="text-[11px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                        Usar <ArrowRight size={10} />
-                      </span>
-                    </div>
+                    <span className="text-[11px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      Usar <ArrowRight size={10} />
+                    </span>
                   </div>
                 </button>
               ))}
@@ -212,7 +219,7 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
         {/* All Bots Grid */}
         <div>
           <h2 className="text-sm font-bold text-ink mb-4">
-            {activeCategory === 'all' ? 'Todos los Agentes' : `Agentes de ${categories.find(c => c.id === activeCategory)?.label}`}
+            {activeCategory === 'all' ? 'Todos los agentes' : `Agentes de ${categories.find(c => c.id === activeCategory)?.label}`}
             <span className="text-ink-faint font-normal ml-2">({filtered.length})</span>
           </h2>
 
@@ -229,34 +236,23 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="text-base font-bold text-ink">{bot.name}</h3>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${bot.tagColor}`}>{bot.tag}</span>
                       </div>
                       <p className="text-xs text-ink-faint mb-1">{bot.role}</p>
-                      <div className="flex items-center gap-3">
+                      {isAuthenticated && (
                         <div className="flex items-center gap-1">
-                          <Star size={12} className="text-amber-400 fill-amber-400" />
-                          <span className="text-xs font-bold text-ink">{bot.rating}</span>
+                          {activeBots.includes(bot.id) ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              <span className="text-[11px] font-semibold text-emerald-600">Activo en tu equipo</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                              <span className="text-[11px] font-semibold text-slate-400">No activado</span>
+                            </>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 text-ink-faint">
-                          <Eye size={12} />
-                          <span className="text-[11px]">{bot.uses} usos</span>
-                        </div>
-                        {isAuthenticated && (
-                          <div className="flex items-center gap-1">
-                            {activeBots.includes(bot.id) ? (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                <span className="text-[11px] font-semibold text-emerald-600">Activo</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                                <span className="text-[11px] font-semibold text-slate-400">Inactivo</span>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
 
@@ -279,7 +275,7 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                       className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-fg text-xs font-bold rounded-lg hover:opacity-90 transition-all"
                     >
                       <MessageSquare size={14} />
-                      Usar Agente
+                      Usar agente
                     </button>
                     {isAuthenticated && (
                       <button
@@ -315,17 +311,19 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                       <div>
                         <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Herramientas</p>
                         <p className="text-xs text-ink">
-                          {bot.id === 'web' ? 'Imagen 4 (IA generativa)' :
+                          {bot.id === 'brand' ? 'Imagen 4 (IA generativa)' :
+                           bot.id === 'web' ? 'Imagen 4 + Stock Photos' :
+                           bot.id === 'social' ? 'Imagen 4 (IA generativa)' :
                            bot.id === 'video' ? 'Veo 3 (video IA)' :
                            bot.id === 'seo' ? 'Keywords, Backlinks, Competencia' :
-                           bot.id === 'ads' ? 'Copys, Campanas' :
+                           bot.id === 'ads' ? 'Copys, Campañas' :
                            'HTML/CSS/JS Builder'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Tipo de Entrega</p>
+                        <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Tipo de entrega</p>
                         <p className="text-xs text-ink">
-                          {['web', 'dev', 'video'].includes(bot.id) ? 'Visual (Canvas)' : 'Texto detallado'}
+                          {['brand', 'web', 'social', 'dev', 'video'].includes(bot.id) ? 'Visual (Canvas)' : 'Texto detallado'}
                         </p>
                       </div>
                       <div>
@@ -352,9 +350,9 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
         {/* Coming soon */}
         <div className="mt-10 p-6 rounded-2xl border-2 border-dashed border-edge text-center">
           <Sparkles size={24} className="text-ink-faint mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-ink mb-1">Mas agentes proximamente</h3>
+          <h3 className="text-sm font-bold text-ink mb-1">Más agentes próximamente</h3>
           <p className="text-xs text-ink-faint max-w-md mx-auto">
-            Estamos desarrollando nuevos bots especializados: Community Manager, Email Marketing, Analytics, Copywriter y mas. Mantente atento al marketplace.
+            Estamos desarrollando nuevos bots especializados: Community Manager, Email Marketing, Analytics, Copywriter y más.
           </p>
         </div>
       </div>

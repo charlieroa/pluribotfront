@@ -9,11 +9,16 @@
     "start": "node dist/index.js",
     "db:generate": "prisma generate --schema=src/db/prisma/schema.prisma",
     "db:push": "prisma db push --schema=src/db/prisma/schema.prisma",
-    "db:studio": "prisma studio --schema=src/db/prisma/schema.prisma"
+    "db:studio": "prisma studio --schema=src/db/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=src/db/prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema=src/db/prisma/schema.prisma",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/genai": "^1.41.0",
+    "@octokit/rest": "^22.0.1",
     "@prisma/client": "^6.3.0",
     "@types/multer": "^2.0.0",
     "bcryptjs": "^2.4.3",
@@ -21,9 +26,11 @@
     "dotenv": "^16.4.7",
     "express": "^5.0.1",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
     "multer": "^2.0.2",
     "openai": "^4.82.0",
     "sharp": "^0.34.5",
+    "typescript": "^5.7.3",
     "uuid": "^11.0.5",
     "zod": "^3.24.2"
   },
@@ -36,6 +43,6 @@
     "@types/uuid": "^10.0.0",
     "prisma": "^6.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "vitest": "^4.0.18"
   }
 }

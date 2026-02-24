@@ -5,6 +5,7 @@ export interface Specialist {
   name: string
   specialty: string
   specialtyColor: string | null
+  avatarUrl: string | null
 }
 
 export function useSpecialists() {

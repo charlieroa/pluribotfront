@@ -22,10 +22,26 @@ export interface MessageAttachmentWire {
 export interface DeliverableWire {
   id: string
   title: string
-  type: 'report' | 'code' | 'design' | 'copy' | 'video'
+  type: 'report' | 'code' | 'design' | 'copy' | 'video' | 'project'
   content: string
   agent: string
   botType: string
+  artifact?: ProjectArtifact
+}
+
+// ─── Project Artifact types (Logic app builder) ───
+
+export interface ProjectArtifact {
+  id: string
+  title: string
+  files: ArtifactFile[]
+  shellCommands?: string[]
+}
+
+export interface ArtifactFile {
+  filePath: string
+  content: string
+  language: string
 }
 
 export interface KanbanTaskWire {
@@ -55,19 +71,24 @@ export type SSEEvent =
   | { type: 'agent_start'; agentId: string; agentName: string; task?: string; instanceId?: string }
   | { type: 'agent_thinking'; agentId: string; agentName: string; step: string; instanceId?: string }
   | { type: 'token'; content: string; agentId: string; instanceId?: string }
-  | { type: 'agent_end'; agentId: string; messageId: string; fullText: string; instanceId?: string }
+  | { type: 'agent_end'; agentId: string; messageId: string; fullText: string; instanceId?: string; creditsCost?: number; model?: string; inputTokens?: number; outputTokens?: number }
+  | { type: 'artifact_start'; agentId: string; instanceId?: string }
+  | { type: 'file_update'; filePath: string; content: string; language: string; partial?: boolean; instanceId?: string }
+  | { type: 'credits_exhausted'; balance: number; planId: string }
+  | { type: 'credit_update'; creditsUsed: number; balance: number }
   | { type: 'approval_request'; messageId: string; text: string; agentId: string }
   | { type: 'plan_proposal'; messageId: string; text: string; steps: PlanStep[] }
   | { type: 'step_complete'; agentId: string; agentName: string; instanceId?: string; summary: string; nextAgentId?: string; nextAgentName?: string; nextInstanceId?: string; nextTask?: string; stepIndex: number; totalSteps: number; conversationId: string }
   | { type: 'deliverable'; deliverable: DeliverableWire }
   | { type: 'kanban_update'; task: KanbanTaskWire }
-  | { type: 'coordination_start' }
+  | { type: 'coordination_start'; agents?: { agentId: string; agentName: string; task: string }[] }
   | { type: 'coordination_end' }
   | { type: 'bot_inactive'; botId: string; botName: string; stepTask: string; conversationId: string }
   | { type: 'human_review_requested'; conversationId: string }
-  | { type: 'human_agent_joined'; agentName: string; agentRole: string; specialty?: string; specialtyColor?: string }
-  | { type: 'human_message'; agentName: string; agentRole: string; text: string; messageId: string; specialty?: string; specialtyColor?: string }
+  | { type: 'human_agent_joined'; agentName: string; agentRole: string; specialty?: string; specialtyColor?: string; avatarUrl?: string }
+  | { type: 'human_message'; agentName: string; agentRole: string; text: string; messageId: string; specialty?: string; specialtyColor?: string; avatarUrl?: string }
   | { type: 'human_agent_left' }
+  | { type: 'thinking_update'; agentId: string; instanceId?: string; content: string }
   | { type: 'error'; message: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
 
@@ -124,6 +145,7 @@ export interface AuthResponse {
     profession?: string
     role?: string
     organizationId?: string
+    creditBalance?: number
   }
 }
 

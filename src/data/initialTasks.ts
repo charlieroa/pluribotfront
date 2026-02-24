@@ -52,7 +52,7 @@ export const initialTasks: KanbanTask[] = [
   },
   {
     id: 'task-2',
-    title: 'Wireframes Landing Page',
+    title: 'Landing Page Salon de Belleza',
     agent: 'Pixel',
     status: 'doing',
     botType: 'web',

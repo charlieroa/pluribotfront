@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Trash2, Plus, Building2, Image, Pencil } from 'lucide-react'
+import { Users, Trash2, Plus, Building2, Image, Pencil, Upload, X } from 'lucide-react'
 
 interface OrgMember {
   id: string
@@ -8,6 +8,7 @@ interface OrgMember {
   role: string
   specialty?: string | null
   specialtyColor?: string | null
+  avatarUrl?: string | null
   createdAt: string
 }
 
@@ -36,12 +37,33 @@ const OrganizationSettings = () => {
   const [editSpecialty, setEditSpecialty] = useState('')
   const [editSpecialtyColor, setEditSpecialtyColor] = useState('#8b5cf6')
   const [editSpecialtyKeywords, setEditSpecialtyKeywords] = useState('')
+  const [inviteAvatarUrl, setInviteAvatarUrl] = useState<string | null>(null)
+  const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null)
+  const [inviteAvatarUploading, setInviteAvatarUploading] = useState(false)
+  const [editAvatarUploading, setEditAvatarUploading] = useState(false)
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('pluribots_token')
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  }
+
+  const handleAvatarUpload = async (file: File, setUrl: (url: string | null) => void, setUploading: (v: boolean) => void) => {
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (res.ok) {
+        const data = await res.json()
+        setUrl(data.url)
+      }
+    } catch (err) {
+      console.error('[Org] Avatar upload error:', err)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -107,6 +129,7 @@ const OrganizationSettings = () => {
           ...(inviteSpecialty.trim() ? { specialty: inviteSpecialty.trim() } : {}),
           ...(inviteSpecialty.trim() ? { specialtyColor: inviteSpecialtyColor } : {}),
           ...(inviteSpecialtyKeywords.trim() ? { specialtyKeywords: inviteSpecialtyKeywords.trim() } : {}),
+          ...(inviteAvatarUrl ? { avatarUrl: inviteAvatarUrl } : {}),
         }),
       })
       if (res.ok) {
@@ -117,6 +140,7 @@ const OrganizationSettings = () => {
         setInviteSpecialty('')
         setInviteSpecialtyColor('#8b5cf6')
         setInviteSpecialtyKeywords('')
+        setInviteAvatarUrl(null)
         setShowInviteForm(false)
         fetchMembers()
         fetchOrg()
@@ -131,6 +155,7 @@ const OrganizationSettings = () => {
     setEditSpecialty(member.specialty || '')
     setEditSpecialtyColor(member.specialtyColor || '#8b5cf6')
     setEditSpecialtyKeywords('')
+    setEditAvatarUrl(member.avatarUrl || null)
   }
 
   const handleSaveEdit = async (memberId: string) => {
@@ -142,6 +167,7 @@ const OrganizationSettings = () => {
           specialty: editSpecialty.trim() || '',
           specialtyColor: editSpecialty.trim() ? editSpecialtyColor : '',
           specialtyKeywords: editSpecialtyKeywords.trim() || '',
+          avatarUrl: editAvatarUrl,
         }),
       })
       if (res.ok) {
@@ -334,6 +360,39 @@ const OrganizationSettings = () => {
                 <p className="text-[9px] text-ink-faint mt-0.5">Separadas por coma. Se usan para asignar automáticamente este especialista.</p>
               </div>
             )}
+            <div>
+              <label className="block text-[10px] font-semibold text-ink-faint mb-1">
+                <Upload size={10} className="inline mr-1" />
+                Foto del agente (opcional)
+              </label>
+              {inviteAvatarUrl ? (
+                <div className="flex items-center gap-3">
+                  <img src={inviteAvatarUrl} alt="Avatar" className="w-12 h-12 rounded-lg object-cover border border-edge" />
+                  <button
+                    onClick={() => setInviteAvatarUrl(null)}
+                    className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-700 font-semibold"
+                  >
+                    <X size={10} />
+                    Eliminar
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 px-3 py-2 text-xs bg-surface border border-edge rounded-lg cursor-pointer hover:border-primary transition-all">
+                  <Upload size={14} className="text-ink-faint" />
+                  <span className="text-ink-faint">{inviteAvatarUploading ? 'Subiendo...' : 'Seleccionar foto'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={inviteAvatarUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleAvatarUpload(file, setInviteAvatarUrl, setInviteAvatarUploading)
+                    }}
+                  />
+                </label>
+              )}
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={handleInvite}
@@ -364,12 +423,16 @@ const OrganizationSettings = () => {
               <div key={member.id} className="p-3 bg-page border border-edge rounded-lg group">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div
-                      className={member.specialty ? 'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white' : 'w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-xs font-bold'}
-                      style={member.specialty ? { backgroundColor: member.specialtyColor || '#8b5cf6' } : {}}
-                    >
-                      {member.name.charAt(0).toUpperCase()}
-                    </div>
+                    {member.avatarUrl ? (
+                      <img src={member.avatarUrl} alt={member.name} className="w-8 h-8 rounded-lg object-cover" />
+                    ) : (
+                      <div
+                        className={member.specialty ? 'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white' : 'w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-xs font-bold'}
+                        style={member.specialty ? { backgroundColor: member.specialtyColor || '#8b5cf6' } : {}}
+                      >
+                        {member.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-ink">{member.name}</p>
@@ -441,6 +504,39 @@ const OrganizationSettings = () => {
                         placeholder="desarrollo, código, programar"
                         className="w-full px-2 py-1.5 text-xs bg-surface border border-edge rounded-lg focus:outline-none focus:border-primary text-ink"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-ink-faint mb-0.5">
+                        <Upload size={9} className="inline mr-0.5" />
+                        Foto
+                      </label>
+                      {editAvatarUrl ? (
+                        <div className="flex items-center gap-2">
+                          <img src={editAvatarUrl} alt="Avatar" className="w-10 h-10 rounded-lg object-cover border border-edge" />
+                          <button
+                            onClick={() => setEditAvatarUrl(null)}
+                            className="flex items-center gap-1 text-[9px] text-red-500 hover:text-red-700 font-semibold"
+                          >
+                            <X size={9} />
+                            Eliminar
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center gap-1.5 px-2 py-1.5 text-[10px] bg-surface border border-edge rounded-lg cursor-pointer hover:border-primary transition-all">
+                          <Upload size={12} className="text-ink-faint" />
+                          <span className="text-ink-faint">{editAvatarUploading ? 'Subiendo...' : 'Subir foto'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={editAvatarUploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleAvatarUpload(file, setEditAvatarUrl, setEditAvatarUploading)
+                            }}
+                          />
+                        </label>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <button

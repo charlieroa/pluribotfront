@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, ExternalLink, CheckCircle2 } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import type { Agent, KanbanTask, Deliverable } from '../../types'
 
@@ -7,17 +7,20 @@ interface TaskTimelineProps {
   tasks: KanbanTask[]
   agents: Agent[]
   onTaskClick: (d: Deliverable) => void
+  onFinalizeTask?: (taskId: string) => void
 }
 
 const columns: { id: KanbanTask['status']; label: string; dotColor: string; headerBg: string }[] = [
-  { id: 'todo', label: 'Backlog', dotColor: 'bg-slate-400', headerBg: 'bg-slate-500/10' },
+  { id: 'todo', label: 'Planificacion', dotColor: 'bg-slate-400', headerBg: 'bg-slate-500/10' },
   { id: 'doing', label: 'En Proceso', dotColor: 'bg-amber-400', headerBg: 'bg-amber-500/10' },
   { id: 'done', label: 'Completado', dotColor: 'bg-emerald-500', headerBg: 'bg-emerald-500/10' },
 ]
 
 const agentColorMap: Record<string, string> = {
   seo: '#3b82f6',
+  brand: '#ec4899',
   web: '#a855f7',
+  social: '#f97316',
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',
@@ -25,7 +28,9 @@ const agentColorMap: Record<string, string> = {
 
 const agentNameMap: Record<string, string> = {
   seo: 'Lupa',
+  brand: 'Nova',
   web: 'Pixel',
+  social: 'Spark',
   ads: 'Metric',
   dev: 'Logic',
   video: 'Reel',
@@ -39,9 +44,9 @@ function formatDateLabel(date: Date): string {
 
   if (diff === 0) return 'Hoy'
   if (diff === 1) return 'Ayer'
-  if (diff === -1) return 'Manana'
+  if (diff === -1) return 'Mañana'
 
-  const days = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado']
+  const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
   return `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]}`
 }
@@ -81,7 +86,7 @@ function getUniqueDates(tasks: KanbanTask[]): Date[] {
   return dates.sort((a, b) => b.getTime() - a.getTime())
 }
 
-const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
+const TaskTimeline = ({ tasks, agents, onTaskClick, onFinalizeTask }: TaskTimelineProps) => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
 
   const availableDates = useMemo(() => getUniqueDates(tasks), [tasks])
@@ -237,8 +242,11 @@ const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
                 {/* Cards */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">
                   {colTasks.length === 0 ? (
-                    <div className="flex items-center justify-center h-24 border-2 border-dashed border-edge rounded-xl">
-                      <p className="text-[11px] text-ink-faint">Sin tareas</p>
+                    <div className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-edge rounded-xl p-4 text-center">
+                      <p className="text-[11px] text-ink-faint font-medium">Sin tareas</p>
+                      {col.id === 'todo' && tasks.length === 0 && (
+                        <p className="text-[10px] text-ink-faint mt-1">Inicia un proyecto en el chat para ver tus tareas aquí</p>
+                      )}
                     </div>
                   ) : (
                     colTasks.map(task => {
@@ -277,14 +285,9 @@ const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
                             <span className="text-[11px] font-semibold" style={{ color: agentColorMap[task.botType] || '#6b7280' }}>
                               {agentNameMap[task.botType] || task.agent}
                             </span>
-                            {task.instanceId && (
-                              <span className="text-[9px] font-mono text-ink-faint bg-subtle px-1.5 py-0.5 rounded">
-                                {task.instanceId}
-                              </span>
-                            )}
                           </div>
 
-                          {/* Footer: time + deliverable type */}
+                          {/* Footer: time + deliverable type + finalize */}
                           <div className="flex items-center gap-2">
                             {task.createdAt && (
                               <span className="text-[10px] text-ink-faint">
@@ -292,13 +295,23 @@ const TaskTimeline = ({ tasks, agents, onTaskClick }: TaskTimelineProps) => {
                               </span>
                             )}
                             {task.deliverable && (
-                              <span className="text-[10px] font-medium text-primary bg-primary/5 px-2 py-0.5 rounded-full ml-auto">
+                              <span className="text-[10px] font-medium text-primary bg-primary/5 px-2 py-0.5 rounded-full">
                                 {task.deliverable.type === 'report' ? 'Reporte' :
-                                 task.deliverable.type === 'design' ? 'Diseno' :
-                                 task.deliverable.type === 'code' ? 'Codigo' :
+                                 task.deliverable.type === 'design' ? 'Diseño' :
+                                 task.deliverable.type === 'code' ? 'Código' :
                                  task.deliverable.type === 'copy' ? 'Copy' :
                                  task.deliverable.type === 'video' ? 'Video' : task.deliverable.type}
                               </span>
+                            )}
+                            {task.status === 'doing' && onFinalizeTask && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onFinalizeTask(task.id) }}
+                                className="ml-auto flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-full transition-colors"
+                              >
+                                <CheckCircle2 size={12} />
+                                Finalizar
+                              </button>
                             )}
                           </div>
                         </button>

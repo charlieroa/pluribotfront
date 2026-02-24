@@ -1,0 +1,57 @@
+# Pluribots
+
+> Pluribots es una plataforma SaaS de agentes de inteligencia artificial especializados que crean activos digitales para negocios: logos, landing pages, campañas de publicidad, videos, auditorías SEO y más. Los usuarios describen lo que necesitan en lenguaje natural y los agentes lo ejecutan de forma autónoma con plan de ejecución aprobable.
+
+Pluribots es un producto dirigido a emprendedores, dueños de negocio, marketers y agencias de Latinoamérica que necesitan producir activos de marketing digital sin equipo técnico.
+
+La plataforma cuenta con 7 agentes especializados de IA:
+- **Lupa** — Estratega SEO: auditorías, keywords, backlinks, posicionamiento en Google
+- **Nova** — Branding e Identidad: logos con IA generativa, paletas de color, manual de marca
+- **Pixel** — Diseñador Web: landing pages y sitios web completos, responsivos e interactivos
+- **Spark** — Contenido Social: banners, posts para Instagram/Facebook, flyers y stories
+- **Metric** — Publicidad Digital: campañas Meta Ads y Google Ads, copywriting, optimización ROAS
+- **Logic** — Desarrollador Full-Stack: páginas web funcionales con HTML/CSS/JS
+- **Reel** — Creador de Video: reels, clips de producto y videos promocionales con IA (Veo 3)
+
+Características clave del producto:
+- Orquestación multi-agente con plan de ejecución paso a paso aprobable por el usuario
+- Canvas/editor visual en tiempo real con preview de HTML en iframe
+- Integración de imágenes de Unsplash y generación con IA (Imagen 4)
+- Generación de video con Veo 3 de Google
+- Multi-proveedor de LLM: Claude (Anthropic), GPT (OpenAI), Gemini (Google)
+- Sistema de créditos con planes Starter (gratis), Pro ($49/mes) y Agency ($149/mes)
+- White Label para agencias con branding personalizado
+- Streaming en tiempo real via SSE (Server-Sent Events)
+- Soporte multi-tenant con organizaciones
+- Interfaz completamente en español
+
+Stack tecnológico:
+- Frontend: React 18, Vite 6, Tailwind CSS 4, TypeScript
+- Backend: Express 5, Prisma 6, SQLite, TypeScript
+- APIs: Anthropic Claude, OpenAI GPT, Google Gemini, Unsplash, APIFRAME
+
+## Producto
+
+- [Página principal](https://pluribots.com): Aplicación principal de Pluribots
+- [Marketplace de agentes](https://pluribots.com/#marketplace): Descubre y activa los 7 agentes especializados
+
+## Planes y precios
+
+- [Plan Starter](https://pluribots.com/#settings): Gratis — 100 créditos/mes, 2 agentes
+- [Plan Pro](https://pluribots.com/#settings): $49/mes — 1,000 créditos/mes, 7 agentes, modelos premium
+- [Plan Agency](https://pluribots.com/#settings): $149/mes — 5,000 créditos/mes, agentes ilimitados, White Label, equipo
+
+## Casos de uso
+
+- Crear una landing page completa para un negocio
+- Diseñar un logo y branding completo con IA
+- Lanzar una campaña de Meta Ads o Google Ads optimizada
+- Hacer una auditoría SEO con plan de keywords
+- Generar un reel promocional con IA
+- Diseñar posts y stories para redes sociales
+- Construir una página web funcional con código
+
+## Optional
+
+- [Términos de servicio](https://pluribots.com/terms): Términos y condiciones de uso
+- [Política de privacidad](https://pluribots.com/privacy): Política de privacidad y datos

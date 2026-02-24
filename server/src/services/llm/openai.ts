@@ -4,10 +4,12 @@ import type { LLMProvider, LLMMessage, LLMStreamCallbacks, LLMStreamWithToolsCal
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private model: string
+  private temperature: number | undefined
 
-  constructor(apiKey: string, model: string) {
+  constructor(apiKey: string, model: string, temperature?: number) {
     this.client = new OpenAI({ apiKey })
     this.model = model
+    this.temperature = temperature
   }
 
   async stream(
@@ -22,6 +24,7 @@ export class OpenAIProvider implements LLMProvider {
         model: this.model,
         stream: true,
         stream_options: { include_usage: true },
+        ...(this.temperature !== undefined && { temperature: this.temperature }),
         messages: [
           { role: 'system', content: systemPrompt },
           ...messages.map((m): OpenAI.ChatCompletionMessageParam => {
@@ -115,6 +118,7 @@ export class OpenAIProvider implements LLMProvider {
           model: this.model,
           messages: conversationMessages,
           tools: openaiTools,
+          ...(this.temperature !== undefined && { temperature: this.temperature }),
         })
 
         const choice = response.choices[0]
@@ -129,17 +133,23 @@ export class OpenAIProvider implements LLMProvider {
         if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
           conversationMessages.push(choice.message)
 
-          for (const toolCall of choice.message.tool_calls) {
-            const toolResult = await callbacks.onToolCall({
-              id: toolCall.id,
-              name: toolCall.function.name,
-              input: JSON.parse(toolCall.function.arguments),
+          // Execute ALL tool calls in parallel
+          const toolResults = await Promise.all(
+            choice.message.tool_calls.map(async (toolCall) => {
+              const result = await callbacks.onToolCall({
+                id: toolCall.id,
+                name: toolCall.function.name,
+                input: JSON.parse(toolCall.function.arguments),
+              })
+              return { tool_call_id: toolCall.id, content: result }
             })
+          )
 
+          for (const r of toolResults) {
             conversationMessages.push({
               role: 'tool',
-              tool_call_id: toolCall.id,
-              content: toolResult,
+              tool_call_id: r.tool_call_id,
+              content: r.content,
             })
           }
 

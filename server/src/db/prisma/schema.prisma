@@ -1,3 +1,12 @@
+// ─── Switching to PostgreSQL ───
+// 1. Change the datasource provider below from "sqlite" to "postgresql"
+// 2. Update DATABASE_URL in your .env:
+//      DATABASE_URL="postgresql://user:password@localhost:5432/pluribots?schema=public"
+// 3. Run: npm run db:migrate:deploy   (production)
+//    or:  npm run db:migrate           (development — creates migration files)
+//
+// The schema is already compatible with both SQLite and PostgreSQL.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,6 +28,9 @@ model User {
   specialty         String?        // "Desarrollador", "Ilustrador", etc.
   specialtyColor    String?        // Color hex para sidebar/chat (ej: "#8b5cf6")
   specialtyKeywords String?        // Palabras clave para auto-asignación, separadas por coma
+  avatarUrl         String?        // URL de foto del agente humano
+  creditBalance     Int            @default(0)
+  billingCycleStart DateTime?
   organizationId String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -27,6 +39,9 @@ model User {
   userBots       UserBot[]
   organization   Organization?  @relation(fields: [organizationId], references: [id])
   assignedConversations Conversation[] @relation("AssignedConversations")
+  creditLedger   CreditLedger[]
+  seniorTasks         SeniorTask[]
+  seniorSubscriptions SeniorSubscription[]
 }
 
 model Organization {
@@ -55,6 +70,8 @@ model Conversation {
   title            String    @default("Nueva conversación")
   needsHumanReview Boolean   @default(false)
   assignedAgentId  String?
+  supabaseUrl      String?
+  supabaseAnonKey  String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   user             User      @relation(fields: [userId], references: [id])
@@ -86,6 +103,10 @@ model Deliverable {
   agent          String
   botType        String
   instanceId     String?
+  netlifySiteId  String?
+  netlifyUrl     String?
+  isPublic       Boolean  @default(false)
+  shareSlug      String?  @unique
   createdAt      DateTime @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   kanbanTask     KanbanTask?
@@ -122,4 +143,106 @@ model ApiKey {
   provider String  // 'anthropic' | 'openai'
   key      String
   isActive Boolean @default(true)
+}
+
+model CreditLedger {
+  id            String   @id @default(uuid())
+  userId        String
+  amount        Int      // positive = grant, negative = consumption
+  balance       Int      // balance after this transaction
+  type          String   // 'plan_grant' | 'consumption' | 'tool_consumption' | 'admin_grant' | 'reset'
+  description   String
+  model         String?
+  agentId       String?
+  usageRecordId String?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, type])
+}
+
+model SeniorMember {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  role        String   // 'designer', 'developer', 'strategist', 'seo', 'ads'
+  status      String   @default("available") // 'available', 'busy', 'offline'
+  capacity    Int      @default(3) // max simultaneous tasks
+  currentLoad Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       SeniorTask[]
+}
+
+model SeniorTask {
+  id            String    @id @default(cuid())
+  title         String
+  description   String
+  status        String    @default("pending") // 'pending', 'in_progress', 'review', 'delivered', 'cancelled'
+  priority      String    @default("normal") // 'urgent', 'high', 'normal', 'low'
+  category      String    // 'design', 'development', 'seo', 'ads', 'strategy', 'branding', 'video'
+
+  // Requesting organization
+  organizationId String?
+  requestedById  String
+  requestedBy    User     @relation(fields: [requestedById], references: [id])
+
+  // Assigned senior
+  seniorId      String?
+  senior        SeniorMember? @relation(fields: [seniorId], references: [id])
+
+  // Timing
+  requestedAt   DateTime  @default(now())
+  startedAt     DateTime?
+  deliveredAt   DateTime?
+  slaDeadline   DateTime?
+
+  // Delivery
+  deliveryNotes String?
+  deliveryUrl   String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model GlobalBotConfig {
+  botId     String   @id
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model PendingPlan {
+  id        String   @id  // messageId
+  stepsJson String
+  createdAt DateTime @default(now())
+}
+
+model ExecutingPlan {
+  id                  String   @id @default(uuid())
+  stepsJson           String
+  executionGroupsJson String
+  currentGroupIndex   Int      @default(0)
+  completedInstances  String   // JSON string[]
+  agentOutputs        String   // JSON Record<string,string>
+  conversationId      String   @unique
+  userId              String
+  modelOverride       String?
+  imageUrl            String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model SeniorSubscription {
+  id              String   @id @default(cuid())
+  organizationId  String?
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  tier            String   // 'basic', 'pro', 'dedicated'
+  price           Int      // monthly price in USD
+  maxConcurrent   Int      // max simultaneous tasks
+  slaHours        Int      // delivery SLA in hours
+  status          String   @default("active") // 'active', 'paused', 'cancelled'
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

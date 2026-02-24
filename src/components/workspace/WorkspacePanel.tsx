@@ -1,10 +1,20 @@
-import { useState, type ReactNode } from 'react'
-import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
+import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil, Boxes } from 'lucide-react'
 import type { Deliverable } from '../../types'
+import type { SelectedElement } from './VisualEditToolbar'
+import UnsplashModal from './UnsplashModal'
+import CodeWorkspace from './CodeWorkspace'
 
 interface WorkspacePanelProps {
   deliverable: Deliverable
   onClose: () => void
+  editMode?: boolean
+  onEditModeChange?: (enabled: boolean) => void
+  onElementSelected?: (el: SelectedElement | null) => void
+  onSwitchToEditTab?: () => void
+  onAutoFix?: (errorMessage: string) => void
+  isFixing?: boolean
+  conversationId?: string
 }
 
 const typeConfig: Record<Deliverable['type'], { icon: ReactNode; label: string; color: string }> = {
@@ -13,6 +23,7 @@ const typeConfig: Record<Deliverable['type'], { icon: ReactNode; label: string; 
   design: { icon: <Palette size={18} />, label: 'Diseno', color: 'text-purple-500 bg-purple-500/10' },
   copy: { icon: <MessageSquare size={18} />, label: 'Copy', color: 'text-amber-500 bg-amber-500/10' },
   video: { icon: <Film size={18} />, label: 'Video', color: 'text-rose-500 bg-rose-500/10' },
+  project: { icon: <Boxes size={18} />, label: 'Proyecto', color: 'text-cyan-500 bg-cyan-500/10' },
 }
 
 const isHtmlContent = (content: string): boolean => {
@@ -20,18 +31,113 @@ const isHtmlContent = (content: string): boolean => {
   return t.startsWith('<!doctype') || t.startsWith('<html') || t.startsWith('<!') || t.includes('<body')
 }
 
-const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
+const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChange, onElementSelected, onSwitchToEditTab, onAutoFix, isFixing, conversationId }: WorkspacePanelProps) => {
+  // Route to CodeWorkspace for project deliverables with artifact
+  if (deliverable.type === 'project' && deliverable.artifact) {
+    return (
+      <CodeWorkspace
+        artifact={deliverable.artifact}
+        htmlContent={deliverable.content}
+        onClose={onClose}
+        onAutoFix={onAutoFix}
+        isFixing={isFixing}
+        deliverableId={deliverable.id}
+        conversationId={conversationId}
+      />
+    )
+  }
+
   const config = typeConfig[deliverable.type]
   const canPreview = isHtmlContent(deliverable.content)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>(canPreview ? 'preview' : 'code')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [iframeError, setIframeError] = useState<{ error: string; line: number } | null>(null)
+  const [modifiedContent, setModifiedContent] = useState<string | null>(null)
+  const [unsplashOpen, setUnsplashOpen] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  const currentContent = modifiedContent ?? deliverable.content
+
+  // Sync edit mode to iframe
+  const syncEditMode = useCallback((enabled: boolean) => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'toggle-edit-mode', enabled }, '*')
+    }
+  }, [])
+
+  // When editMode prop changes, sync to iframe
+  useEffect(() => {
+    syncEditMode(editMode)
+    if (!editMode) {
+      onElementSelected?.(null)
+    }
+  }, [editMode, syncEditMode, onElementSelected])
+
+  // Listen for postMessage from iframe
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'iframe-error') {
+        setIframeError({ error: event.data.error, line: event.data.line })
+      }
+      if (event.data?.type === 'element-selected') {
+        const el: SelectedElement = {
+          tag: event.data.tag,
+          text: event.data.text,
+          isImage: event.data.isImage,
+          imageSrc: event.data.imageSrc,
+          rect: event.data.rect,
+          classes: event.data.classes,
+        }
+        onElementSelected?.(el)
+        onSwitchToEditTab?.()
+      }
+      if (event.data?.type === 'content-updated') {
+        setModifiedContent(event.data.html)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [onElementSelected, onSwitchToEditTab])
+
+  // Listen for custom events from EditPanel
+  useEffect(() => {
+    const handleOpenUnsplash = () => setUnsplashOpen(true)
+    const handleApplyStyle = (e: Event) => {
+      const styles = (e as CustomEvent).detail
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'apply-style', styles }, '*')
+      }
+    }
+    const handleReplaceImage = (e: Event) => {
+      const { url, alt } = (e as CustomEvent).detail
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'replace-image', url, alt }, '*')
+      }
+    }
+
+    window.addEventListener('open-unsplash-modal', handleOpenUnsplash)
+    window.addEventListener('apply-style-to-iframe', handleApplyStyle)
+    window.addEventListener('replace-image-in-iframe', handleReplaceImage)
+    return () => {
+      window.removeEventListener('open-unsplash-modal', handleOpenUnsplash)
+      window.removeEventListener('apply-style-to-iframe', handleApplyStyle)
+      window.removeEventListener('replace-image-in-iframe', handleReplaceImage)
+    }
+  }, [])
+
+  // Turn off edit mode when switching views or deliverable changes
+  useEffect(() => {
+    if (editMode) onEditModeChange?.(false)
+    setModifiedContent(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliverable.id, viewMode])
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(deliverable.content)
+    navigator.clipboard.writeText(currentContent)
   }
 
   const handleExport = () => {
-    const blob = new Blob([deliverable.content], { type: 'text/html' })
+    const blob = new Blob([currentContent], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -39,6 +145,22 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  const handleSaveChanges = () => {
+    if (modifiedContent) {
+      deliverable.content = modifiedContent
+      setModifiedContent(null)
+    }
+  }
+
+  const handleUnsplashSelect = (url: string, alt: string) => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'replace-image', url, alt }, '*')
+    }
+    onElementSelected?.(null)
+  }
+
+  const hasChanges = modifiedContent !== null && modifiedContent !== deliverable.content
 
   if (isFullscreen && canPreview) {
     return (
@@ -53,7 +175,7 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
           </button>
         </div>
         <iframe
-          srcDoc={deliverable.content}
+          srcDoc={currentContent}
           className="flex-1 w-full border-0"
           sandbox="allow-scripts allow-same-origin"
           title={deliverable.title}
@@ -82,7 +204,7 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
                 <button
                   onClick={() => setViewMode('preview')}
                   className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-                    viewMode === 'preview'
+                    viewMode === 'preview' && !editMode
                       ? 'bg-surface text-ink shadow-sm'
                       : 'text-ink-faint hover:text-ink'
                   }`}
@@ -98,6 +220,20 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
                   }`}
                 >
                   <Code2 size={12} /> Codigo
+                </button>
+                <button
+                  onClick={() => {
+                    setViewMode('preview')
+                    onEditModeChange?.(!editMode)
+                    if (!editMode) onSwitchToEditTab?.()
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                    editMode
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'text-ink-faint hover:text-ink'
+                  }`}
+                >
+                  <Pencil size={12} /> Editar
                 </button>
               </div>
               {viewMode === 'preview' && (
@@ -119,18 +255,29 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
 
       {/* Content */}
       {canPreview && viewMode === 'preview' ? (
-        <div className="flex-1 overflow-hidden bg-white">
+        <div className="flex-1 overflow-hidden bg-white relative">
           <iframe
-            srcDoc={deliverable.content}
+            ref={iframeRef}
+            srcDoc={currentContent}
             className="w-full h-full border-0"
             sandbox="allow-scripts allow-same-origin"
             title={deliverable.title}
           />
+          {iframeError && (
+            <button
+              onClick={() => setIframeError(null)}
+              className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500 text-white text-[11px] font-medium rounded-lg shadow-lg hover:bg-red-600 transition-colors z-10"
+              title={`JS Error (line ${iframeError.line}): ${iframeError.error}`}
+            >
+              <AlertTriangle size={12} />
+              Error linea {iframeError.line}
+            </button>
+          )}
         </div>
       ) : canPreview && viewMode === 'code' ? (
         <div className="flex-1 overflow-auto custom-scrollbar bg-slate-950 p-4">
           <pre className="text-[12px] leading-relaxed text-slate-300 font-mono whitespace-pre-wrap">
-            {deliverable.content}
+            {currentContent}
           </pre>
         </div>
       ) : (
@@ -142,7 +289,7 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
       )}
 
       {/* Footer */}
-      <div className="px-6 py-3 border-t border-edge flex items-center justify-between flex-shrink-0">
+      <div className="px-4 py-2.5 border-t border-edge flex items-center justify-between flex-shrink-0">
         <div className="flex gap-2">
           <button
             onClick={handleCopy}
@@ -158,9 +305,24 @@ const WorkspacePanel = ({ deliverable, onClose }: WorkspacePanelProps) => {
               <Download size={14} /> Exportar HTML
             </button>
           )}
+          {hasChanges && (
+            <button
+              onClick={handleSaveChanges}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-all"
+            >
+              <Save size={14} /> Guardar cambios
+            </button>
+          )}
         </div>
         <p className="text-[10px] text-ink-faint">Generado por {deliverable.agent}</p>
       </div>
+
+      {/* Unsplash Modal */}
+      <UnsplashModal
+        isOpen={unsplashOpen}
+        onClose={() => setUnsplashOpen(false)}
+        onSelect={handleUnsplashSelect}
+      />
     </div>
   )
 }
@@ -178,7 +340,7 @@ const renderContent = (content: string): ReactNode[] => {
     if (t.startsWith('- [x] '))
       return (
         <p key={i} className="flex items-center gap-2 text-sm text-ink-light py-0.5 pl-2">
-          <span className="w-4 h-4 bg-emerald-500/20 text-emerald-500 rounded flex items-center justify-center text-[10px] flex-shrink-0">✓</span>
+          <span className="w-4 h-4 bg-emerald-500/20 text-emerald-500 rounded flex items-center justify-center text-[10px] flex-shrink-0">&#x2713;</span>
           {t.slice(6)}
         </p>
       )

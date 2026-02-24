@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Check, X, FileText, ExternalLink, KanbanSquare, Play, Square, ChevronRight, Pencil, Layers, UserCircle } from 'lucide-react'
+import { Check, X, FileText, ExternalLink, KanbanSquare, Play, ChevronRight, Pencil, Layers, UserCircle, Code2, Globe, Lightbulb, Zap } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
+import { useAuth } from '../../contexts/AuthContext'
 import type { Agent, Message, Deliverable, PlanStep } from '../../types'
 import type { ProposedPlan, StepApproval } from '../../hooks/useChat'
 
@@ -13,11 +14,15 @@ interface MessageBubbleProps {
   proposedPlan?: ProposedPlan | null
   pendingStepApproval?: StepApproval | null
   onApproveStep?: (conversationId: string, approved: boolean) => void
+  onRequestHuman?: () => void
+  humanRequested?: boolean
 }
 
 const agentColors: Record<string, string> = {
   seo: '#3b82f6',
+  brand: '#ec4899',
   web: '#a855f7',
+  social: '#f97316',
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',
@@ -26,8 +31,10 @@ const agentColors: Record<string, string> = {
   system: '#6b7280',
 }
 
-const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDeliverable, proposedPlan }: MessageBubbleProps) => {
+const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDeliverable, proposedPlan, onRequestHuman, humanRequested }: MessageBubbleProps) => {
+  const { user } = useAuth()
   const agent = agents.find(a => a.id === m.botType)
+  const userInitials = user?.name ? user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : 'U'
 
   // Plan proposal card with checkboxes
   if (m.type === 'approval' && proposedPlan && proposedPlan.messageId === m.id && m.approved === undefined) {
@@ -98,11 +105,15 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
     <div className={`flex ${m.type === 'user' ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex gap-4 max-w-2xl ${m.type === 'user' ? 'flex-row-reverse' : ''}`}>
         {m.type === 'user' ? (
-          <div className="w-8 h-8 rounded-lg bg-slate-800 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">YO</div>
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">{userInitials}</div>
         ) : m.sender === 'human_agent' || m.botType === 'human' ? (
-          <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: m.specialtyColor || '#8b5cf6' }}>
-            <UserCircle size={18} />
-          </div>
+          m.avatarUrl ? (
+            <img src={m.avatarUrl} alt={m.sender} className="w-8 h-8 rounded-lg flex-shrink-0 object-cover" />
+          ) : (
+            <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: m.specialtyColor || '#8b5cf6' }}>
+              <UserCircle size={18} />
+            </div>
+          )
         ) : (
           <BotAvatar3D
             color={agent?.color || agentColors[m.botType || ''] || '#6366f1'}
@@ -123,7 +134,7 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
           >
             {m.type === 'agent' && (m.sender === 'human_agent' || m.botType === 'human') && (
               <div className="flex items-center gap-1.5 mb-1">
-                <p className="text-xs font-bold" style={{ color: m.specialtyColor || '#8b5cf6' }}>{m.sender === 'human_agent' ? (m.specialty ? m.sender : 'Agente Humano') : m.sender}</p>
+                <p className="text-xs font-bold" style={{ color: m.specialtyColor || '#8b5cf6' }}>{m.sender !== 'human_agent' ? m.sender : (m.specialty ? m.sender : 'Agente Humano')}</p>
                 <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full text-white" style={{ backgroundColor: m.specialtyColor || '#8b5cf6' }}>
                   {m.specialty || 'Agente Humano'}
                 </span>
@@ -136,6 +147,16 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
               <img src={m.imageUrl} alt="Adjunto" className="max-w-xs max-h-48 rounded-lg mb-2 object-cover" />
             )}
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.text}</p>
+            {m.type === 'agent' && m.botType !== 'human' && (m.creditsCost != null || m.inputTokens || m.outputTokens) && (
+              <div className="mt-1.5 pt-1.5 border-t border-edge/50 flex items-center gap-2 text-[10px] text-ink-faint font-mono">
+                {m.creditsCost != null && (
+                  <span className="flex items-center gap-0.5 text-amber-500 font-semibold">
+                    <Zap size={9} /> {m.creditsCost}
+                  </span>
+                )}
+                {m.model && <span>{m.model}</span>}
+              </div>
+            )}
           </div>
 
           {/* Attachment: code block */}
@@ -164,6 +185,22 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
                 </div>
                 <ExternalLink size={16} className="text-ink-faint group-hover:text-primary transition-colors flex-shrink-0" />
               </div>
+            </button>
+          )}
+
+          {/* Request human assistance button for deliverables */}
+          {m.attachment?.type === 'preview' && m.attachment.deliverable && onRequestHuman && (
+            <button
+              onClick={onRequestHuman}
+              disabled={humanRequested}
+              className={`mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border transition-all ${
+                humanRequested
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-600 cursor-default'
+                  : 'border-edge text-ink-light hover:text-primary hover:border-primary/30 hover:bg-primary/5'
+              }`}
+            >
+              <UserCircle size={15} />
+              {humanRequested ? 'Asistencia solicitada' : 'Solicitar asistencia humana'}
             </button>
           )}
 
@@ -405,10 +442,12 @@ const PlanProposalCard = ({ plan, agent, botType, sender, onApprove, onReject }:
 export interface StepApprovalCardProps {
   step: StepApproval
   onApproveStep: (conversationId: string, approved: boolean) => void
+  onRequestHuman?: () => void
+  humanRequested?: boolean
 }
 
-export const StepApprovalCard = ({ step, onApproveStep }: StepApprovalCardProps) => {
-  const isVisualAgent = ['web', 'dev', 'video'].includes(step.agentId)
+export const StepApprovalCard = ({ step, onApproveStep, onRequestHuman, humanRequested }: StepApprovalCardProps) => {
+  const isVisualAgent = ['brand', 'web', 'social', 'dev', 'video'].includes(step.agentId)
 
   return (
     <div className="flex gap-4 max-w-2xl">
@@ -465,7 +504,7 @@ export const StepApprovalCard = ({ step, onApproveStep }: StepApprovalCardProps)
           )}
         </div>
 
-        <div className="border-t border-edge px-4 py-3 bg-subtle flex gap-3">
+        <div className="border-t border-edge px-4 py-3 bg-subtle flex gap-3 flex-wrap">
           <button
             onClick={() => onApproveStep(step.conversationId, true)}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
@@ -473,14 +512,53 @@ export const StepApprovalCard = ({ step, onApproveStep }: StepApprovalCardProps)
             <Play size={14} />
             {isVisualAgent ? (step.nextAgentName ? `Pasar a ${step.nextAgentName}` : 'Finalizar') : 'Continuar'}
           </button>
-          <button
-            onClick={() => onApproveStep(step.conversationId, false)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface border border-edge text-ink-light text-xs font-semibold rounded-lg hover:bg-subtle transition-colors"
-          >
-            <Square size={14} />
-            Detener
-          </button>
+          {onRequestHuman && (
+            <button
+              onClick={onRequestHuman}
+              disabled={humanRequested}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                humanRequested
+                  ? 'bg-purple-100 text-purple-400 cursor-not-allowed'
+                  : 'bg-surface border border-purple-200 text-purple-600 hover:bg-purple-50'
+              }`}
+            >
+              <UserCircle size={14} />
+              {humanRequested ? 'Ayuda solicitada' : 'Necesito ayuda humana'}
+            </button>
+          )}
         </div>
+
+        {/* Next steps suggestions — shown when this is the last step */}
+        {isVisualAgent && !step.nextAgentName && (
+          <div className="px-4 py-3 border-t border-edge space-y-2">
+            <p className="text-[10px] font-medium text-ink-faint uppercase tracking-wider flex items-center gap-1.5">
+              <Lightbulb size={10} /> Tambien puedes
+            </p>
+            <button
+              onClick={() => onApproveStep(step.conversationId, true)}
+              className="w-full flex items-center gap-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-left hover:bg-amber-100 transition-colors group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+                <Code2 size={16} className="text-amber-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-amber-800">Agregar logica con Logic</p>
+                <p className="text-[10px] text-amber-600">Backend, base de datos, formularios, autenticacion</p>
+              </div>
+            </button>
+            <div
+              className="w-full flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-left opacity-60"
+            >
+              <div className="w-8 h-8 rounded-lg bg-slate-500/15 flex items-center justify-center flex-shrink-0">
+                <Globe size={16} className="text-slate-500" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-slate-600">Publicar esta pagina</p>
+                <p className="text-[10px] text-slate-400">Proximamente — despliegue a dominio propio</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

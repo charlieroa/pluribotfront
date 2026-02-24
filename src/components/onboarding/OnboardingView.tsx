@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Palette, Megaphone, Code, Briefcase, HelpCircle, ArrowRight, Check, Store } from 'lucide-react'
+import { Palette, Megaphone, Code, Briefcase, HelpCircle, ArrowRight, Check, Store, Bot } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -11,27 +11,29 @@ interface OnboardingViewProps {
 type Profession = 'designer' | 'marketing' | 'developer' | 'entrepreneur' | 'other'
 
 const professions: Array<{ id: Profession; label: string; icon: React.ReactNode; desc: string }> = [
-  { id: 'designer', label: 'Disenador / Creativo', icon: <Palette size={24} />, desc: 'Diseno grafico, UX/UI, branding' },
+  { id: 'designer', label: 'Diseñador / Creativo', icon: <Palette size={24} />, desc: 'Diseño gráfico, UX/UI, branding' },
   { id: 'marketing', label: 'Marketing / CM', icon: <Megaphone size={24} />, desc: 'Redes sociales, publicidad, contenido' },
-  { id: 'developer', label: 'Desarrollador / Tech', icon: <Code size={24} />, desc: 'Programacion, automatizacion, APIs' },
-  { id: 'entrepreneur', label: 'Emprendedor', icon: <Briefcase size={24} />, desc: 'Dueno de negocio, startup, freelance' },
+  { id: 'developer', label: 'Desarrollador / Tech', icon: <Code size={24} />, desc: 'Programación, automatización, APIs' },
+  { id: 'entrepreneur', label: 'Emprendedor', icon: <Briefcase size={24} />, desc: 'Dueño de negocio, startup, freelance' },
   { id: 'other', label: 'Otro', icon: <HelpCircle size={24} />, desc: 'Explorar todas las opciones' },
 ]
 
 const botSuggestions: Record<Profession, string[]> = {
-  designer: ['web', 'video', 'dev'],
-  marketing: ['seo', 'ads', 'web'],
+  designer: ['brand', 'web', 'social', 'video'],
+  marketing: ['seo', 'ads', 'social', 'web'],
   developer: ['dev', 'seo'],
-  entrepreneur: ['seo', 'web', 'ads', 'dev', 'video'],
-  other: ['seo', 'web', 'ads', 'dev', 'video'],
+  entrepreneur: ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video'],
+  other: ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video'],
 }
 
 const allBots = [
-  { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorias SEO, keywords y posicionamiento' },
-  { id: 'web', name: 'Pixel', role: 'Disenador Visual', color: '#a855f7', desc: 'Logos, banners, landing pages y graficas' },
-  { id: 'ads', name: 'Metric', role: 'Ads Specialist', color: '#10b981', desc: 'Campanas Meta Ads y Google Ads' },
-  { id: 'dev', name: 'Logic', role: 'Full-Stack Dev', color: '#f59e0b', desc: 'Paginas web funcionales y codigo' },
-  { id: 'video', name: 'Reel', role: 'Creador de Video', color: '#ef4444', desc: 'Reels y videos con IA generativa' },
+  { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorías SEO, keywords y posicionamiento' },
+  { id: 'brand', name: 'Nova', role: 'Branding e Identidad', color: '#ec4899', desc: 'Logos, paletas de color y manual de marca' },
+  { id: 'web', name: 'Pixel', role: 'Diseñador Web', color: '#a855f7', desc: 'Landing pages y sitios web completos' },
+  { id: 'social', name: 'Spark', role: 'Contenido Social', color: '#f97316', desc: 'Banners, posts, flyers y stories' },
+  { id: 'ads', name: 'Metric', role: 'Especialista en Publicidad', color: '#10b981', desc: 'Campañas Meta Ads y Google Ads' },
+  { id: 'dev', name: 'Logic', role: 'Desarrollador Full-Stack', color: '#f59e0b', desc: 'Páginas web funcionales y código' },
+  { id: 'video', name: 'Reel', role: 'Creador de video', color: '#ef4444', desc: 'Reels y videos con IA generativa' },
 ]
 
 const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) => {
@@ -71,14 +73,14 @@ const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) 
       <div className="w-full max-w-2xl mx-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-4 shadow-lg shadow-indigo-500/30">
-            P
+          <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
+            <Bot size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-ink mb-1">
             Bienvenido{user?.name ? `, ${user.name}` : ''}!
           </h1>
           <p className="text-sm text-ink-faint">
-            {step === 1 ? 'Contanos un poco sobre ti para personalizar tu experiencia' : 'Estos bots estan sugeridos para ti. Activa los que quieras.'}
+            {step === 1 ? 'Cuéntanos un poco sobre ti para personalizar tu experiencia' : 'Estos bots están sugeridos para ti. Activa los que quieras.'}
           </p>
           {/* Step indicator */}
           <div className="flex items-center justify-center gap-2 mt-4">
