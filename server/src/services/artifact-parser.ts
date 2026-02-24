@@ -654,13 +654,13 @@ export function bundleToHtml(artifact: ProjectArtifact, supabaseConfig?: { url: 
 <body>
   <div id="root"></div>
   <script id="__app_source" type="text/plain">
-    const { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext, useReducer, useLayoutEffect, forwardRef, lazy, Suspense, Fragment, memo, startTransition } = React;
-    const Icons = window.lucideReact || {};
+    var { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext, useReducer, useLayoutEffect, forwardRef, lazy, Suspense, Fragment, memo, startTransition, createElement, cloneElement, isValidElement, Children, Component, PureComponent, createRef, StrictMode } = React;
+    var Icons = window.lucideReact || {};
     ${allInlineSetup}
 
     // UI Component Library
     ${UI_COMPONENTS_SOURCE}
-    const UI = window.__UI || {};
+    var UI = window.__UI || {};
 
     ${errorBoundaryCode}
 

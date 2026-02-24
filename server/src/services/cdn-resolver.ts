@@ -516,28 +516,33 @@ export function transformImportsForCDN(code: string, globalMap: Record<string, s
 
       const g = `(window.${globalName} || {})`
 
+      // React and ReactDOM are pre-loaded globals with hooks already destructured — strip entirely
+      if (source === 'react' || source === 'react-dom' || source === 'react-dom/client') {
+        return ''
+      }
+
       // import { X, Y } from 'pkg'
       const namedMatch = importClause.match(/^\{(.+)\}$/)
       if (namedMatch) {
-        return `const { ${namedMatch[1].replace(/\s+as\s+/g, ': ')} } = ${g};`
+        return `var { ${namedMatch[1].replace(/\s+as\s+/g, ': ')} } = ${g};`
       }
 
       // import X, { Y, Z } from 'pkg'
       const mixedMatch = importClause.match(/^(\w+)\s*,\s*\{(.+)\}$/)
       if (mixedMatch) {
-        return `const ${mixedMatch[1].trim()} = ${g}.default || ${g};\nconst { ${mixedMatch[2].trim().replace(/\s+as\s+/g, ': ')} } = ${g};`
+        return `var ${mixedMatch[1].trim()} = ${g}.default || ${g};\nvar { ${mixedMatch[2].trim().replace(/\s+as\s+/g, ': ')} } = ${g};`
       }
 
       // import * as X from 'pkg'
       const nsMatch = importClause.match(/^\*\s+as\s+(\w+)$/)
       if (nsMatch) {
-        return `const ${nsMatch[1]} = ${g};`
+        return `var ${nsMatch[1]} = ${g};`
       }
 
       // import X from 'pkg' (default)
       const defaultMatch = importClause.match(/^(\w+)$/)
       if (defaultMatch) {
-        return `const ${defaultMatch[1]} = ${g}.default || ${g};`
+        return `var ${defaultMatch[1]} = ${g}.default || ${g};`
       }
 
       return '' // Fallback: strip
