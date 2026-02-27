@@ -112,9 +112,10 @@ const App = () => {
     setActiveTab('chat')
   }
 
-  const handleAutoFix = useCallback((_errorMessage: string) => {
-    // No-op: auto-fix was used for Logic dev agent
-  }, [])
+  const handleAutoFix = useCallback((errorMessage: string) => {
+    const prompt = `El proyecto tiene un error de compilacion. Corrige SOLO el error sin cambiar funcionalidad ni diseño. Error:\n\n${errorMessage}\n\nGenera el JSON completo con los archivos corregidos.`
+    chat.sendRefineMessage(prompt)
+  }, [chat.sendRefineMessage])
 
   const chatViewProps = {
     messages: chat.messages,
@@ -207,6 +208,7 @@ const App = () => {
                   templateId={activeTemplate}
                   onClose={() => { setActiveTemplate(null); setLogicFiles(null) }}
                   logicFiles={logicFiles}
+                  onAutoFix={handleAutoFix}
                 />
               </>
             ) : displayDeliverable ? (

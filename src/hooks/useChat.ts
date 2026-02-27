@@ -94,6 +94,7 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null>(null)
   const [humanRequested, setHumanRequested] = useState(false)
+  const [lastLogicInstanceId, setLastLogicInstanceId] = useState<string | null>(null)
   const latestDeliverableRef = useRef<Deliverable | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -203,6 +204,11 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
               break
 
             case 'agent_end': {
+              // Track Logic agent instanceId for auto-fix
+              if (data.agentId === 'logic' && data.instanceId) {
+                setLastLogicInstanceId(data.instanceId)
+              }
+
               const pendingDeliverable = latestDeliverableRef.current
               latestDeliverableRef.current = null
 
@@ -821,8 +827,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
   const sendRefineMessage = async (text: string) => {
     if (!conversationId) return
 
-    // Determine instanceId: from pendingStepApproval, or last completed dev step
-    const instanceId = pendingStepApproval?.instanceId
+    // Determine instanceId: from pendingStepApproval, or last Logic agent run
+    const instanceId = pendingStepApproval?.instanceId || lastLogicInstanceId
 
     if (pendingStepApproval) {
       setPendingStepApproval(null) // Hide step card while refining

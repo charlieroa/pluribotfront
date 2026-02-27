@@ -3,9 +3,21 @@ import { WebContainer, type FileSystemTree } from '@webcontainer/api'
 
 export type WCStatus = 'idle' | 'booting' | 'installing' | 'running' | 'error'
 
+// Patterns that indicate a build/compile error in terminal output
+const BUILD_ERROR_PATTERNS = [
+  /error TS\d+:/i,
+  /SyntaxError/,
+  /\[vite\].*error/i,
+  /Failed to resolve import/,
+  /Module not found/i,
+  /Could not resolve/i,
+  /Unexpected token/,
+]
+
 export interface WebContainerState {
   status: WCStatus
   error: string | null
+  buildError: string | null
   previewUrl: string | null
   terminalOutput: string[]
 }
@@ -33,13 +45,29 @@ export interface FileEntry {
 export function useWebContainer() {
   const [status, setStatus] = useState<WCStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [buildError, setBuildError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [terminalOutput, setTerminalOutput] = useState<string[]>([])
   const processRef = useRef<{ kill: () => void } | null>(null)
   const instanceRef = useRef<WebContainer | null>(null)
+  const errorBufferRef = useRef<string[]>([])
+  const errorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const appendOutput = useCallback((line: string) => {
     setTerminalOutput((prev) => [...prev, line])
+
+    // Detect build errors in terminal output
+    const isError = BUILD_ERROR_PATTERNS.some(pattern => pattern.test(line))
+    if (isError) {
+      errorBufferRef.current.push(line.trim())
+      // Debounce: wait 2s after last error line before setting buildError
+      if (errorDebounceRef.current) clearTimeout(errorDebounceRef.current)
+      errorDebounceRef.current = setTimeout(() => {
+        const errors = errorBufferRef.current.join('\n')
+        errorBufferRef.current = []
+        setBuildError(errors)
+      }, 2000)
+    }
   }, [])
 
   const mountTemplate = useCallback(
@@ -47,8 +75,10 @@ export function useWebContainer() {
       try {
         setStatus('booting')
         setError(null)
+        setBuildError(null)
         setPreviewUrl(null)
         setTerminalOutput([])
+        errorBufferRef.current = []
         appendOutput('Booting WebContainer...')
 
         const wc = await getInstance()
@@ -106,6 +136,12 @@ export function useWebContainer() {
     const wc = instanceRef.current
     if (!wc) throw new Error('WebContainer not ready')
     return wc.fs.readFile(path, 'utf-8')
+  }, [])
+
+  const clearBuildError = useCallback(() => {
+    errorBufferRef.current = []
+    if (errorDebounceRef.current) clearTimeout(errorDebounceRef.current)
+    setBuildError(null)
   }, [])
 
   const writeFile = useCallback(async (path: string, content: string): Promise<void> => {
@@ -173,6 +209,8 @@ export function useWebContainer() {
     setPreviewUrl(null)
     setTerminalOutput([])
     setError(null)
+    setBuildError(null)
+    errorBufferRef.current = []
   }, [])
 
   // Cleanup on unmount
@@ -188,6 +226,7 @@ export function useWebContainer() {
   return {
     status,
     error,
+    buildError,
     previewUrl,
     terminalOutput,
     mountTemplate,
@@ -197,5 +236,6 @@ export function useWebContainer() {
     spawn,
     listDir,
     teardown,
+    clearBuildError,
   }
 }

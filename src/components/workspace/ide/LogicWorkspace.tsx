@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { X, Loader2, Code2, Eye, Terminal, Circle } from 'lucide-react'
+import { X, Loader2, Code2, Eye, Terminal, Circle, AlertTriangle, Wrench } from 'lucide-react'
 import { getTemplate } from '../../../templates'
 import { useWebContainer, type FileEntry } from '../../../hooks/useWebContainer'
 import FileTree from './FileTree'
@@ -7,10 +7,13 @@ import CodeEditor from './CodeEditor'
 import PreviewFrame from './PreviewFrame'
 import TerminalOutput from './TerminalOutput'
 
+const MAX_AUTO_FIX_ATTEMPTS = 2
+
 interface LogicWorkspaceProps {
   templateId: string
   onClose: () => void
   logicFiles?: Record<string, string> | null
+  onAutoFix?: (error: string) => void
 }
 
 interface OpenFile {
@@ -27,7 +30,7 @@ const statusLabels: Record<string, string> = {
   error: 'Error',
 }
 
-export default function LogicWorkspace({ templateId, onClose, logicFiles }: LogicWorkspaceProps) {
+export default function LogicWorkspace({ templateId, onClose, logicFiles, onAutoFix }: LogicWorkspaceProps) {
   const template = getTemplate(templateId)
   const wc = useWebContainer()
 
@@ -38,6 +41,11 @@ export default function LogicWorkspace({ templateId, onClose, logicFiles }: Logi
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
   const mountedRef = useRef(false)
   const lastLogicFilesRef = useRef<Record<string, string> | null>(null)
+
+  // Auto-fix state
+  const [autoFixAttempts, setAutoFixAttempts] = useState(0)
+  const [isAutoFixing, setIsAutoFixing] = useState(false)
+  const autoFixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath) ?? null
 
@@ -122,6 +130,37 @@ export default function LogicWorkspace({ templateId, onClose, logicFiles }: Logi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wc.status, logicFiles])
 
+  // Reset auto-fix state when new logicFiles arrive (from Logic agent response)
+  useEffect(() => {
+    if (!logicFiles || logicFiles === lastLogicFilesRef.current) return
+    if (isAutoFixing) {
+      // This is a fix response — stop fixing indicator
+      setIsAutoFixing(false)
+      wc.clearBuildError()
+    } else {
+      // New project — reset counter
+      setAutoFixAttempts(0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logicFiles])
+
+  // Auto-fix loop: watch for build errors
+  useEffect(() => {
+    if (!wc.buildError || !onAutoFix) return
+    if (autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS || isAutoFixing) return
+
+    // Wait 3s before triggering auto-fix
+    autoFixTimerRef.current = setTimeout(() => {
+      setIsAutoFixing(true)
+      setAutoFixAttempts(prev => prev + 1)
+      onAutoFix(wc.buildError!)
+    }, 3000)
+
+    return () => {
+      if (autoFixTimerRef.current) clearTimeout(autoFixTimerRef.current)
+    }
+  }, [wc.buildError, onAutoFix, autoFixAttempts, isAutoFixing])
+
   const handleFileSelect = useCallback(
     async (path: string) => {
       const existing = openFiles.find((f) => f.path === path)
@@ -196,6 +235,18 @@ export default function LogicWorkspace({ templateId, onClose, logicFiles }: Logi
             )}
             {statusLabels[wc.status]}
           </span>
+          {isAutoFixing && (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 flex items-center gap-1">
+              <Wrench size={10} className="animate-spin" />
+              Auto-corrigiendo... ({autoFixAttempts}/{MAX_AUTO_FIX_ATTEMPTS})
+            </span>
+          )}
+          {!isAutoFixing && wc.buildError && autoFixAttempts >= MAX_AUTO_FIX_ATTEMPTS && (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 flex items-center gap-1">
+              <AlertTriangle size={10} />
+              Error no resuelto
+            </span>
+          )}
         </div>
 
         {/* View toggle */}

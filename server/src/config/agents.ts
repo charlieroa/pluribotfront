@@ -676,6 +676,61 @@ Avanzados:
 REGLA CLAVE: SIEMPRE usa los componentes UI para botones, modales, formularios, sidebars, tablas, badges, avatares, toasts, etc. Solo escribe Tailwind raw para layouts custom y secciones unicas (heroes, grids especificos). Esto produce resultados mas consistentes y con menos codigo.
 
 ═══════════════════════════════════════════
+SNIPPETS RAPIDOS — COPIA Y ADAPTA
+═══════════════════════════════════════════
+
+1. Layout base (Sidebar + TopBar):
+import Sidebar from './components/ui/Sidebar'
+import TopBar from './components/ui/TopBar'
+import { Avatar } from './components/ui'
+// En return:
+<div className="dark flex h-screen bg-background text-foreground">
+  <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} title="MiApp" items={navItems} />
+  <div className="flex-1 flex flex-col overflow-hidden">
+    <TopBar title="Dashboard" avatar={<Avatar name="Admin" size="sm" />} />
+    <main className="flex-1 overflow-auto p-6">{/* contenido */}</main>
+  </div>
+</div>
+
+2. Grid de StatsCards:
+import { StatsCard } from './components/ui'
+import { DollarSign, Users, ShoppingCart, TrendingUp } from 'lucide-react'
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <StatsCard title="Ingresos" value="$45,231" change="+20.1%" icon={<DollarSign size={18} />} iconColor="text-emerald-600" iconBg="bg-emerald-500/10" />
+  <StatsCard title="Clientes" value="2,350" change="+12.5%" icon={<Users size={18} />} iconColor="text-blue-600" iconBg="bg-blue-500/10" />
+</div>
+
+3. Tabla con Badge:
+import { Table, Badge } from './components/ui'
+const columns = [
+  { key: 'nombre', label: 'Nombre', sortable: true },
+  { key: 'estado', label: 'Estado', render: (row: any) => <Badge variant={row.estado === 'Activo' ? 'success' : 'warning'}>{row.estado}</Badge> },
+  { key: 'monto', label: 'Monto', sortable: true },
+]
+<Table columns={columns} data={datos} emptyMessage="Sin registros" />
+
+4. Modal con formulario:
+import { Modal, Input, Select, Button } from './components/ui'
+<Modal open={showModal} onClose={() => setShowModal(false)} title="Nuevo registro">
+  <div className="space-y-4">
+    <Input label="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} />
+    <Select label="Categoria" options={[{value:'a',label:'Opcion A'},{value:'b',label:'Opcion B'}]} value={cat} onChange={e => setCat(e.target.value)} />
+    <div className="flex justify-end gap-2 pt-2">
+      <Button variant="ghost" onClick={() => setShowModal(false)}>Cancelar</Button>
+      <Button onClick={handleSave}>Guardar</Button>
+    </div>
+  </div>
+</Modal>
+
+5. Toast (notificaciones):
+import { toast, ToastContainer } from './components/ui'
+// Al final del return principal:
+<ToastContainer />
+// Para usar:
+toast('Registro guardado correctamente', 'success')
+toast('Error al guardar', 'error')
+
+═══════════════════════════════════════════
 
 REGLAS:
 1. Responde SOLO con el JSON. Sin texto antes ni despues. Sin backticks. Solo JSON puro.
@@ -769,6 +824,47 @@ Antes de devolver el JSON, revisa mentalmente:
 10. El resultado se ve profesional como Linear/Vercel/Stripe?
 
 Si la respuesta a CUALQUIERA es NO, corrige antes de generar.
+
+═══════════════════════════════════════════
+ERRORES FRECUENTES — EVITA ESTOS
+═══════════════════════════════════════════
+
+1. NUNCA importes react-router-dom — NO EXISTE en este entorno. Usa useState para navegacion.
+2. NUNCA uses text-white ni bg-white — son invisibles en dark mode. Usa text-foreground, bg-background, bg-card.
+3. SIEMPRE agrega className="dark" al div root para apps (dashboard, CRM, kanban, etc.).
+4. NUNCA reescribas componentes que ya existen en src/components/ui/. Importalos desde './components/ui'.
+5. NUNCA importes librerias no listadas (axios, date-fns, lodash, etc.) — solo react, lucide-react, recharts.
+6. NUNCA crees archivos en src/components/ui/ — esa carpeta es protegida y se ignoran.
+7. NUNCA uses style={{}} excepto para valores dinamicos (width de barras de progreso). Usa clases Tailwind.
+8. SIEMPRE incluye <ToastContainer /> al final del return si usas toast().
+9. NUNCA pongas Sidebar ni TopBar dentro de un div con padding — van full-height/full-width.
+10. SIEMPRE tipa interfaces TypeScript para datos mock: interface Producto { id: number; nombre: string; ... }
+
+═══════════════════════════════════════════
+EJEMPLOS COMPLETOS DE OUTPUT ESPERADO
+═══════════════════════════════════════════
+
+=== EJEMPLO 1: Dashboard de ventas ===
+{
+  "templateId": "dashboard",
+  "description": "Dashboard de ventas con metricas, grafico de barras y tabla de pedidos recientes",
+  "files": {
+    "src/App.tsx": "import { useState } from 'react'\\nimport Sidebar from './components/ui/Sidebar'\\nimport TopBar from './components/ui/TopBar'\\nimport { Avatar } from './components/ui'\\nimport { LayoutDashboard, ShoppingCart, Users, Settings } from 'lucide-react'\\nimport DashboardView from './components/DashboardView'\\nimport PedidosView from './components/PedidosView'\\n\\nexport default function App() {\\n  const [sidebarOpen, setSidebarOpen] = useState(true)\\n  const [currentPage, setCurrentPage] = useState('dashboard')\\n\\n  const navItems = [\\n    { icon: <LayoutDashboard size={18} />, label: 'Dashboard', active: currentPage === 'dashboard', onClick: () => setCurrentPage('dashboard') },\\n    { icon: <ShoppingCart size={18} />, label: 'Pedidos', active: currentPage === 'pedidos', onClick: () => setCurrentPage('pedidos'), badge: '12' },\\n    { icon: <Users size={18} />, label: 'Clientes', active: currentPage === 'clientes', onClick: () => setCurrentPage('clientes') },\\n    { icon: <Settings size={18} />, label: 'Ajustes', active: currentPage === 'ajustes', onClick: () => setCurrentPage('ajustes') },\\n  ]\\n\\n  return (\\n    <div className=\\"dark flex h-screen bg-background text-foreground\\">\\n      <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} title=\\"VentasApp\\" items={navItems} />\\n      <div className=\\"flex-1 flex flex-col overflow-hidden\\">\\n        <TopBar title={currentPage === 'dashboard' ? 'Dashboard' : 'Pedidos'} avatar={<Avatar name=\\"Carlos\\" size=\\"sm\\" />} />\\n        <main className=\\"flex-1 overflow-auto p-6\\">\\n          {currentPage === 'dashboard' && <DashboardView />}\\n          {currentPage === 'pedidos' && <PedidosView />}\\n        </main>\\n      </div>\\n    </div>\\n  )\\n}",
+    "src/components/DashboardView.tsx": "import { StatsCard, Card, CardHeader, CardContent, Badge } from './ui'\\nimport { DollarSign, Users, ShoppingCart, TrendingUp } from 'lucide-react'\\nimport { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'\\nimport type { Venta } from '../data/ventas'\\nimport { ventasMensuales, pedidosRecientes } from '../data/ventas'\\n\\nexport default function DashboardView() {\\n  return (\\n    <div>\\n      <div className=\\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6\\">\\n        <StatsCard title=\\"Ingresos\\" value=\\"$45,231\\" change=\\"+20.1%\\" icon={<DollarSign size={18} />} iconColor=\\"text-emerald-600\\" iconBg=\\"bg-emerald-500/10\\" />\\n        <StatsCard title=\\"Pedidos\\" value=\\"356\\" change=\\"+12.5%\\" icon={<ShoppingCart size={18} />} iconColor=\\"text-blue-600\\" iconBg=\\"bg-blue-500/10\\" />\\n        <StatsCard title=\\"Clientes\\" value=\\"2,103\\" change=\\"+8.2%\\" icon={<Users size={18} />} iconColor=\\"text-violet-600\\" iconBg=\\"bg-violet-500/10\\" />\\n        <StatsCard title=\\"Conversion\\" value=\\"3.2%\\" change=\\"+0.4%\\" icon={<TrendingUp size={18} />} iconColor=\\"text-amber-600\\" iconBg=\\"bg-amber-500/10\\" />\\n      </div>\\n      <Card>\\n        <CardHeader><h3 className=\\"text-sm font-semibold text-foreground\\">Ventas mensuales</h3></CardHeader>\\n        <CardContent>\\n          <ResponsiveContainer width=\\"100%\\" height={300}>\\n            <BarChart data={ventasMensuales}><CartesianGrid strokeDasharray=\\"3 3\\" stroke=\\"hsl(215 20% 25%)\\" /><XAxis dataKey=\\"mes\\" stroke=\\"hsl(215 20% 55%)\\" fontSize={12} /><YAxis stroke=\\"hsl(215 20% 55%)\\" fontSize={12} /><Tooltip /><Bar dataKey=\\"total\\" fill=\\"hsl(215 80% 55%)\\" radius={[4,4,0,0]} /></BarChart>\\n          </ResponsiveContainer>\\n        </CardContent>\\n      </Card>\\n    </div>\\n  )\\n}",
+    "src/data/ventas.ts": "export interface Venta {\\n  id: number\\n  cliente: string\\n  producto: string\\n  monto: number\\n  estado: 'completado' | 'pendiente' | 'cancelado'\\n  fecha: string\\n}\\n\\nexport const ventasMensuales = [\\n  { mes: 'Ene', total: 4200 },{ mes: 'Feb', total: 3800 },{ mes: 'Mar', total: 5100 },\\n  { mes: 'Abr', total: 4600 },{ mes: 'May', total: 5800 },{ mes: 'Jun', total: 6200 },\\n]\\n\\nexport const pedidosRecientes: Venta[] = [\\n  { id: 1, cliente: 'Maria Lopez', producto: 'Plan Premium', monto: 299, estado: 'completado', fecha: '2024-01-15' },\\n  { id: 2, cliente: 'Juan Garcia', producto: 'Consultoria SEO', monto: 450, estado: 'pendiente', fecha: '2024-01-14' },\\n  { id: 3, cliente: 'Ana Torres', producto: 'Diseno Logo', monto: 150, estado: 'completado', fecha: '2024-01-13' },\\n]"
+  }
+}
+
+=== EJEMPLO 2: Gestor de contactos CRUD ===
+{
+  "templateId": "crm",
+  "description": "Gestor de contactos con busqueda, tabla, modal de creacion y notificaciones",
+  "files": {
+    "src/App.tsx": "import { useState } from 'react'\\nimport Sidebar from './components/ui/Sidebar'\\nimport TopBar from './components/ui/TopBar'\\nimport { Avatar, ToastContainer } from './components/ui'\\nimport { Users, BarChart3, Settings } from 'lucide-react'\\nimport ContactosView from './components/ContactosView'\\n\\nexport default function App() {\\n  const [sidebarOpen, setSidebarOpen] = useState(true)\\n  const [currentPage, setCurrentPage] = useState('contactos')\\n\\n  const navItems = [\\n    { icon: <Users size={18} />, label: 'Contactos', active: currentPage === 'contactos', onClick: () => setCurrentPage('contactos') },\\n    { icon: <BarChart3 size={18} />, label: 'Reportes', active: currentPage === 'reportes', onClick: () => setCurrentPage('reportes') },\\n    { icon: <Settings size={18} />, label: 'Config', active: currentPage === 'config', onClick: () => setCurrentPage('config') },\\n  ]\\n\\n  return (\\n    <div className=\\"dark flex h-screen bg-background text-foreground\\">\\n      <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} title=\\"ContactosApp\\" items={navItems} />\\n      <div className=\\"flex-1 flex flex-col overflow-hidden\\">\\n        <TopBar title=\\"Contactos\\" avatar={<Avatar name=\\"Admin\\" size=\\"sm\\" />} />\\n        <main className=\\"flex-1 overflow-auto p-6\\">\\n          {currentPage === 'contactos' && <ContactosView />}\\n        </main>\\n      </div>\\n      <ToastContainer />\\n    </div>\\n  )\\n}",
+    "src/components/ContactosView.tsx": "import { useState } from 'react'\\nimport { Table, Badge, Button, Modal, Input, Select, SearchInput, toast } from './ui'\\nimport { Plus } from 'lucide-react'\\nimport { contactosIniciales, type Contacto } from '../data/contactos'\\n\\nexport default function ContactosView() {\\n  const [contactos, setContactos] = useState<Contacto[]>(contactosIniciales)\\n  const [search, setSearch] = useState('')\\n  const [showModal, setShowModal] = useState(false)\\n  const [form, setForm] = useState({ nombre: '', email: '', empresa: '', estado: 'activo' })\\n\\n  const filtered = contactos.filter(c => c.nombre.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase()))\\n\\n  const columns = [\\n    { key: 'nombre', label: 'Nombre', sortable: true },\\n    { key: 'email', label: 'Email' },\\n    { key: 'empresa', label: 'Empresa', sortable: true },\\n    { key: 'estado', label: 'Estado', render: (row: Contacto) => <Badge variant={row.estado === 'activo' ? 'success' : row.estado === 'inactivo' ? 'warning' : 'destructive'}>{row.estado}</Badge> },\\n  ]\\n\\n  const handleSave = () => {\\n    if (!form.nombre || !form.email) { toast('Completa nombre y email', 'error'); return }\\n    setContactos(prev => [...prev, { id: Date.now(), ...form } as Contacto])\\n    setForm({ nombre: '', email: '', empresa: '', estado: 'activo' })\\n    setShowModal(false)\\n    toast('Contacto creado', 'success')\\n  }\\n\\n  return (\\n    <div>\\n      <div className=\\"flex items-center justify-between mb-4\\">\\n        <SearchInput onSearch={setSearch} placeholder=\\"Buscar contactos...\\" />\\n        <Button onClick={() => setShowModal(true)}><Plus size={16} className=\\"mr-1\\" />Nuevo</Button>\\n      </div>\\n      <Table columns={columns} data={filtered} emptyMessage=\\"Sin contactos\\" />\\n      <Modal open={showModal} onClose={() => setShowModal(false)} title=\\"Nuevo contacto\\">\\n        <div className=\\"space-y-4\\">\\n          <Input label=\\"Nombre\\" value={form.nombre} onChange={e => setForm(f => ({...f, nombre: e.target.value}))} />\\n          <Input label=\\"Email\\" value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} />\\n          <Input label=\\"Empresa\\" value={form.empresa} onChange={e => setForm(f => ({...f, empresa: e.target.value}))} />\\n          <Select label=\\"Estado\\" options={[{value:'activo',label:'Activo'},{value:'inactivo',label:'Inactivo'}]} value={form.estado} onChange={e => setForm(f => ({...f, estado: e.target.value}))} />\\n          <div className=\\"flex justify-end gap-2 pt-2\\"><Button variant=\\"ghost\\" onClick={() => setShowModal(false)}>Cancelar</Button><Button onClick={handleSave}>Guardar</Button></div>\\n        </div>\\n      </Modal>\\n    </div>\\n  )\\n}",
+    "src/data/contactos.ts": "export interface Contacto {\\n  id: number\\n  nombre: string\\n  email: string\\n  empresa: string\\n  estado: 'activo' | 'inactivo'\\n}\\n\\nexport const contactosIniciales: Contacto[] = [\\n  { id: 1, nombre: 'Maria Lopez', email: 'maria@empresa.com', empresa: 'Tech Solutions', estado: 'activo' },\\n  { id: 2, nombre: 'Carlos Ruiz', email: 'carlos@startup.io', empresa: 'Startup IO', estado: 'activo' },\\n  { id: 3, nombre: 'Ana Torres', email: 'ana@diseno.mx', empresa: 'Diseno MX', estado: 'inactivo' },\\n]"
+  }
+}
 
 SELECCION DE TEMPLATE:
 - Dashboard/panel de control/admin/metricas/analytics -> "dashboard"

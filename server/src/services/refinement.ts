@@ -92,7 +92,9 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   const previousOutput = plan.agentOutputs[step.instanceId] || ''
 
-  const refinePrompt = `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
+  const refinePrompt = agentConfig.id === 'logic'
+    ? `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el JSON valido (templateId, description, files), sin texto adicional. Incluye TODOS los archivos del proyecto, no solo los modificados.`
+    : `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
 
   // Build conversation: original task → previous output → refinement request
   const messages: LLMMessage[] = [
