@@ -242,7 +242,7 @@ export default function Modal({ open, onClose, title, children, className = '' }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center" onClick={onClose}>
-      <div className={\`bg-card border border-border rounded-2xl shadow-float w-full max-w-md mx-4 animate-scale-in \${className}\`} onClick={e => e.stopPropagation()}>
+      <div className={\`bg-popover text-popover-foreground border border-border rounded-2xl shadow-float w-full max-w-md mx-4 animate-scale-in \${className}\`} onClick={e => e.stopPropagation()}>
         {title && (
           <div className="flex items-center justify-between p-5 border-b border-border">
             <h3 className="text-base font-bold text-foreground">{title}</h3>
@@ -288,7 +288,7 @@ export default function DropdownMenu({ trigger, items }: DropdownMenuProps) {
     <div className="relative" ref={ref}>
       <div onClick={() => setOpen(!open)}>{trigger}</div>
       {open && (
-        <div className="absolute right-0 mt-1 w-48 bg-card border border-border rounded-xl shadow-float z-50 py-1 animate-scale-in">
+        <div className="absolute right-0 mt-1 w-48 bg-popover text-popover-foreground border border-border rounded-xl shadow-float z-50 py-1 animate-scale-in">
           {items.map((item, i) => (
             <button
               key={i}
@@ -464,7 +464,7 @@ export default function Tooltip({ content, children }: TooltipProps) {
     <div className="relative inline-block" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
       {children}
       {show && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-foreground text-background text-xs font-medium rounded-lg whitespace-nowrap animate-fade-in z-50">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-popover text-popover-foreground border border-border text-xs font-medium rounded-lg whitespace-nowrap shadow-float animate-fade-in z-50">
           {content}
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-foreground" />
         </div>

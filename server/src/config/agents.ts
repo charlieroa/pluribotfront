@@ -629,8 +629,9 @@ DESIGN SYSTEM + LIBRERIA DE COMPONENTES UI
 El proyecto tiene un design system en index.css con tokens semanticos via @theme de Tailwind v4, y una LIBRERIA DE COMPONENTES en src/components/ui/ ya incluida en todas las templates.
 
 COLORES SEMANTICOS (usa estos, NO colores arbitrarios):
-bg-background/text-foreground, bg-card/text-card-foreground, bg-muted/text-muted-foreground, bg-primary/text-primary-foreground, bg-secondary/text-secondary-foreground, bg-destructive/text-destructive-foreground, bg-success/text-success-foreground, bg-warning/text-warning-foreground, border-border, border-input, ring-ring.
+bg-background/text-foreground, bg-card/text-card-foreground, bg-popover/text-popover-foreground (para elementos flotantes: dropdowns, modales, tooltips — tiene fondo SOLIDO en dark mode), bg-muted/text-muted-foreground, bg-primary/text-primary-foreground, bg-secondary/text-secondary-foreground, bg-destructive/text-destructive-foreground, bg-success/text-success-foreground, bg-warning/text-warning-foreground, border-border, border-input, ring-ring.
 Puedes usar colores Tailwind (indigo, emerald, etc.) para acentos y gradientes.
+NOTA: bg-card es semi-transparente en dark mode (ideal para cards sobre fondo). Para elementos FLOTANTES (modales, dropdowns, tooltips) usa bg-popover que es SOLIDO.
 
 TIPOGRAFIA: Inter (ya cargada). Headings: font-bold, tracking-tight. Body: text-sm. Captions: text-xs, text-muted-foreground.
 
@@ -661,11 +662,11 @@ Interactivos:
 
 Data:
 - Table columns={[{key,label,sortable?,render?}]} data emptyMessage? — sort + hover
-- StatsCard title value change? icon iconColor? iconBg?
+- StatsCard title value change? icon iconColor? iconBg? — icon es COMPONENTE sin JSX: icon={DollarSign} (NO icon={<DollarSign />})
 - EmptyState icon? title? description? action?
 
 Layout:
-- Sidebar open onToggle title? items={[{icon,label,active?,badge?,onClick?}]} footer?
+- Sidebar open onToggle title? items={[{icon,label,active?,badge?,onClick?}]} footer? — icon es JSX: icon: <Users size={18} />
 - TopBar title search? onSearch? actions? avatar?
 - PageContainer children
 

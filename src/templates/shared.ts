@@ -144,6 +144,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   --color-foreground: #0f172a;
   --color-card: #ffffff;
   --color-card-foreground: #0f172a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
   --color-muted: #f1f5f9;
   --color-muted-foreground: #64748b;
   --color-border: #e2e8f0;
@@ -174,6 +176,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   --color-foreground: #f1f5f9;
   --color-card: rgba(255, 255, 255, 0.04);
   --color-card-foreground: #f1f5f9;
+  --color-popover: #1e1e2e;
+  --color-popover-foreground: #f1f5f9;
   --color-muted: rgba(255, 255, 255, 0.06);
   --color-muted-foreground: #94a3b8;
   --color-border: rgba(255, 255, 255, 0.08);
