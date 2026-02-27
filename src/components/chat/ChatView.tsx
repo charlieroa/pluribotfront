@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type RefObject } from 'react'
-import type { Agent, Message, QuickAction, Deliverable, ProjectArtifact } from '../../types'
+import type { Agent, Message, QuickAction, Deliverable } from '../../types'
 import type { ProposedPlan, StepApproval, ThinkingStep, InactiveBotPrompt, CoordinationAgent, ActiveAgent } from '../../hooks/useChat'
-import { Zap, X, UserCircle, Sparkles, ChevronDown, Loader2 } from 'lucide-react'
+import { Zap, X, UserCircle, Sparkles, ChevronDown } from 'lucide-react'
 import WelcomeScreen from './WelcomeScreen'
 import MessageBubble, { StepApprovalCard } from './MessageBubble'
 import ChatInput from './ChatInput'
@@ -43,8 +43,8 @@ interface ChatViewProps {
   onUpgrade?: () => void
   disabledProviders?: string[]
   onAbort?: () => void
-  buildingArtifact?: ProjectArtifact | null
   activeAgents?: ActiveAgent[]
+  onLoadTemplate?: (templateId: string) => void
 }
 
 const agentMeta: Record<string, { name: string; color: string }> = {
@@ -53,14 +53,14 @@ const agentMeta: Record<string, { name: string; color: string }> = {
   web: { name: 'Pixel', color: '#a855f7' },
   social: { name: 'Spark', color: '#f97316' },
   ads: { name: 'Metric', color: '#10b981' },
-  dev: { name: 'Logic', color: '#f59e0b' },
   video: { name: 'Reel', color: '#ef4444' },
+  logic: { name: 'Logic', color: '#6366f1' },
   base: { name: 'Pluria', color: '#6366f1' },
   human: { name: 'Agente Humano', color: '#8b5cf6' },
   system: { name: 'Sistema', color: '#6b7280' },
 }
 
-const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, buildingArtifact, activeAgents }: ChatViewProps) => (
+const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate }: ChatViewProps) => (
   <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
     {/* Human agent banner */}
     {assignedHumanAgent && (() => {
@@ -86,7 +86,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
     })()}
     <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 custom-scrollbar bg-page min-h-0">
       {showWelcome && (
-        <WelcomeScreen quickActions={quickActions} setInputText={setInputText} onOpenMarketplace={onOpenMarketplace} />
+        <WelcomeScreen quickActions={quickActions} setInputText={setInputText} onOpenMarketplace={onOpenMarketplace} onLoadTemplate={onLoadTemplate} />
       )}
 
       {messages.map((m) => (
@@ -125,30 +125,6 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
                 {agentMeta[streamingAgent]?.name ?? streamingAgent}
               </p>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{streamingText}<span className="animate-pulse">|</span></p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Building indicator — shows when Logic is generating code but no streaming text */}
-      {streamingAgent === 'dev' && !streamingText && buildingArtifact && (
-        <div className="flex gap-4 max-w-2xl">
-          <BotAvatar3D color="#f59e0b" seed="Logic" isActive size="sm" />
-          <div className="flex-1 min-w-0">
-            <div className="bg-surface p-4 rounded-2xl rounded-tl-none border border-amber-500/20 shadow-sm">
-              <p className="text-xs font-bold text-amber-500 mb-2">Logic — Construyendo proyecto</p>
-              <div className="space-y-1">
-                {buildingArtifact.files.map(f => (
-                  <div key={f.filePath} className="flex items-center gap-2 text-[11px] text-ink-faint">
-                    <span className="text-emerald-400">&#10003;</span>
-                    <span className="font-mono">{f.filePath}</span>
-                  </div>
-                ))}
-                <div className="flex items-center gap-2 text-[11px] text-amber-400">
-                  <Loader2 size={10} className="animate-spin" />
-                  <span>Generando archivos...</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>

@@ -34,27 +34,13 @@ export interface Message {
   creditsCost?: number
 }
 
-export interface ProjectArtifact {
-  id: string
-  title: string
-  files: ArtifactFile[]
-  shellCommands?: string[]
-}
-
-export interface ArtifactFile {
-  filePath: string
-  content: string
-  language: string
-}
-
 export interface Deliverable {
   id: string
   title: string
-  type: 'report' | 'code' | 'design' | 'copy' | 'video' | 'project'
+  type: 'report' | 'code' | 'design' | 'copy' | 'video'
   content: string
   agent: string
   botType: string
-  artifact?: ProjectArtifact
 }
 
 export interface KanbanTask {
@@ -93,21 +79,6 @@ export interface AvailableModel {
   desc: string
   provider: 'anthropic' | 'openai' | 'google'
   model: string
-}
-
-// ─── Terminal & Version History types ───
-
-export interface TerminalLog {
-  text: string
-  type: 'command' | 'output' | 'error' | 'success'
-}
-
-export interface ArtifactVersion {
-  id: number
-  timestamp: Date
-  artifact: ProjectArtifact
-  htmlContent: string
-  label: string
 }
 
 export const AVAILABLE_MODELS: AvailableModel[] = [

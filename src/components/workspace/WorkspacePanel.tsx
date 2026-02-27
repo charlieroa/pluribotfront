@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil, Boxes } from 'lucide-react'
+import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil } from 'lucide-react'
 import type { Deliverable } from '../../types'
 import type { SelectedElement } from './VisualEditToolbar'
 import UnsplashModal from './UnsplashModal'
-import CodeWorkspace from './CodeWorkspace'
 
 interface WorkspacePanelProps {
   deliverable: Deliverable
@@ -23,7 +22,6 @@ const typeConfig: Record<Deliverable['type'], { icon: ReactNode; label: string; 
   design: { icon: <Palette size={18} />, label: 'Diseno', color: 'text-purple-500 bg-purple-500/10' },
   copy: { icon: <MessageSquare size={18} />, label: 'Copy', color: 'text-amber-500 bg-amber-500/10' },
   video: { icon: <Film size={18} />, label: 'Video', color: 'text-rose-500 bg-rose-500/10' },
-  project: { icon: <Boxes size={18} />, label: 'Proyecto', color: 'text-cyan-500 bg-cyan-500/10' },
 }
 
 const isHtmlContent = (content: string): boolean => {
@@ -31,22 +29,7 @@ const isHtmlContent = (content: string): boolean => {
   return t.startsWith('<!doctype') || t.startsWith('<html') || t.startsWith('<!') || t.includes('<body')
 }
 
-const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChange, onElementSelected, onSwitchToEditTab, onAutoFix, isFixing, conversationId }: WorkspacePanelProps) => {
-  // Route to CodeWorkspace for project deliverables with artifact
-  if (deliverable.type === 'project' && deliverable.artifact) {
-    return (
-      <CodeWorkspace
-        artifact={deliverable.artifact}
-        htmlContent={deliverable.content}
-        onClose={onClose}
-        onAutoFix={onAutoFix}
-        isFixing={isFixing}
-        deliverableId={deliverable.id}
-        conversationId={conversationId}
-      />
-    )
-  }
-
+const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChange, onElementSelected, onSwitchToEditTab }: WorkspacePanelProps) => {
   const config = typeConfig[deliverable.type]
   const canPreview = isHtmlContent(deliverable.content)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>(canPreview ? 'preview' : 'code')

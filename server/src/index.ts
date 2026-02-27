@@ -14,7 +14,6 @@ import organizationRouter from './routes/organization.js'
 import unsplashRouter from './routes/unsplash.js'
 import seniorRouter from './routes/senior.js'
 import deployRouter from './routes/deploy.js'
-import githubRouter from './routes/github.js'
 import portfolioRouter from './routes/portfolio.js'
 import { errorHandler } from './middleware/errors.js'
 import { getDeployDir } from './services/deploy.js'
@@ -57,7 +56,6 @@ app.use('/api/organization', organizationRouter)
 app.use('/api/unsplash', unsplashRouter)
 app.use('/api/senior', seniorRouter)
 app.use('/api/deploy', deployRouter)
-app.use('/api/github', githubRouter)
 app.use('/api/portfolio', portfolioRouter)
 
 // Serve deployed projects as static files

@@ -8,6 +8,10 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3002',

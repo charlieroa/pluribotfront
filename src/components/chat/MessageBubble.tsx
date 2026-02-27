@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Check, X, FileText, ExternalLink, KanbanSquare, Play, ChevronRight, Pencil, Layers, UserCircle, Code2, Globe, Lightbulb, Zap } from 'lucide-react'
+import { Check, X, FileText, ExternalLink, KanbanSquare, Play, ChevronRight, Pencil, Layers, UserCircle, Globe, Lightbulb, Zap } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useAuth } from '../../contexts/AuthContext'
 import type { Agent, Message, Deliverable, PlanStep } from '../../types'
@@ -534,18 +534,6 @@ export const StepApprovalCard = ({ step, onApproveStep, onRequestHuman, humanReq
             <p className="text-[10px] font-medium text-ink-faint uppercase tracking-wider flex items-center gap-1.5">
               <Lightbulb size={10} /> Tambien puedes
             </p>
-            <button
-              onClick={() => onApproveStep(step.conversationId, true)}
-              className="w-full flex items-center gap-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-left hover:bg-amber-100 transition-colors group"
-            >
-              <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
-                <Code2 size={16} className="text-amber-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-amber-800">Agregar logica con Logic</p>
-                <p className="text-[10px] text-amber-600">Backend, base de datos, formularios, autenticacion</p>
-              </div>
-            </button>
             <div
               className="w-full flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-left opacity-60"
             >

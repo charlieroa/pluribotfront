@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
-import type { Message, KanbanTask, Deliverable, PlanStep, ProjectArtifact, ArtifactFile } from '../types'
+import type { Message, KanbanTask, Deliverable, PlanStep } from '../types'
 import { initialTasks } from '../data/initialTasks'
 
 const API_BASE = '/api'
@@ -60,13 +60,20 @@ export interface ConversationItem {
   lastMessage?: string
 }
 
+export interface LogicProject {
+  templateId: string
+  description: string
+  files: Record<string, string>
+}
+
 interface UseChatOptions {
   onDeliverable?: (d: Deliverable) => void
+  onLogicProject?: (project: LogicProject) => void
   isAuthenticated?: boolean
   onCreditUpdate?: (balance: number) => void
 }
 
-export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate }: UseChatOptions = {}) {
+export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false, onCreditUpdate }: UseChatOptions = {}) {
   const [isCoordinating, setIsCoordinating] = useState(false)
   const [creditsExhausted, setCreditsExhausted] = useState(false)
   const [showWelcome, setShowWelcome] = useState(true)
@@ -87,7 +94,6 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null>(null)
   const [humanRequested, setHumanRequested] = useState(false)
-  const [buildingArtifact, setBuildingArtifact] = useState<ProjectArtifact | null>(null)
   const latestDeliverableRef = useRef<Deliverable | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -123,7 +129,7 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
       setAssignedHumanAgent(null)
       setHumanRequested(false)
       setCreditsExhausted(false)
-      setBuildingArtifact(null)
+
       setKanbanTasks([])
       setConversations([])
     }
@@ -196,36 +202,6 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
               setStreamingText(prev => prev + data.content)
               break
 
-            case 'artifact_start':
-              // Artifact block detected — clear chat text and initialize empty artifact to open workspace immediately
-              setStreamingText('')
-              setBuildingArtifact(prev => prev ?? { id: `building-${Date.now()}`, title: 'Proyecto', files: [] })
-              break
-
-            case 'file_update':
-              // Clear streaming text - workspace is now showing the files
-              setStreamingText('')
-              // Progressive file streaming from project agents (supports partial + complete)
-              setBuildingArtifact(prev => {
-                const newFile: ArtifactFile = {
-                  filePath: data.filePath,
-                  content: data.content,
-                  language: data.language,
-                }
-                if (!prev) {
-                  return { id: `building-${Date.now()}`, title: 'Proyecto', files: [newFile] }
-                }
-                const existingIdx = prev.files.findIndex(f => f.filePath === data.filePath)
-                const files = [...prev.files]
-                if (existingIdx !== -1) {
-                  files[existingIdx] = newFile // Update content (partial or complete)
-                } else {
-                  files.push(newFile)
-                }
-                return { ...prev, files }
-              })
-              break
-
             case 'agent_end': {
               const pendingDeliverable = latestDeliverableRef.current
               latestDeliverableRef.current = null
@@ -264,7 +240,6 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
               setStreamingText('')
               setStreamingAgent(null)
               setThinkingSteps([])
-              setBuildingArtifact(null) // Clear building artifact when agent finishes
               // Mark instance as done
               setActiveAgents(prev =>
                 prev.map(a => a.instanceId === key ? { ...a, status: 'done' as const } : a)
@@ -333,6 +308,14 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
               setPendingStepApproval(null)
               setThinkingSteps([])
               setCoordinationAgents([])
+              break
+
+            case 'logic_project':
+              onLogicProject?.({
+                templateId: data.templateId,
+                description: data.description,
+                files: data.files,
+              })
               break
 
             case 'deliverable':
@@ -439,7 +422,7 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
         }
       }, 2000)
     })
-  }, [onDeliverable])
+  }, [onDeliverable, onLogicProject])
 
   // Cleanup SSE on unmount
   useEffect(() => {
@@ -465,7 +448,6 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     setStreamingText('')
     setThinkingSteps([])
     setActiveAgents(prev => prev.map(a => ({ ...a, status: 'done' as const })))
-    setBuildingArtifact(null)
   }
 
   const resetChat = () => {
@@ -489,7 +471,6 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     setAssignedHumanAgent(null)
     setHumanRequested(false)
     setCreditsExhausted(false)
-    setBuildingArtifact(null)
     fetchConversations()
   }
 
@@ -711,7 +692,7 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
   }
 
   // Refine mode: user can chat with visual agent during step approval
-  const isRefineMode = !!(pendingStepApproval && ['brand', 'web', 'social', 'dev', 'video'].includes(pendingStepApproval.agentId))
+  const isRefineMode = !!(pendingStepApproval && ['brand', 'web', 'social', 'video', 'logic'].includes(pendingStepApproval.agentId))
 
   const handleSendMessage = async (e: FormEvent, imageFile?: File) => {
     e.preventDefault()
@@ -841,13 +822,7 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     if (!conversationId) return
 
     // Determine instanceId: from pendingStepApproval, or last completed dev step
-    let instanceId = pendingStepApproval?.instanceId
-    if (!instanceId) {
-      const lastDevStep = [...activeAgents].reverse().find(a =>
-        a.agentId === 'dev' && (a.status === 'done' || a.status === 'working')
-      )
-      instanceId = lastDevStep?.instanceId
-    }
+    const instanceId = pendingStepApproval?.instanceId
 
     if (pendingStepApproval) {
       setPendingStepApproval(null) // Hide step card while refining
@@ -900,7 +875,6 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     requestHumanAssistance,
     humanRequested,
     creditsExhausted,
-    buildingArtifact,
     sendRefineMessage,
     handleAbort,
   }
@@ -913,8 +887,8 @@ function getAgentDisplayName(agentId: string): string {
     web: 'Pixel',
     social: 'Spark',
     ads: 'Metric',
-    dev: 'Logic',
     video: 'Reel',
+    logic: 'Logic',
     base: 'Pluria',
   }
   return names[agentId] ?? agentId

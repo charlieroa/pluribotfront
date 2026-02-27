@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { MessageCircle, Pencil, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import type { AdminTab } from './components/admin/AdminDashboard'
 import { agents } from './data/agents'
 import { quickActions } from './data/quickActions'
-import { useChat } from './hooks/useChat'
+import { useChat, type LogicProject } from './hooks/useChat'
 import { useSpecialists } from './hooks/useSpecialists'
 import { useAuth } from './contexts/AuthContext'
 import type { Deliverable } from './types'
@@ -16,10 +16,10 @@ import MarketplaceView from './components/marketplace/MarketplaceView'
 import PortfolioView from './components/portfolio/PortfolioView'
 import WorkspacePanel from './components/workspace/WorkspacePanel'
 import EditPanel from './components/workspace/EditPanel'
+import LogicWorkspace from './components/workspace/ide/LogicWorkspace'
 import OnboardingView from './components/onboarding/OnboardingView'
 import AdminDashboard from './components/admin/AdminDashboard'
 import type { SelectedElement } from './components/workspace/VisualEditToolbar'
-import { clientBundleToHtml } from './utils/clientBundle'
 
 const App = () => {
   const { user, updateCreditBalance } = useAuth()
@@ -27,6 +27,7 @@ const App = () => {
   const showOnboarding = isAuthenticated && !user.onboardingDone
 
   const [activeTab, setActiveTab] = useState('chat')
+  const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
   const [adminSubTab, setAdminSubTab] = useState<AdminTab>('users')
   const [activeDeliverable, setActiveDeliverable] = useState<Deliverable | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -38,6 +39,11 @@ const App = () => {
   const [editMode, setEditMode] = useState(false)
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null)
 
+  // Logic IDE state
+  const [logicFiles, setLogicFiles] = useState<Record<string, string> | null>(null)
+  const activeTemplateRef = useRef(activeTemplate)
+  activeTemplateRef.current = activeTemplate
+
   const handleDeliverable = (d: Deliverable) => {
     setActiveDeliverable(d)
     setSidebarCollapsed(true)
@@ -45,44 +51,19 @@ const App = () => {
     setChatPanelVisible(window.innerWidth >= 768)
   }
 
-  const chat = useChat({ onDeliverable: handleDeliverable, isAuthenticated, onCreditUpdate: updateCreditBalance })
+  const handleLogicProject = useCallback((project: LogicProject) => {
+    // If IDE not open, open it with the template
+    if (!activeTemplateRef.current) {
+      setActiveTemplate(project.templateId || 'blank')
+    }
+    // Set the files for LogicWorkspace to write into WebContainer
+    setLogicFiles(project.files)
+  }, [])
+
+  const chat = useChat({ onDeliverable: handleDeliverable, onLogicProject: handleLogicProject, isAuthenticated, onCreditUpdate: updateCreditBalance })
   const { specialists } = useSpecialists()
 
-  // Show CodeWorkspace progressively while Logic streams files (including 0 files = just started)
-  const isLogicStreaming = chat.streamingAgent === 'dev' && chat.buildingArtifact !== null
-
-  // Client-side progressive preview: generate HTML from streaming files
-  const deferredArtifact = useDeferredValue(chat.buildingArtifact)
-  const streamingPreviewHtml = useMemo(() => {
-    if (!isLogicStreaming || !deferredArtifact) return ''
-    return clientBundleToHtml(deferredArtifact)
-  }, [isLogicStreaming, deferredArtifact])
-
-  const streamingDeliverable = useMemo<Deliverable | null>(() => {
-    if (!isLogicStreaming || !chat.buildingArtifact) return null
-    return {
-      id: 'building',
-      title: `Logic: Construyendo proyecto...`,
-      type: 'project',
-      content: streamingPreviewHtml,
-      agent: 'Logic',
-      botType: 'dev',
-      artifact: chat.buildingArtifact,
-    }
-  }, [isLogicStreaming, chat.buildingArtifact, streamingPreviewHtml])
-
-  // Auto-show workspace when Logic starts streaming files
-  useEffect(() => {
-    if (streamingDeliverable && !activeDeliverable) {
-      setActiveDeliverable(streamingDeliverable)
-      setSidebarCollapsed(true)
-    }
-  }, [streamingDeliverable]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Keep streaming deliverable updated while building
-  const displayDeliverable = (activeDeliverable?.id === 'building' && streamingDeliverable)
-    ? streamingDeliverable
-    : activeDeliverable
+  const displayDeliverable = activeDeliverable
 
   // Auto-collapse chat on mobile when a deliverable is active
   useEffect(() => {
@@ -131,15 +112,9 @@ const App = () => {
     setActiveTab('chat')
   }
 
-  // Auto-fix: send error message to Logic for correction
-  const handleAutoFix = useCallback((errorMessage: string) => {
-    if (chat.isRefineMode && chat.pendingStepApproval) {
-      chat.sendRefineMessage(errorMessage)
-    } else if (activeDeliverable?.botType === 'dev' && chat.conversationId) {
-      // Send as a refinement message even outside refine mode
-      chat.sendRefineMessage(errorMessage)
-    }
-  }, [chat.isRefineMode, chat.pendingStepApproval, chat.sendRefineMessage, activeDeliverable?.botType, chat.conversationId])
+  const handleAutoFix = useCallback((_errorMessage: string) => {
+    // No-op: auto-fix was used for Logic dev agent
+  }, [])
 
   const chatViewProps = {
     messages: chat.messages,
@@ -176,8 +151,8 @@ const App = () => {
     onUpgrade: () => setActiveTab('settings'),
     disabledProviders,
     onAbort: chat.handleAbort,
-    buildingArtifact: chat.buildingArtifact,
     activeAgents: chat.activeAgents,
+    onLoadTemplate: (id: string) => setActiveTemplate(id),
   }
 
   return (
@@ -222,7 +197,19 @@ const App = () => {
           <Header isCoordinating={chat.isCoordinating} activeTab={activeTab} onMobileMenuToggle={() => setMobileMenuOpen(prev => !prev)} setActiveTab={handleSetActiveTab} />
 
           <div className="flex-1 flex overflow-hidden relative">
-            {displayDeliverable ? (
+            {activeTemplate ? (
+              <>
+                {/* Chat panel alongside IDE */}
+                <div className="w-[320px] flex-shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden hidden md:flex">
+                  <ChatView {...chatViewProps} />
+                </div>
+                <LogicWorkspace
+                  templateId={activeTemplate}
+                  onClose={() => { setActiveTemplate(null); setLogicFiles(null) }}
+                  logicFiles={logicFiles}
+                />
+              </>
+            ) : displayDeliverable ? (
               <>
                 {/* Chat side panel — collapsible, overlay on mobile */}
                 {chatPanelVisible && (

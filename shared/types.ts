@@ -22,26 +22,10 @@ export interface MessageAttachmentWire {
 export interface DeliverableWire {
   id: string
   title: string
-  type: 'report' | 'code' | 'design' | 'copy' | 'video' | 'project'
+  type: 'report' | 'code' | 'design' | 'copy' | 'video'
   content: string
   agent: string
   botType: string
-  artifact?: ProjectArtifact
-}
-
-// ─── Project Artifact types (Logic app builder) ───
-
-export interface ProjectArtifact {
-  id: string
-  title: string
-  files: ArtifactFile[]
-  shellCommands?: string[]
-}
-
-export interface ArtifactFile {
-  filePath: string
-  content: string
-  language: string
 }
 
 export interface KanbanTaskWire {
@@ -72,8 +56,6 @@ export type SSEEvent =
   | { type: 'agent_thinking'; agentId: string; agentName: string; step: string; instanceId?: string }
   | { type: 'token'; content: string; agentId: string; instanceId?: string }
   | { type: 'agent_end'; agentId: string; messageId: string; fullText: string; instanceId?: string; creditsCost?: number; model?: string; inputTokens?: number; outputTokens?: number }
-  | { type: 'artifact_start'; agentId: string; instanceId?: string }
-  | { type: 'file_update'; filePath: string; content: string; language: string; partial?: boolean; instanceId?: string }
   | { type: 'credits_exhausted'; balance: number; planId: string }
   | { type: 'credit_update'; creditsUsed: number; balance: number }
   | { type: 'approval_request'; messageId: string; text: string; agentId: string }
@@ -89,6 +71,7 @@ export type SSEEvent =
   | { type: 'human_message'; agentName: string; agentRole: string; text: string; messageId: string; specialty?: string; specialtyColor?: string; avatarUrl?: string }
   | { type: 'human_agent_left' }
   | { type: 'thinking_update'; agentId: string; instanceId?: string; content: string }
+  | { type: 'logic_project'; templateId: string; description: string; files: Record<string, string> }
   | { type: 'error'; message: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
 
