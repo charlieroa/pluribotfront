@@ -729,6 +729,79 @@ Antes de eliminar, SIEMPRE muestra ConfirmDialog. Flujo correcto:
   // En el return:
   <ConfirmDialog open={deleteId !== null} onClose={() => setDeleteId(null)} onConfirm={() => { handleDelete(deleteId!); setDeleteId(null) }} title="Eliminar elemento" message="Esta accion no se puede deshacer." confirmLabel="Eliminar" />
 
+REGLA CRITICA DE FONDOS FLOTANTES:
+bg-card es SEMI-TRANSPARENTE en dark mode (rgba 4% opacidad). NUNCA lo uses para elementos flotantes/absolutos (dropdowns, menus, popovers, tooltips).
+Para CUALQUIER elemento con position absolute/fixed que flota sobre contenido, usa: bg-white dark:bg-slate-900
+Esto aplica a: DropdownMenu (ya lo tiene), modales, tooltips, menus custom, popovers, etc.
+Si creas CUALQUIER div con position absolute que muestra opciones, DEBE tener bg-white dark:bg-slate-900.
+
+═══════════════════════════════════════════
+COMPONENTES OBLIGATORIOS — NO REINVENTES
+═══════════════════════════════════════════
+
+PROHIBIDO crear versiones custom de estos componentes — IMPORTALOS de './components/ui':
+- Para menus de acciones (editar/eliminar): SIEMPRE import DropdownMenu from './components/ui/DropdownMenu' — NUNCA crees un dropdown custom con useState + div absolute.
+- Para drag and drop en kanban/todo: SIEMPRE import { DragDropContext, DroppableColumn, DraggableCard } from './components/ui/DragDrop' — NUNCA intentes implementar drag and drop desde cero.
+- Para modales: SIEMPRE import Modal from './components/ui/Modal' — NUNCA crees un modal custom.
+- Para busqueda: SIEMPRE import SearchInput from './components/ui/SearchInput' — NUNCA crees un input de busqueda custom.
+- Para confirmacion de borrado: SIEMPRE import ConfirmDialog from './components/ui/ConfirmDialog'.
+
+Si NO importas estos componentes y creas tus propias versiones, el resultado se ve MAL (fondos transparentes, sin animaciones, sin accesibilidad).
+
+═══════════════════════════════════════════
+KANBAN / TODO LIST — PATRON OBLIGATORIO
+═══════════════════════════════════════════
+
+Para CUALQUIER kanban, task manager, todo list, tablero de tareas, o sistema con columnas/cards arrastrables, DEBES usar este patron:
+
+import { DragDropContext, DroppableColumn, DraggableCard } from './components/ui/DragDrop'
+import DropdownMenu from './components/ui/DropdownMenu'
+import Badge from './components/ui/Badge'
+import Avatar from './components/ui/Avatar'
+import { MoreHorizontal, Edit3, Trash2 } from 'lucide-react'
+
+// Estado de columnas y drag handler:
+const handleDragEnd = (itemId: string, fromColumn: string, toColumn: string) => {
+  setTasks(prev => prev.map(t => t.id === Number(itemId) ? { ...t, status: toColumn } : t))
+  toast('Tarea movida', 'success')
+}
+
+// Layout de columnas (SIEMPRE envolver en DragDropContext):
+<DragDropContext onDragEnd={handleDragEnd}>
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {columns.map(col => (
+      <div key={col.id} className="rounded-2xl bg-card border border-border">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-foreground">{col.id}</h3>
+          <span className="text-[11px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{tasks.filter(t => t.status === col.id).length}</span>
+        </div>
+        <DroppableColumn columnId={col.id} className="px-3 pb-3 space-y-2.5">
+          {tasks.filter(t => t.status === col.id).map(task => (
+            <DraggableCard key={task.id} itemId={String(task.id)} columnId={col.id}>
+              <div className="group bg-card hover:bg-muted/50 border border-border hover:border-ring/20 rounded-xl p-3.5 transition-all">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h4 className="text-[13px] font-semibold text-foreground">{task.title}</h4>
+                  <DropdownMenu
+                    trigger={<button className="p-1 rounded-lg hover:bg-muted text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"><MoreHorizontal size={14} /></button>}
+                    items={[
+                      { label: 'Editar', icon: <Edit3 size={14} />, onClick: () => onEdit(task) },
+                      { label: 'Eliminar', icon: <Trash2 size={14} />, onClick: () => setDeleteId(task.id), destructive: true },
+                    ]}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2">{task.description}</p>
+                <Badge variant="default">{task.priority}</Badge>
+              </div>
+            </DraggableCard>
+          ))}
+        </DroppableColumn>
+      </div>
+    ))}
+  </div>
+</DragDropContext>
+
+SIN DragDropContext + DroppableColumn + DraggableCard, el drag and drop NO FUNCIONA. Son componentes HTML5 nativos ya incluidos en la libreria.
+
 ═══════════════════════════════════════════
 SNIPPETS RAPIDOS — COPIA Y ADAPTA
 ═══════════════════════════════════════════
@@ -941,6 +1014,10 @@ ERRORES FRECUENTES — EVITA ESTOS
 12. NUNCA elimines sin confirmacion — usa ConfirmDialog antes de borrar cualquier registro.
 13. SIEMPRE agrega transition-colors o transition-all a elementos interactivos (botones, cards, links).
 14. SIEMPRE usa "group" + "group-hover:" para revelar acciones en cards/filas (opacity-0 group-hover:opacity-100).
+15. NUNCA crees un dropdown/menu custom con useState + div absolute — SIEMPRE usa DropdownMenu de la libreria UI. Tu version casera se ve transparente y rota.
+16. NUNCA intentes implementar drag and drop desde cero — SIEMPRE usa DragDropContext + DroppableColumn + DraggableCard de la libreria UI. Sin estos componentes el arrastre NO FUNCIONA.
+17. NUNCA uses bg-card para elementos flotantes (dropdowns, popovers, tooltips) — usa bg-white dark:bg-slate-900 porque bg-card es transparente en dark mode.
+18. Para kanban/todo-list: SIEMPRE envuelve las columnas en DragDropContext, cada columna en DroppableColumn, y cada card en DraggableCard. Es OBLIGATORIO.
 
 ═══════════════════════════════════════════
 EJEMPLOS COMPLETOS DE OUTPUT ESPERADO
