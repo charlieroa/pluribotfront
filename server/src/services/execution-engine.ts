@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid'
 import { prisma } from '../db/client.js'
 import { broadcast } from './sse.js'
 import { getProvider } from './llm/router.js'
-import { getAgentConfig, VISUAL_AGENT_IDS, PROJECT_AGENT_IDS, REFINE_AGENT_IDS } from '../config/agents.js'
+import { getAgentConfig, VISUAL_AGENT_IDS, REFINE_AGENT_IDS } from '../config/agents.js'
 import { trackUsage } from './token-tracker.js'
 import { checkCredits, consumeCredits } from './credit-tracker.js'
 import {
@@ -11,138 +11,60 @@ import {
 } from './plan-cache.js'
 import type { LLMMessage, LLMUsage } from './llm/types.js'
 import { extractDesignContext, validateHtml, extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT } from './html-utils.js'
-import { parseArtifact, bundleToHtml } from './artifact-parser.js'
-import { ArtifactStreamer } from './artifact-streamer.js'
 import { readAndEncodeImage } from './image-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
-import type { ProjectArtifact } from '../../../shared/types.js'
 
-/**
- * Validate a project artifact for common syntax issues via regex heuristics.
- * Returns an array of error descriptions (empty = valid).
- */
-export function validateProjectArtifact(artifact: ProjectArtifact): string[] {
-  const errors: string[] = []
-  const warnings: string[] = []
+// Protected files that Logic must never overwrite (they belong to the template base)
+const LOGIC_PROTECTED_FILES = ['src/index.css', 'src/main.tsx']
+const LOGIC_PROTECTED_PREFIXES = ['src/components/ui/']
 
-  // ─── Structural checks (blocking) ───
-
-  // 1. App.tsx is required
-  const hasAppFile = artifact.files.some(f =>
-    f.filePath === 'src/App.tsx' || f.filePath === 'src/App.jsx' ||
-    f.filePath === 'src/App.ts' || f.filePath === 'src/App.js'
-  )
-  if (!hasAppFile) {
-    errors.push('Missing src/App.tsx — the entry point file is required')
+function stripProtectedFiles(files: Record<string, string>): Record<string, string> {
+  const cleaned: Record<string, string> = {}
+  for (const [path, content] of Object.entries(files)) {
+    if (LOGIC_PROTECTED_FILES.includes(path)) {
+      console.warn(`[Logic] Stripped protected file from output: ${path}`)
+      continue
+    }
+    if (LOGIC_PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix))) {
+      console.warn(`[Logic] Stripped protected file from output: ${path}`)
+      continue
+    }
+    cleaned[path] = content
   }
-
-  // 2. Default export in App.tsx
-  const appFile = artifact.files.find(f =>
-    /^src\/App\.(tsx?|jsx?)$/.test(f.filePath)
-  )
-  if (appFile && !appFile.content.includes('export default')) {
-    errors.push(`${appFile.filePath}: Missing 'export default' — App component must have a default export`)
+  if (!cleaned['src/App.tsx']) {
+    console.warn('[Logic] WARNING: output is missing src/App.tsx')
   }
+  return cleaned
+}
 
-  // Prohibited packages (no UMD builds available)
-  const PROHIBITED_PACKAGES = ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities', 'react-beautiful-dnd', '@tanstack/react-table']
-
-  for (const file of artifact.files) {
-    if (!/\.(tsx?|jsx?|ts|js)$/.test(file.filePath)) continue
-    const { content, filePath } = file
-
-    // Check unclosed braces/brackets
-    let braces = 0, brackets = 0, parens = 0
-    let inString = false, stringChar = ''
-    let inTemplate = false, inLineComment = false, inBlockComment = false
-
-    for (let i = 0; i < content.length; i++) {
-      const ch = content[i]
-      const prev = i > 0 ? content[i - 1] : ''
-
-      if (inLineComment) {
-        if (ch === '\n') inLineComment = false
-        continue
-      }
-      if (inBlockComment) {
-        if (ch === '/' && prev === '*') inBlockComment = false
-        continue
-      }
-      if (ch === '/' && content[i + 1] === '/') { inLineComment = true; continue }
-      if (ch === '/' && content[i + 1] === '*') { inBlockComment = true; continue }
-
-      if (inString) {
-        if (ch === stringChar && prev !== '\\') inString = false
-        continue
-      }
-      if (inTemplate) {
-        if (ch === '`' && prev !== '\\') inTemplate = false
-        continue
-      }
-
-      if (ch === '"' || ch === "'") { inString = true; stringChar = ch; continue }
-      if (ch === '`') { inTemplate = true; continue }
-
-      if (ch === '{') braces++
-      else if (ch === '}') braces--
-      else if (ch === '[') brackets++
-      else if (ch === ']') brackets--
-      else if (ch === '(') parens++
-      else if (ch === ')') parens--
+// Helper: robustly extract Logic agent JSON from LLM output
+function extractLogicJson(text: string): { templateId: string; description: string; files: Record<string, string> } {
+  // Try 1: code fence ```json ... ```
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()) } catch { /* try next */ }
+  }
+  // Try 2: raw JSON parse
+  try { return JSON.parse(text.trim()) } catch { /* try next */ }
+  // Try 3: find first { ... } block containing "templateId"
+  const braceStart = text.indexOf('{')
+  if (braceStart >= 0) {
+    let depth = 0
+    let end = -1
+    for (let i = braceStart; i < text.length; i++) {
+      if (text[i] === '{') depth++
+      else if (text[i] === '}') { depth--; if (depth === 0) { end = i; break } }
     }
-
-    if (braces !== 0) errors.push(`${filePath}: ${braces > 0 ? 'Unclosed' : 'Extra closing'} curly brace (off by ${Math.abs(braces)})`)
-    if (brackets !== 0) errors.push(`${filePath}: ${brackets > 0 ? 'Unclosed' : 'Extra closing'} bracket (off by ${Math.abs(brackets)})`)
-    if (parens !== 0) errors.push(`${filePath}: ${parens > 0 ? 'Unclosed' : 'Extra closing'} parenthesis (off by ${Math.abs(parens)})`)
-
-    // Check for imports referencing files not in the artifact
-    const relativeImports = content.matchAll(/import\s+.*?\s+from\s+['"](\.\/[^'"]+|\.\.\/[^'"]+)['"]/g)
-    for (const match of relativeImports) {
-      const importPath = match[1]
-      // Resolve the import to check if the file exists in the artifact
-      const dir = filePath.split('/').slice(0, -1).join('/')
-      let resolved = importPath.startsWith('./')
-        ? `${dir}/${importPath.slice(2)}`
-        : importPath.replace(/^\.\.\//, '')
-
-      const extensions = ['', '.tsx', '.ts', '.jsx', '.js', '/index.tsx', '/index.ts']
-      const found = extensions.some(ext =>
-        artifact.files.some(f => f.filePath === resolved + ext)
-      )
-      if (!found) {
-        errors.push(`${filePath}: Import '${importPath}' references a file not in the artifact`)
-      }
-    }
-
-    // ─── Quality checks (warnings, included in errors array for auto-fix) ───
-
-    // 3. BrowserRouter is prohibited (must use HashRouter or MemoryRouter)
-    if (/BrowserRouter/.test(content)) {
-      warnings.push(`${filePath}: Uses BrowserRouter — must use HashRouter or MemoryRouter for iframe preview`)
-    }
-
-    // 4. import.meta.env is prohibited (gets replaced but model shouldn't generate it)
-    if (/import\.meta\.env/.test(content)) {
-      warnings.push(`${filePath}: Uses import.meta.env — not available in CDN preview, use direct constants`)
-    }
-
-    // 5. Multi-line imports (break the CDN transform)
-    const multiLineImport = content.match(/^import\s+\{[^}]*\n[^}]*\}\s+from\s+/m)
-    if (multiLineImport) {
-      warnings.push(`${filePath}: Multi-line import detected — all imports must be on a single line`)
-    }
-
-    // 6. Prohibited packages (no UMD builds)
-    for (const pkg of PROHIBITED_PACKAGES) {
-      if (content.includes(`from '${pkg}'`) || content.includes(`from "${pkg}"`)) {
-        warnings.push(`${filePath}: Uses prohibited package '${pkg}' — not available in CDN preview`)
-      }
+    if (end > braceStart) {
+      const candidate = text.slice(braceStart, end + 1)
+      try {
+        const parsed = JSON.parse(candidate)
+        if (parsed.templateId || parsed.files) return parsed
+      } catch { /* fall through */ }
     }
   }
-
-  // Return errors first, then warnings (both trigger auto-fix)
-  return [...errors, ...warnings]
+  throw new Error('Could not extract valid JSON from Logic output')
 }
 
 // Helper: create a 'todo' kanban task for a plan step
@@ -432,14 +354,6 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         const depAgent = getAgentConfig(depStep.agentId)
         const depOutput = plan.agentOutputs[depInstanceId]
 
-        // When Pixel→Logic, prepend structured design context for better integration
-        if (['brand', 'web', 'social'].includes(depStep.agentId) && step.agentId === 'dev') {
-          const designContext = extractDesignContext(depOutput)
-          if (designContext) {
-            contextBlock += `\n\n--- Resumen de Diseno de ${depAgent?.name ?? 'Pixel'} [${depInstanceId}] ---\n${designContext}\n--- Fin resumen de diseno ---`
-          }
-        }
-
         contextBlock += `\n\n--- Contexto de ${depAgent?.name ?? depStep.agentId} (${depAgent?.role ?? 'agente'}) [${depInstanceId}] ---\n${depOutput}\n--- Fin contexto ---`
         broadcast(conversationId, {
           type: 'agent_thinking',
@@ -452,32 +366,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     }
   }
 
-  // Inject Supabase config for dev agents
-  let supabaseBlock = ''
-  if (agentConfig.id === 'dev') {
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { supabaseUrl: true, supabaseAnonKey: true },
-    })
-    if (conv?.supabaseUrl && conv?.supabaseAnonKey) {
-      supabaseBlock = `\n\nSUPABASE CONFIGURADO POR EL USUARIO:\nURL del proyecto: ${conv.supabaseUrl}\nAnon Key: ${conv.supabaseAnonKey}\nIMPORTANTE: Usa estas credenciales REALES en src/lib/supabase.ts. NO uses placeholders.`
-    }
-  }
-
-  // Inject quality preamble for Logic (dev) so the model always uses UI components and design system
-  let qualityPreamble = ''
-  if (agentConfig.id === 'dev') {
-    qualityPreamble = `\n\nRECORDATORIO DE CALIDAD:
-- Usa const { Button, Card, CardHeader, CardTitle, CardContent, Input, Badge, ... } = window.__UI para TODOS los componentes de interfaz.
-- Usa SIEMPRE tokens semanticos de Tailwind: bg-background, text-foreground, bg-primary, text-primary-foreground, bg-card, text-muted-foreground, border-border, bg-muted, bg-accent, bg-secondary.
-- NUNCA uses colores directos (bg-white, bg-gray-100, text-blue-500) — solo tokens semanticos.
-- Usa iconos de Lucide como Icons.Plus, Icons.Trash, Icons.Edit, Icons.Check, etc.
-- Para landing pages y portfolios, incluye animaciones GSAP + ScrollTrigger.
-- Incluye imagenes reales de Unsplash donde aplique.
-- El resultado debe verse profesional y pulido, no basico ni placeholder.`
-  }
-
-  const taskPrompt = `${step.task}${qualityPreamble}${contextBlock}${supabaseBlock}`
+  const taskPrompt = `${step.task}${contextBlock}`
 
   const history = await prisma.message.findMany({
     where: { conversationId },
@@ -511,10 +400,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
   })
 
   // Visual agents (Nova, Pixel, Spark, Reel) work silently — no token streaming
-  // Project agents (Logic) stream tokens AND emit file_update events
   const isVisualAgent = VISUAL_AGENT_IDS.includes(agentConfig.id)
-  const isProjectAgent = PROJECT_AGENT_IDS.includes(agentConfig.id)
-  const artifactStreamer = isProjectAgent ? new ArtifactStreamer() : null
 
   broadcast(conversationId, {
     type: 'agent_start',
@@ -550,20 +436,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
 
     await provider.streamWithTools(agentConfig.systemPrompt, messages, toolDefs, {
       onToken: (token) => {
-        const wasInsideArtifact = artifactStreamer?.isStreaming() ?? false
-        // Process artifact first so file_update events fire
-        if (artifactStreamer) {
-          const events = artifactStreamer.onToken(token)
-          for (const ev of events) {
-            if (ev.type === 'artifact_start') {
-              broadcast(conversationId, { type: 'artifact_start', agentId: agentConfig.id, instanceId: step.instanceId })
-            } else if (ev.type === 'file_update') {
-              broadcast(conversationId, { type: 'file_update', filePath: ev.filePath!, content: ev.content!, language: ev.language!, partial: ev.partial, instanceId: step.instanceId })
-            }
-          }
-        }
-        // Only send token to chat if not inside artifact
-        if (!isVisualAgent && !wasInsideArtifact && !(artifactStreamer?.isStreaming())) {
+        if (!isVisualAgent) {
           broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
         }
       },
@@ -597,20 +470,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
   } else {
     await provider.stream(agentConfig.systemPrompt, messages, {
       onToken: (token) => {
-        const wasInsideArtifact = artifactStreamer?.isStreaming() ?? false
-        // Process artifact first so file_update events fire
-        if (artifactStreamer) {
-          const events = artifactStreamer.onToken(token)
-          for (const ev of events) {
-            if (ev.type === 'artifact_start') {
-              broadcast(conversationId, { type: 'artifact_start', agentId: agentConfig.id, instanceId: step.instanceId })
-            } else if (ev.type === 'file_update') {
-              broadcast(conversationId, { type: 'file_update', filePath: ev.filePath!, content: ev.content!, language: ev.language!, partial: ev.partial, instanceId: step.instanceId })
-            }
-          }
-        }
-        // Only send token to chat if not inside artifact
-        if (!isVisualAgent && !wasInsideArtifact && !(artifactStreamer?.isStreaming())) {
+        if (!isVisualAgent) {
           broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
         }
       },
@@ -631,6 +491,79 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         broadcast(conversationId, { type: 'error', message: `Error en ${agentConfig.name}` })
       },
     })
+  }
+
+  // ─── Logic agent: parse JSON and broadcast logic_project ───
+  if (agentConfig.id === 'logic') {
+    try {
+      const logicData = extractLogicJson(agentFullText)
+      const { templateId, description } = logicData
+      const files = stripProtectedFiles(logicData.files || {})
+
+      broadcast(conversationId, {
+        type: 'logic_project',
+        templateId: templateId || 'blank',
+        description: description || '',
+        files,
+      })
+
+      // Save deliverable as code type
+      const deliverableId = uuid()
+      await prisma.deliverable.create({
+        data: {
+          id: deliverableId,
+          conversationId,
+          title: `Logic: ${description || step.task.slice(0, 60)}`,
+          type: 'code',
+          content: agentFullText,
+          agent: agentConfig.name,
+          botType: agentConfig.botType,
+          instanceId: step.instanceId,
+        },
+      })
+
+      // Update kanban
+      const kanbanTask = await prisma.kanbanTask.findFirst({
+        where: { conversationId, instanceId: step.instanceId },
+      })
+      if (kanbanTask) {
+        await prisma.kanbanTask.update({
+          where: { id: kanbanTask.id },
+          data: { deliverableId, status: 'done' },
+        })
+        broadcast(conversationId, {
+          type: 'kanban_update',
+          task: { id: kanbanTask.id, title: kanbanTask.title, agent: agentConfig.name, status: 'done' as const, botType: agentConfig.botType, deliverableId, instanceId: step.instanceId, createdAt: kanbanTask.createdAt.toISOString() },
+        })
+      }
+
+      // Save agent message
+      const agentMsg = await prisma.message.create({
+        data: {
+          id: uuid(),
+          conversationId,
+          sender: agentConfig.name,
+          text: `Logic genero un proyecto: ${description || 'Ver en el IDE'}`,
+          type: 'agent',
+          botType: agentConfig.botType,
+        },
+      })
+
+      broadcast(conversationId, {
+        type: 'agent_end',
+        agentId: agentConfig.id,
+        instanceId: step.instanceId,
+        messageId: agentMsg.id,
+        fullText: `Logic genero un proyecto: ${description || 'Ver en el IDE'}`,
+        model: agentModelConfig.model,
+        inputTokens: agentUsage.inputTokens,
+        outputTokens: agentUsage.outputTokens,
+        creditsCost: agentCreditsCost,
+      })
+      return
+    } catch (parseErr) {
+      console.error(`[Logic:${step.instanceId}] JSON parse error, falling back to normal flow:`, parseErr)
+    }
   }
 
   // Create deliverable
@@ -686,113 +619,19 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     }
   }
 
-  const deliverableTypeMap: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video' | 'project'> = {
+  const deliverableTypeMap: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
     seo: 'report',
     brand: 'design',
     web: 'design',
     social: 'design',
     ads: 'copy',
-    dev: 'project',
     video: 'video',
+    logic: 'code',
   }
-  let deliverableType = deliverableTypeMap[agentConfig.id] ?? 'report'
+  const deliverableType = deliverableTypeMap[agentConfig.id] ?? 'report'
   const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 60)}`
 
-  // Try to parse project artifact from Logic's output
-  let parsedArtifact = PROJECT_AGENT_IDS.includes(agentConfig.id) ? parseArtifact(agentFullText) : null
-  let deliverableContentRaw: string
-
-  // Auto-fix loop for project artifacts with validation errors
-  if (parsedArtifact && PROJECT_AGENT_IDS.includes(agentConfig.id)) {
-    const validationErrors = validateProjectArtifact(parsedArtifact)
-    if (validationErrors.length > 0) {
-      console.log(`[${agentConfig.name}:${step.instanceId}] Artifact validation errors: ${validationErrors.join(', ')}`)
-
-      const maxRetries = 2
-      let bestArtifact = parsedArtifact
-      let bestErrorCount = validationErrors.length
-      let currentErrors = validationErrors
-
-      for (let attempt = 1; attempt <= maxRetries && currentErrors.length > 0; attempt++) {
-        broadcast(conversationId, {
-          type: 'agent_thinking',
-          agentId: agentConfig.id,
-          agentName: agentConfig.name,
-          instanceId: step.instanceId,
-          step: `Auto-corrigiendo errores (intento ${attempt}/${maxRetries})...`,
-        })
-
-        const retryMessages: LLMMessage[] = [
-          ...messages,
-          { role: 'assistant' as const, content: agentFullText },
-          { role: 'user' as const, content: `Fix these errors in the artifact:\n\n${currentErrors.join('\n')}\n\nRegenerate the COMPLETE artifact with all files corrected.` },
-        ]
-
-        let retryText = ''
-        const retryStreamer = new ArtifactStreamer()
-        await provider.stream(agentConfig.systemPrompt, retryMessages, {
-          onToken: (token) => {
-            const events = retryStreamer.onToken(token)
-            for (const ev of events) {
-              if (ev.type === 'file_update') {
-                broadcast(conversationId, { type: 'file_update', filePath: ev.filePath!, content: ev.content!, language: ev.language!, partial: ev.partial, instanceId: step.instanceId })
-              }
-            }
-          },
-          onComplete: async (fullText, usage) => {
-            retryText = fullText
-            await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens)
-            const retryCreditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
-            agentCreditsCost += retryCreditResult.creditsUsed
-          },
-          onError: (err) => {
-            console.error(`[${agentConfig.name}:${step.instanceId}] Auto-fix retry error:`, err)
-          },
-        })
-
-        const retryArtifact = parseArtifact(retryText)
-        if (retryArtifact) {
-          const retryErrors = validateProjectArtifact(retryArtifact)
-          if (retryErrors.length < bestErrorCount) {
-            bestArtifact = retryArtifact
-            bestErrorCount = retryErrors.length
-            agentFullText = retryText
-            plan.agentOutputs[step.instanceId] = retryText
-            console.log(`[${agentConfig.name}:${step.instanceId}] Auto-fix improved: ${currentErrors.length} → ${retryErrors.length} errors`)
-          }
-          currentErrors = retryErrors
-        } else {
-          break // Retry didn't produce a valid artifact
-        }
-      }
-
-      parsedArtifact = bestArtifact
-    }
-  }
-
-  // Fetch Supabase config for placeholder replacement
-  let supabaseConfig: { url: string; anonKey: string } | undefined
-  {
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { supabaseUrl: true, supabaseAnonKey: true },
-    })
-    if (conv?.supabaseUrl && conv?.supabaseAnonKey) {
-      supabaseConfig = { url: conv.supabaseUrl, anonKey: conv.supabaseAnonKey }
-    }
-  }
-
-  if (parsedArtifact) {
-    // Project artifact found — bundle for preview
-    deliverableContentRaw = bundleToHtml(parsedArtifact, supabaseConfig)
-    deliverableType = 'project'
-    console.log(`[${agentConfig.name}:${step.instanceId}] Artifact parsed: ${parsedArtifact.files.length} files — ${parsedArtifact.files.map(f => `${f.filePath}(${f.content.length}ch)`).join(', ')}`)
-    console.log(`[${agentConfig.name}:${step.instanceId}] Bundled HTML size: ${deliverableContentRaw.length} chars, has __UI: ${deliverableContentRaw.includes('window.__UI')}, has designSystem: ${deliverableContentRaw.includes('--primary')}`)
-  } else {
-    deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
-    // If dev agent didn't produce an artifact, fall back to 'code' type
-    if (agentConfig.id === 'dev') deliverableType = 'code'
-  }
+  let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
 
   // Inject error-catching script and visual editor for visual agents
   if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
@@ -829,7 +668,6 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
       content: deliverable.content,
       agent: deliverable.agent,
       botType: deliverable.botType,
-      ...(parsedArtifact ? { artifact: parsedArtifact } : {}),
     },
   })
 
@@ -883,27 +721,17 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         content: deliverable.content,
         agent: deliverable.agent,
         botType: deliverable.botType,
-        ...(parsedArtifact ? { artifact: parsedArtifact } : {}),
       },
     },
   })
 
-  // For visual/project agents, save only the summary text
+  // For visual agents, save only the summary text
   let messageText = agentFullText
   if (isVisualAgent && htmlBlock) {
     const htmlIdx = agentFullText.indexOf('```html')
     messageText = htmlIdx > 0
       ? agentFullText.substring(0, htmlIdx).trim()
       : `${agentConfig.name} genero una propuesta visual. Ver en el canvas.`
-  } else if (parsedArtifact) {
-    // Project agent with artifact — show summary
-    const artifactIdx = agentFullText.indexOf('<logicArtifact')
-    messageText = artifactIdx > 0
-      ? agentFullText.substring(0, artifactIdx).trim()
-      : `${agentConfig.name} genero un proyecto con ${parsedArtifact.files.length} archivos. Ver en el workspace.`
-    if (!messageText) {
-      messageText = `${agentConfig.name} genero un proyecto con ${parsedArtifact.files.length} archivos. Ver en el workspace.`
-    }
   }
 
   const agentMsg = await prisma.message.create({

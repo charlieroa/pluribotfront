@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid'
 import { prisma } from '../db/client.js'
 import { broadcast } from './sse.js'
 import { getProvider } from './llm/router.js'
-import { getAgentConfig, VISUAL_AGENT_IDS, PROJECT_AGENT_IDS } from '../config/agents.js'
+import { getAgentConfig, VISUAL_AGENT_IDS } from '../config/agents.js'
 import { trackUsage } from './token-tracker.js'
 import { consumeCredits } from './credit-tracker.js'
 import { setExecutingPlan, type ExecutingPlan, type OrchestratorStep } from './plan-cache.js'
@@ -10,9 +10,55 @@ import type { LLMMessage, LLMUsage } from './llm/types.js'
 import { extractDesignContext, extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT } from './html-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
-import { parseArtifact, bundleToHtml } from './artifact-parser.js'
-import { mergeArtifacts, formatArtifactAsContext } from './artifact-merger.js'
-import { ArtifactStreamer } from './artifact-streamer.js'
+
+// Protected files that Logic must never overwrite (they belong to the template base)
+const LOGIC_PROTECTED_FILES = ['src/index.css', 'src/main.tsx']
+const LOGIC_PROTECTED_PREFIXES = ['src/components/ui/']
+
+function stripProtectedFiles(files: Record<string, string>): Record<string, string> {
+  const cleaned: Record<string, string> = {}
+  for (const [path, content] of Object.entries(files)) {
+    if (LOGIC_PROTECTED_FILES.includes(path)) {
+      console.warn(`[Logic] Stripped protected file from output: ${path}`)
+      continue
+    }
+    if (LOGIC_PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix))) {
+      console.warn(`[Logic] Stripped protected file from output: ${path}`)
+      continue
+    }
+    cleaned[path] = content
+  }
+  if (!cleaned['src/App.tsx']) {
+    console.warn('[Logic] WARNING: output is missing src/App.tsx')
+  }
+  return cleaned
+}
+
+// Helper: robustly extract Logic agent JSON from LLM output
+function extractLogicJson(text: string): { templateId: string; description: string; files: Record<string, string> } {
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()) } catch { /* try next */ }
+  }
+  try { return JSON.parse(text.trim()) } catch { /* try next */ }
+  const braceStart = text.indexOf('{')
+  if (braceStart >= 0) {
+    let depth = 0
+    let end = -1
+    for (let i = braceStart; i < text.length; i++) {
+      if (text[i] === '{') depth++
+      else if (text[i] === '}') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (end > braceStart) {
+      const candidate = text.slice(braceStart, end + 1)
+      try {
+        const parsed = JSON.parse(candidate)
+        if (parsed.templateId || parsed.files) return parsed
+      } catch { /* fall through */ }
+    }
+  }
+  throw new Error('Could not extract valid JSON from Logic output')
+}
 
 // Refine a completed step by re-running the agent with user feedback
 export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, userFeedback: string, userId: string): Promise<void> {
@@ -21,7 +67,6 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   if (!agentConfig) return
 
   const isVisualAgent = VISUAL_AGENT_IDS.includes(agentConfig.id)
-  const isProjectAgent = PROJECT_AGENT_IDS.includes(agentConfig.id)
 
   broadcast(conversationId, {
     type: 'agent_thinking',
@@ -40,14 +85,6 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
         const depAgent = getAgentConfig(depStep.agentId)
         const depOutput = plan.agentOutputs[depInstanceId]
 
-        // When Pixel→Logic, prepend structured design context for better integration
-        if (['brand', 'web', 'social'].includes(depStep.agentId) && step.agentId === 'dev') {
-          const designContext = extractDesignContext(depOutput)
-          if (designContext) {
-            contextBlock += `\n\n--- Resumen de Diseno de ${depAgent?.name ?? 'Pixel'} [${depInstanceId}] ---\n${designContext}\n--- Fin resumen de diseno ---`
-          }
-        }
-
         contextBlock += `\n\n--- Contexto de ${depAgent?.name ?? depStep.agentId} (${depAgent?.role ?? 'agente'}) ---\n${depOutput}\n--- Fin contexto ---`
       }
     }
@@ -55,35 +92,13 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   const previousOutput = plan.agentOutputs[step.instanceId] || ''
 
-  // For project agents, parse previous artifact and build smarter context
-  let previousArtifact = isProjectAgent ? parseArtifact(previousOutput) : null
-  // Inject Supabase config for dev agents
-  let supabaseBlock = ''
-  if (agentConfig.id === 'dev') {
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { supabaseUrl: true, supabaseAnonKey: true },
-    })
-    if (conv?.supabaseUrl && conv?.supabaseAnonKey) {
-      supabaseBlock = `\n\nSUPABASE CONFIGURADO POR EL USUARIO:\nURL del proyecto: ${conv.supabaseUrl}\nAnon Key: ${conv.supabaseAnonKey}\nIMPORTANTE: Usa estas credenciales REALES en src/lib/supabase.ts. NO uses placeholders.`
-    }
-  }
-
-  let refinePrompt: string
-
-  if (previousArtifact) {
-    // Project agent: pass structured artifact context and ask for partial updates
-    const artifactContext = formatArtifactAsContext(previousArtifact)
-    refinePrompt = `El cliente ha revisado tu proyecto y pide los siguientes cambios:\n\n${userFeedback}\n\nProyecto actual:\n${artifactContext}\n\nGenera un nuevo <logicArtifact> con SOLO los archivos que necesitan cambios. Los archivos que no cambien no los incluyas. Cada archivo incluido debe tener su contenido COMPLETO (no diffs parciales).`
-  } else {
-    refinePrompt = `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
-  }
+  const refinePrompt = `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
 
   // Build conversation: original task → previous output → refinement request
   const messages: LLMMessage[] = [
-    { role: 'user' as const, content: `${step.task}${contextBlock}${supabaseBlock}` },
+    { role: 'user' as const, content: `${step.task}${contextBlock}` },
     { role: 'assistant' as const, content: previousOutput },
-    { role: 'user' as const, content: `${refinePrompt}${supabaseBlock}` },
+    { role: 'user' as const, content: refinePrompt },
   ]
 
   const rawRefineConfig = modelOverride
@@ -104,24 +119,10 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   let agentUsage: LLMUsage = { inputTokens: 0, outputTokens: 0 }
   let refineCreditsCost = 0
 
-  // Set up artifact streamer for project agents
-  const artifactStreamer = isProjectAgent ? new ArtifactStreamer() : null
-
   const refineCallbacks = {
     onToken: (token: string) => {
       if (!isVisualAgent) {
         broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
-      }
-      // Stream file_update events for project agents
-      if (artifactStreamer) {
-        const events = artifactStreamer.onToken(token)
-        for (const ev of events) {
-          if (ev.type === 'artifact_start') {
-            broadcast(conversationId, { type: 'artifact_start', agentId: agentConfig.id, instanceId: step.instanceId })
-          } else if (ev.type === 'file_update') {
-            broadcast(conversationId, { type: 'file_update', filePath: ev.filePath!, content: ev.content!, language: ev.language!, partial: ev.partial, instanceId: step.instanceId })
-          }
-        }
       }
     },
     onThinking: (text: string) => {
@@ -165,41 +166,112 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   if (!agentFullText) return
 
-  // Parse artifact from refined output and merge with previous if available
-  let refinedArtifact = isProjectAgent ? parseArtifact(agentFullText) : null
-  if (refinedArtifact && previousArtifact) {
-    refinedArtifact = mergeArtifacts(previousArtifact, refinedArtifact)
-    console.log(`[${agentConfig.name}:${step.instanceId}] Artifact merged: ${refinedArtifact.files.length} files total`)
+  // ─── Logic agent: parse JSON and broadcast logic_project ───
+  if (agentConfig.id === 'logic') {
+    try {
+      const logicData = extractLogicJson(agentFullText)
+      const { templateId, description } = logicData
+      const files = stripProtectedFiles(logicData.files || {})
+
+      broadcast(conversationId, {
+        type: 'logic_project',
+        templateId: templateId || 'blank',
+        description: description || '',
+        files,
+      })
+
+      const deliverableId = uuid()
+      await prisma.deliverable.create({
+        data: {
+          id: deliverableId,
+          conversationId,
+          title: `Logic: ${description || step.task.slice(0, 50)} (refinado)`,
+          type: 'code',
+          content: agentFullText,
+          agent: agentConfig.name,
+          botType: agentConfig.botType,
+          instanceId: step.instanceId,
+        },
+      })
+
+      const agentMsg = await prisma.message.create({
+        data: {
+          id: uuid(),
+          conversationId,
+          sender: agentConfig.name,
+          text: `Logic actualizo el proyecto. Ver en el IDE.`,
+          type: 'agent',
+          botType: agentConfig.botType,
+        },
+      })
+
+      broadcast(conversationId, {
+        type: 'agent_end',
+        agentId: agentConfig.id,
+        instanceId: step.instanceId,
+        messageId: agentMsg.id,
+        fullText: `Logic actualizo el proyecto. Ver en el IDE.`,
+        model: agentModelConfig.model,
+        inputTokens: agentUsage.inputTokens,
+        outputTokens: agentUsage.outputTokens,
+        creditsCost: refineCreditsCost,
+      })
+
+      // Re-send step_complete for further refinements
+      await setExecutingPlan(conversationId, plan)
+      const nextGroupIndex = plan.currentGroupIndex + 1
+      const nextGroup = plan.executionGroups[nextGroupIndex]
+      const completedCount = plan.completedInstances.length
+      const totalCount = plan.steps.length
+
+      if (nextGroup) {
+        const nextSteps = nextGroup.instanceIds
+          .map(iid => plan.steps.find(s => s.instanceId === iid))
+          .filter((s): s is OrchestratorStep => !!s)
+        const firstNext = nextSteps[0]
+        const nextAgentConfig = firstNext ? getAgentConfig(firstNext.agentId) : null
+
+        broadcast(conversationId, {
+          type: 'step_complete',
+          agentId: agentConfig.id,
+          agentName: agentConfig.name,
+          instanceId: step.instanceId,
+          summary: 'Proyecto actualizado. Puedes seguir ajustando o continuar.',
+          nextAgentId: firstNext?.agentId,
+          nextAgentName: nextAgentConfig?.name ?? firstNext?.agentId,
+          nextInstanceId: firstNext?.instanceId,
+          nextTask: firstNext?.task,
+          stepIndex: completedCount - 1,
+          totalSteps: totalCount,
+          conversationId,
+        })
+      } else {
+        broadcast(conversationId, {
+          type: 'step_complete',
+          agentId: agentConfig.id,
+          agentName: agentConfig.name,
+          instanceId: step.instanceId,
+          summary: 'Proyecto actualizado. Puedes seguir ajustando o finalizar.',
+          stepIndex: completedCount - 1,
+          totalSteps: totalCount,
+          conversationId,
+        })
+      }
+      return
+    } catch (parseErr) {
+      console.error(`[Logic:${step.instanceId}] Refine JSON parse error, falling back:`, parseErr)
+    }
   }
 
   // Create new deliverable with refined content
   const htmlBlock = extractHtmlBlock(agentFullText)
-  const deliverableTypeMap: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video' | 'project'> = {
-    seo: 'report', brand: 'design', web: 'design', social: 'design', ads: 'copy', dev: 'project', video: 'video',
+  const deliverableTypeMap: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
+    seo: 'report', brand: 'design', web: 'design', social: 'design', ads: 'copy', video: 'video', logic: 'code',
   }
-  let deliverableType = deliverableTypeMap[agentConfig.id] ?? 'report'
+  const deliverableType = deliverableTypeMap[agentConfig.id] ?? 'report'
   const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 50)} (refinado)`
 
-  // Fetch Supabase config for placeholder replacement
-  let supabaseConfig: { url: string; anonKey: string } | undefined
-  {
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { supabaseUrl: true, supabaseAnonKey: true },
-    })
-    if (conv?.supabaseUrl && conv?.supabaseAnonKey) {
-      supabaseConfig = { url: conv.supabaseUrl, anonKey: conv.supabaseAnonKey }
-    }
-  }
-
-  let deliverableContentRaw: string
-  if (refinedArtifact) {
-    deliverableContentRaw = bundleToHtml(refinedArtifact, supabaseConfig)
-    deliverableType = 'project'
-  } else {
-    deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
-    if (agentConfig.id === 'dev') deliverableType = 'code'
-  }
+  let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
 
   // Inject error-catching script and visual editor for visual agents
   if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
@@ -236,7 +308,6 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
       content: deliverable.content,
       agent: deliverable.agent,
       botType: deliverable.botType,
-      ...(refinedArtifact ? { artifact: refinedArtifact } : {}),
     },
   })
 
@@ -244,14 +315,6 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   let messageText = agentFullText
   if (isVisualAgent && htmlBlock) {
     messageText = `${agentConfig.name} genero una version refinada. Ver en el canvas.`
-  } else if (refinedArtifact) {
-    const artifactIdx = agentFullText.indexOf('<logicArtifact')
-    messageText = artifactIdx > 0
-      ? agentFullText.substring(0, artifactIdx).trim()
-      : `${agentConfig.name} genero una version refinada con ${refinedArtifact.files.length} archivos. Ver en el workspace.`
-    if (!messageText) {
-      messageText = `${agentConfig.name} genero una version refinada con ${refinedArtifact.files.length} archivos. Ver en el workspace.`
-    }
   }
 
   const agentMsg = await prisma.message.create({
