@@ -2,11 +2,12 @@ import type { LLMProvider, LLMProviderConfig } from './types.js'
 import { AnthropicProvider } from './anthropic.js'
 import { OpenAIProvider } from './openai.js'
 import { GeminiProvider } from './gemini.js'
+import { DeepSeekProvider } from './deepseek.js'
 
 const providerCache = new Map<string, LLMProvider>()
 
 export function getProvider(config: LLMProviderConfig): LLMProvider {
-  const cacheKey = `${config.provider}:${config.model}:${config.apiKey ?? 'env'}:${config.maxTokens ?? 'default'}:${config.temperature ?? 'default'}:${config.budgetTokens ?? 0}`
+  const cacheKey = `${config.provider}:${config.model}:${config.apiKey ?? 'env'}:${config.maxTokens ?? 'default'}:${config.temperature ?? 'default'}:${config.budgetTokens ?? 0}:${config.jsonMode ?? false}`
 
   const cached = providerCache.get(cacheKey)
   if (cached) return cached
@@ -30,6 +31,12 @@ export function getProvider(config: LLMProviderConfig): LLMProvider {
       const apiKey = config.apiKey ?? process.env.GOOGLE_API_KEY
       if (!apiKey) throw new Error('GOOGLE_API_KEY not configured')
       provider = new GeminiProvider(apiKey, config.model, config.temperature)
+      break
+    }
+    case 'deepseek': {
+      const apiKey = config.apiKey ?? process.env.DEEPSEEK_API_KEY
+      if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured')
+      provider = new DeepSeekProvider(apiKey, config.model, config.maxTokens, config.temperature, config.jsonMode)
       break
     }
     default:

@@ -16,14 +16,14 @@ describe('topologicalSortGroups', () => {
   it('puts independent steps in a single group (parallel)', () => {
     const steps = [
       makeStep('seo', 'seo-1'),
-      makeStep('brand', 'brand-1'),
+      makeStep('web', 'web-1'),
       makeStep('ads', 'ads-1'),
     ]
     const groups = topologicalSortGroups(steps)
     expect(groups).toHaveLength(1)
     expect(groups[0].instanceIds).toHaveLength(3)
     expect(groups[0].instanceIds).toContain('seo-1')
-    expect(groups[0].instanceIds).toContain('brand-1')
+    expect(groups[0].instanceIds).toContain('web-1')
     expect(groups[0].instanceIds).toContain('ads-1')
   })
 
@@ -43,7 +43,7 @@ describe('topologicalSortGroups', () => {
     const steps = [
       makeStep('seo', 'a'),
       makeStep('web', 'b', ['a']),
-      makeStep('brand', 'c', ['a']),
+      makeStep('ads', 'c', ['a']),
       makeStep('dev', 'd', ['b', 'c']),
     ]
     const groups = topologicalSortGroups(steps)
@@ -85,10 +85,10 @@ describe('ensureSequentialVisualAgents', () => {
   it('splits multiple visual agents into separate groups', () => {
     const steps = [
       makeStep('web', 'web-1'),
-      makeStep('brand', 'brand-1'),
-      makeStep('social', 'social-1'),
+      makeStep('video', 'video-1'),
+      makeStep('logic', 'logic-1'),
     ]
-    const groups = [{ instanceIds: ['web-1', 'brand-1', 'social-1'] }]
+    const groups = [{ instanceIds: ['web-1', 'video-1', 'logic-1'] }]
     const result = ensureSequentialVisualAgents(groups, steps)
     // All are visual → should split: first visual in one group, rest separate
     expect(result.length).toBeGreaterThan(1)
@@ -98,13 +98,13 @@ describe('ensureSequentialVisualAgents', () => {
     const steps = [
       makeStep('seo', 'seo-1'),      // non-visual
       makeStep('web', 'web-1'),       // visual
-      makeStep('brand', 'brand-1'),   // visual
+      makeStep('video', 'video-1'),   // visual
     ]
-    const groups = [{ instanceIds: ['seo-1', 'web-1', 'brand-1'] }]
+    const groups = [{ instanceIds: ['seo-1', 'web-1', 'video-1'] }]
     const result = ensureSequentialVisualAgents(groups, steps)
     expect(result).toHaveLength(2)
     expect(result[0].instanceIds).toContain('seo-1')
     expect(result[0].instanceIds).toContain('web-1')
-    expect(result[1].instanceIds).toEqual(['brand-1'])
+    expect(result[1].instanceIds).toEqual(['video-1'])
   })
 })

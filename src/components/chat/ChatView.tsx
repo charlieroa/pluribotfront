@@ -45,13 +45,13 @@ interface ChatViewProps {
   onAbort?: () => void
   activeAgents?: ActiveAgent[]
   onLoadTemplate?: (templateId: string) => void
+  isRefining?: boolean
+  refiningAgentName?: string | null
 }
 
 const agentMeta: Record<string, { name: string; color: string }> = {
   seo: { name: 'Lupa', color: '#3b82f6' },
-  brand: { name: 'Nova', color: '#ec4899' },
   web: { name: 'Pixel', color: '#a855f7' },
-  social: { name: 'Spark', color: '#f97316' },
   ads: { name: 'Metric', color: '#10b981' },
   video: { name: 'Reel', color: '#ef4444' },
   logic: { name: 'Logic', color: '#6366f1' },
@@ -60,7 +60,7 @@ const agentMeta: Record<string, { name: string; color: string }> = {
   system: { name: 'Sistema', color: '#6b7280' },
 }
 
-const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate }: ChatViewProps) => (
+const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate, isRefining, refiningAgentName }: ChatViewProps) => (
   <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
     {/* Human agent banner */}
     {assignedHumanAgent && (() => {
@@ -177,6 +177,11 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         </div>
       )}
 
+      {/* Refining card — shows while agent refines without full coordination */}
+      {isRefining && !isCoordinating && !pendingStepApproval && !streamingAgent && (
+        <RefiningCard agentName={refiningAgentName || 'Logic'} thinkingSteps={thinkingSteps || []} />
+      )}
+
       {isCoordinating && !pendingStepApproval && (
         <WorkingCard
           agents={coordinationAgents || []}
@@ -218,6 +223,37 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
     />
   </div>
 )
+
+// Refining card — shows a spinner while a single agent refines
+const RefiningCard = ({ agentName, thinkingSteps }: { agentName: string; thinkingSteps: ThinkingStep[] }) => {
+  const agentId = Object.keys(agentMeta).find(k => agentMeta[k].name === agentName) || 'logic'
+  const color = agentMeta[agentId]?.color ?? '#6366f1'
+  const latestStep = thinkingSteps.length > 0 ? thinkingSteps[thinkingSteps.length - 1] : null
+
+  return (
+    <div className="flex gap-3 max-w-2xl">
+      <BotAvatar3D color={color} seed={agentName} isActive={true} size="sm" />
+      <div className="flex-1 min-w-0">
+        <div className="rounded-2xl rounded-tl-none border border-indigo-200 shadow-sm overflow-hidden bg-gradient-to-br from-indigo-50/80 to-purple-50/50">
+          <div className="px-4 py-3 flex items-center gap-2.5">
+            <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin flex-shrink-0" style={{ borderColor: color, borderTopColor: 'transparent' }} />
+            <span className="text-xs font-bold" style={{ color }}>{agentName} esta refinando...</span>
+            <div className="ml-auto flex gap-1">
+              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
+              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.15s]" />
+              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.3s]" />
+            </div>
+          </div>
+          {latestStep && (
+            <div className="px-4 pb-3">
+              <span className="text-[10px] text-ink-faint">{latestStep.step}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Working card — shows agents working with progress bar
 const WorkingCard = ({ agents, thinkingSteps, activeAgents }: { agents: CoordinationAgent[]; thinkingSteps: ThinkingStep[]; activeAgents: ActiveAgent[] }) => {
@@ -306,6 +342,11 @@ const WorkingCard = ({ agents, thinkingSteps, activeAgents }: { agents: Coordina
                         <span className={`text-[11px] font-semibold ${isDone ? 'line-through opacity-50' : ''}`} style={{ color }}>
                           {agent.agentName}
                         </span>
+                        {agent.model && (
+                          <span className="text-[9px] text-ink-faint bg-subtle px-1.5 py-0.5 rounded font-mono">
+                            {agent.model.replace('claude-', '').replace('-20250929', '').replace('-20251001', '')}
+                          </span>
+                        )}
                         {isWorking && lastThought && (
                           <span className="text-[10px] text-ink-faint truncate">{lastThought.step}</span>
                         )}

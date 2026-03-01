@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CreditCard, DollarSign, TrendingUp, Percent, BarChart3, Zap, Image, Video } from 'lucide-react'
+import { CreditCard, DollarSign, TrendingUp, Percent, BarChart3, Zap, Image, Video, AlertTriangle, Wallet, Plus } from 'lucide-react'
 
 interface BillingData {
   totalConsumed: number
@@ -18,6 +18,14 @@ interface BillingData {
   byOrganization: Array<{ id: string; name: string; consumed: number; balance: number; userCount: number }>
 }
 
+interface BudgetStatus {
+  budget: number
+  used: number
+  remaining: number
+  alert: boolean
+  setAt: string
+}
+
 interface CostsData {
   totalApiCost: number
   totalCreditsConsumed: number
@@ -27,20 +35,31 @@ interface CostsData {
   byProvider: Record<string, { cost: number; tokens: { input: number; output: number } }>
   byModel: Array<{ model: string; calls: number; cost: number; creditsCharged: number }>
   toolCosts: Record<string, { calls: number; cost: number }>
+  budgetStatus?: Record<string, BudgetStatus | null>
 }
 
 const agentNames: Record<string, string> = {
-  seo: 'Lupa', brand: 'Nova', web: 'Pixel', social: 'Spark', ads: 'Metric', dev: 'Logic', video: 'Reel', base: 'Pluria',
+  seo: 'Lupa', web: 'Pixel', ads: 'Metric', dev: 'Logic', video: 'Reel', base: 'Pluria',
 }
 const agentColors: Record<string, string> = {
-  seo: '#3b82f6', brand: '#ec4899', web: '#a855f7', social: '#f97316', ads: '#10b981', dev: '#f59e0b', video: '#ef4444', base: '#6366f1',
+  seo: '#3b82f6', web: '#a855f7', ads: '#10b981', dev: '#f59e0b', video: '#ef4444', base: '#6366f1',
 }
+
+const BUDGET_PROVIDERS = [
+  { key: 'anthropic', label: 'Anthropic (Claude)', color: '#d97706' },
+  { key: 'openai', label: 'OpenAI (GPT)', color: '#10b981' },
+  { key: 'google', label: 'Google (Gemini)', color: '#3b82f6' },
+  { key: 'midjourney', label: 'Midjourney', color: '#a855f7' },
+  { key: 'deepseek', label: 'DeepSeek (V3)', color: '#0ea5e9' },
+]
 
 const CreditsSection = () => {
   const [data, setData] = useState<BillingData | null>(null)
   const [costsData, setCostsData] = useState<CostsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>({})
+  const [savingBudget, setSavingBudget] = useState<string | null>(null)
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('pluribots_token')
@@ -54,11 +73,8 @@ const CreditsSection = () => {
         fetch('/api/admin/billing', { headers: getAuthHeaders() }),
         fetch('/api/admin/costs', { headers: getAuthHeaders() }),
       ])
-      console.log('[Admin] Billing response:', billingRes.status, '| Costs response:', costsRes.status)
       if (billingRes.ok) setData(await billingRes.json())
-      else console.warn('[Admin] Billing failed:', billingRes.status, billingRes.statusText)
       if (costsRes.ok) setCostsData(await costsRes.json())
-      else console.warn('[Admin] Costs failed:', costsRes.status, costsRes.statusText)
       if (!billingRes.ok && !costsRes.ok) {
         setError(`Error al cargar datos: Billing ${billingRes.status}, Costs ${costsRes.status}`)
       }
@@ -71,6 +87,25 @@ const CreditsSection = () => {
   }, [])
 
   useEffect(() => { fetchBilling() }, [fetchBilling])
+
+  const handleSetBudget = async (provider: string) => {
+    const value = parseFloat(budgetInputs[provider] || '0')
+    if (!value || value <= 0) return
+    setSavingBudget(provider)
+    try {
+      await fetch('/api/admin/budgets', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ provider, budget: value }),
+      })
+      setBudgetInputs(prev => ({ ...prev, [provider]: '' }))
+      await fetchBilling()
+    } catch (err) {
+      console.error('Error setting budget:', err)
+    } finally {
+      setSavingBudget(null)
+    }
+  }
 
   const fmt = (n: number) => n.toLocaleString('es-CO')
   const fmtUSD = (n: number) => `$${n.toFixed(2)}`
@@ -101,6 +136,7 @@ const CreditsSection = () => {
     anthropic: { label: 'Anthropic', color: '#d97706', bgColor: 'bg-amber-500' },
     openai: { label: 'OpenAI', color: '#10b981', bgColor: 'bg-emerald-500' },
     google: { label: 'Google', color: '#3b82f6', bgColor: 'bg-blue-500' },
+    deepseek: { label: 'DeepSeek', color: '#0ea5e9', bgColor: 'bg-sky-500' },
   }
 
   const toolDisplayNames: Record<string, { label: string; icon: typeof Image }> = {
@@ -112,13 +148,145 @@ const CreditsSection = () => {
     ? Object.values(costsData.byProvider).reduce((sum, p) => sum + p.cost, 0)
     : 0
 
+  // Check if any budget has alert
+  const hasAnyAlert = costsData?.budgetStatus
+    ? Object.values(costsData.budgetStatus).some(b => b?.alert)
+    : false
+
   return (
     <div className="max-w-5xl space-y-6">
+
+      {/* Budget Alerts Banner */}
+      {hasAnyAlert && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-red-600">Alerta de presupuesto bajo</p>
+            <p className="text-xs text-red-500/80 mt-1">
+              {Object.entries(costsData?.budgetStatus ?? {})
+                .filter(([, b]) => b?.alert)
+                .map(([key, b]) => {
+                  const label = BUDGET_PROVIDERS.find(p => p.key === key)?.label ?? key
+                  return `${label}: $${b!.remaining.toFixed(2)} restantes`
+                })
+                .join(' | ')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Provider Budgets */}
+      {costsData && (
+        <>
+          <div>
+            <h2 className="text-base font-bold text-ink mb-1 flex items-center gap-2">
+              <Wallet size={18} className="text-primary" />
+              Presupuesto por Proveedor
+            </h2>
+            <p className="text-xs text-ink-faint mb-4">Configura cuanto cargaste en cada API para medir el consumo</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {BUDGET_PROVIDERS.map(({ key, label, color }) => {
+              const budget = costsData.budgetStatus?.[key]
+              const isAlert = budget?.alert
+              const pctUsed = budget ? Math.min(100, (budget.used / budget.budget) * 100) : 0
+
+              return (
+                <div
+                  key={key}
+                  className={`bg-surface border rounded-xl p-4 ${isAlert ? 'border-red-500/50 ring-1 ring-red-500/20' : 'border-edge'}`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      {isAlert && <AlertTriangle size={14} className="text-red-500" />}
+                      <h4 className="text-sm font-bold text-ink">{label}</h4>
+                    </div>
+                    {budget && (
+                      <span className={`text-lg font-bold ${isAlert ? 'text-red-500' : 'text-emerald-500'}`}>
+                        {fmtUSD(budget.remaining)}
+                      </span>
+                    )}
+                  </div>
+
+                  {budget ? (
+                    <>
+                      {/* Progress bar */}
+                      <div className="w-full bg-subtle h-3 rounded-full overflow-hidden mb-3">
+                        <div
+                          className={`h-full rounded-full transition-all ${isAlert ? 'bg-red-500' : 'bg-emerald-500'}`}
+                          style={{ width: `${pctUsed}%` }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-[10px]">
+                        <div className="bg-subtle rounded-lg p-2 text-center">
+                          <p className="text-ink-faint uppercase font-bold">Cargado</p>
+                          <p className="text-ink font-bold mt-0.5" style={{ color }}>{fmtUSD(budget.budget)}</p>
+                        </div>
+                        <div className="bg-subtle rounded-lg p-2 text-center">
+                          <p className="text-ink-faint uppercase font-bold">Gastado</p>
+                          <p className="text-red-500 font-bold mt-0.5">{fmtUSD(budget.used)}</p>
+                        </div>
+                        <div className="bg-subtle rounded-lg p-2 text-center">
+                          <p className="text-ink-faint uppercase font-bold">Restante</p>
+                          <p className={`font-bold mt-0.5 ${isAlert ? 'text-red-500' : 'text-emerald-500'}`}>
+                            {fmtUSD(budget.remaining)}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Re-load button */}
+                      <div className="flex items-center gap-2 mt-3">
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          placeholder="Nueva recarga USD"
+                          className="flex-1 bg-subtle border border-edge rounded-lg px-3 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-primary"
+                          value={budgetInputs[key] || ''}
+                          onChange={e => setBudgetInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                        />
+                        <button
+                          onClick={() => handleSetBudget(key)}
+                          disabled={savingBudget === key}
+                          className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          {savingBudget === key ? '...' : 'Recargar'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* No budget set */
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        placeholder="USD cargados"
+                        className="flex-1 bg-subtle border border-edge rounded-lg px-3 py-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:ring-1 focus:ring-primary"
+                        value={budgetInputs[key] || ''}
+                        onChange={e => setBudgetInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                      />
+                      <button
+                        onClick={() => handleSetBudget(key)}
+                        disabled={savingBudget === key}
+                        className="flex items-center gap-1 px-3 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      >
+                        <Plus size={12} />
+                        {savingBudget === key ? '...' : 'Configurar'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* Costos y Rentabilidad */}
       {costsData && (
         <>
-          <div>
+          <div className="border-t border-edge pt-6">
             <h2 className="text-base font-bold text-ink mb-1 flex items-center gap-2">
               <BarChart3 size={18} className="text-primary" />
               Costos y Rentabilidad

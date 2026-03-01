@@ -72,7 +72,7 @@ router.post('/onboarding', async (req, res) => {
 
     // Create bot activations
     if (activeBots && activeBots.length > 0) {
-      const allBotIds = ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video']
+      const allBotIds = ['seo', 'web', 'ads', 'dev', 'video']
       for (const botId of allBotIds) {
         await prisma.userBot.upsert({
           where: { userId_botId: { userId, botId } },

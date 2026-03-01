@@ -19,20 +19,18 @@ const professions: Array<{ id: Profession; label: string; icon: React.ReactNode;
 ]
 
 const botSuggestions: Record<Profession, string[]> = {
-  designer: ['brand', 'web', 'social', 'video'],
-  marketing: ['seo', 'ads', 'social', 'web'],
+  designer: ['web', 'video'],
+  marketing: ['seo', 'ads', 'web'],
   developer: ['dev', 'seo'],
-  entrepreneur: ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video'],
-  other: ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video'],
+  entrepreneur: ['seo', 'web', 'ads', 'dev', 'video'],
+  other: ['seo', 'web', 'ads', 'dev', 'video'],
 }
 
 const allBots = [
   { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorías SEO, keywords y posicionamiento' },
-  { id: 'brand', name: 'Nova', role: 'Branding e Identidad', color: '#ec4899', desc: 'Logos, paletas de color y manual de marca' },
-  { id: 'web', name: 'Pixel', role: 'Diseñador Web', color: '#a855f7', desc: 'Landing pages y sitios web completos' },
-  { id: 'social', name: 'Spark', role: 'Contenido Social', color: '#f97316', desc: 'Banners, posts, flyers y stories' },
+  { id: 'web', name: 'Pixel', role: 'Diseñador Visual', color: '#a855f7', desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual' },
   { id: 'ads', name: 'Metric', role: 'Especialista en Publicidad', color: '#10b981', desc: 'Campañas Meta Ads y Google Ads' },
-  { id: 'dev', name: 'Logic', role: 'Desarrollador Full-Stack', color: '#f59e0b', desc: 'Páginas web funcionales y código' },
+  { id: 'dev', name: 'Logic', role: 'Full-Stack Web Builder', color: '#f59e0b', desc: 'Landings, apps, dashboards, blogs y todo lo web' },
   { id: 'video', name: 'Reel', role: 'Creador de video', color: '#ef4444', desc: 'Reels y videos con IA generativa' },
 ]
 

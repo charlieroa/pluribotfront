@@ -10,6 +10,7 @@ export interface ActiveAgent {
   instanceId: string
   task: string
   status: 'working' | 'waiting' | 'done'
+  model?: string
 }
 
 export interface ThinkingStep {
@@ -94,11 +95,15 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null>(null)
   const [humanRequested, setHumanRequested] = useState(false)
+  const [isRefining, setIsRefining] = useState(false)
+  const [refiningAgentName, setRefiningAgentName] = useState<string | null>(null)
   const [lastLogicInstanceId, setLastLogicInstanceId] = useState<string | null>(null)
   const latestDeliverableRef = useRef<Deliverable | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const sseReadyRef = useRef(false)
+  const sseRetryCountRef = useRef(0)
+  const sseConvIdRef = useRef<string | null>(null)
 
   const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   useEffect(() => scrollToBottom(), [messages, isCoordinating, streamingText])
@@ -121,6 +126,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
       setStreamingText('')
       setStreamingAgent(null)
       setIsCoordinating(false)
+      setIsRefining(false)
+      setRefiningAgentName(null)
       setCoordinationAgents([])
       setActiveAgents([])
       setProposedPlan(null)
@@ -162,6 +169,7 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
       }
 
       sseReadyRef.current = false
+      sseConvIdRef.current = convId
       const token = localStorage.getItem('pluribots_token')
       const url = `${API_BASE}/chat/${convId}/stream${token ? `?token=${token}` : ''}`
       const es = new EventSource(url)
@@ -176,6 +184,7 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
           switch (data.type) {
             case 'connected':
               sseReadyRef.current = true
+              sseRetryCountRef.current = 0
               resolve()
               break
 
@@ -193,9 +202,9 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
               setActiveAgents(prev => {
                 const existing = prev.find(a => a.instanceId === key)
                 if (existing) {
-                  return prev.map(a => a.instanceId === key ? { ...a, status: 'working' as const, task: data.task || a.task } : a)
+                  return prev.map(a => a.instanceId === key ? { ...a, status: 'working' as const, task: data.task || a.task, model: data.model } : a)
                 }
-                return [...prev, { agentId: data.agentId, agentName: data.agentName, instanceId: key, task: data.task || '', status: 'working' as const }]
+                return [...prev, { agentId: data.agentId, agentName: data.agentName, instanceId: key, task: data.task || '', status: 'working' as const, model: data.model }]
               })
               break
 
@@ -246,6 +255,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
               setStreamingText('')
               setStreamingAgent(null)
               setThinkingSteps([])
+              setIsRefining(false)
+              setRefiningAgentName(null)
               // Mark instance as done
               setActiveAgents(prev =>
                 prev.map(a => a.instanceId === key ? { ...a, status: 'done' as const } : a)
@@ -289,6 +300,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
               break
 
             case 'step_complete':
+              setIsRefining(false)
+              setRefiningAgentName(null)
               setPendingStepApproval({
                 agentId: data.agentId,
                 agentName: data.agentName,
@@ -311,6 +324,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
 
             case 'coordination_end':
               setIsCoordinating(false)
+              setIsRefining(false)
+              setRefiningAgentName(null)
               setPendingStepApproval(null)
               setThinkingSteps([])
               setCoordinationAgents([])
@@ -403,6 +418,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
             case 'error':
               console.error('[SSE] Error from server:', data.message)
               setIsCoordinating(false)
+              setIsRefining(false)
+              setRefiningAgentName(null)
               setCoordinationAgents([])
               setStreamingAgent(null)
               setStreamingText('')
@@ -414,13 +431,40 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
       }
 
       es.onerror = () => {
-        console.warn('[SSE] Connection error, will retry...')
+        console.warn('[SSE] Connection error')
         if (!sseReadyRef.current) {
+          // Initial connection failed — resolve promise so send can proceed
           setTimeout(resolve, 500)
+          return
         }
+        // Mid-stream disconnect — attempt reconnection with exponential backoff
+        const retries = sseRetryCountRef.current
+        if (retries >= 5) {
+          console.error('[SSE] Max retries reached, giving up')
+          setMessages(prev => [...prev, {
+            id: `sse-err-${Date.now()}`,
+            sender: 'Sistema',
+            text: 'Se perdio la conexion con el servidor. Recarga la pagina para continuar.',
+            type: 'agent',
+            botType: 'base',
+          }])
+          setIsCoordinating(false)
+          setStreamingAgent(null)
+          setStreamingText('')
+          return
+        }
+        const delay = Math.min(1000 * Math.pow(2, retries), 16000)
+        sseRetryCountRef.current = retries + 1
+        console.warn(`[SSE] Reconnecting in ${delay}ms (attempt ${retries + 1}/5)`)
+        es.close()
+        eventSourceRef.current = null
+        setTimeout(() => {
+          const convId = sseConvIdRef.current
+          if (convId) connectSSE(convId)
+        }, delay)
       }
 
-      // Safety timeout
+      // Safety timeout for initial connection
       setTimeout(() => {
         if (!sseReadyRef.current) {
           sseReadyRef.current = true
@@ -468,6 +512,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
     setStreamingText('')
     setStreamingAgent(null)
     setIsCoordinating(false)
+    setIsRefining(false)
+    setRefiningAgentName(null)
     setCoordinationAgents([])
     setActiveAgents([])
     setProposedPlan(null)
@@ -698,7 +744,7 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
   }
 
   // Refine mode: user can chat with visual agent during step approval
-  const isRefineMode = !!(pendingStepApproval && ['brand', 'web', 'social', 'video', 'logic'].includes(pendingStepApproval.agentId))
+  const isRefineMode = !!(pendingStepApproval && ['web', 'video', 'logic'].includes(pendingStepApproval.agentId))
 
   const handleSendMessage = async (e: FormEvent, imageFile?: File) => {
     e.preventDefault()
@@ -711,6 +757,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
 
       setMessages(prev => [...prev, { id: tempId, sender: 'Tu', text: msgText, type: 'user' }])
       setInputText('')
+      setIsRefining(true)
+      setRefiningAgentName(pendingStepApproval.agentName)
       setPendingStepApproval(null) // Hide step card while refining
 
       try {
@@ -830,6 +878,9 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
     // Determine instanceId: from pendingStepApproval, or last Logic agent run
     const instanceId = pendingStepApproval?.instanceId || lastLogicInstanceId
 
+    setIsRefining(true)
+    setRefiningAgentName(pendingStepApproval?.agentName || 'Logic')
+
     if (pendingStepApproval) {
       setPendingStepApproval(null) // Hide step card while refining
     }
@@ -881,6 +932,8 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
     requestHumanAssistance,
     humanRequested,
     creditsExhausted,
+    isRefining,
+    refiningAgentName,
     sendRefineMessage,
     handleAbort,
   }
@@ -889,9 +942,7 @@ export function useChat({ onDeliverable, onLogicProject, isAuthenticated = false
 function getAgentDisplayName(agentId: string): string {
   const names: Record<string, string> = {
     seo: 'Lupa',
-    brand: 'Nova',
     web: 'Pixel',
-    social: 'Spark',
     ads: 'Metric',
     video: 'Reel',
     logic: 'Logic',

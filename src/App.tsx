@@ -58,6 +58,8 @@ const App = () => {
     }
     // Set the files for LogicWorkspace to write into WebContainer
     setLogicFiles(project.files)
+    // Collapse sidebar like Pixel's canvas
+    setSidebarCollapsed(true)
   }, [])
 
   const chat = useChat({ onDeliverable: handleDeliverable, onLogicProject: handleLogicProject, isAuthenticated, onCreditUpdate: updateCreditBalance })
@@ -94,6 +96,13 @@ const App = () => {
   const handleNewChat = () => {
     chat.resetChat()
     setActiveDeliverable(null)
+    setActiveTemplate(null)
+    setLogicFiles(null)
+    setSidebarCollapsed(false)
+    setChatPanelVisible(true)
+    setEditMode(false)
+    setSelectedElement(null)
+    setSidePanelTab('chat')
     setActiveTab('chat')
   }
 
@@ -109,6 +118,10 @@ const App = () => {
   const handleLoadConversation = (convId: string) => {
     chat.loadConversation(convId)
     setActiveDeliverable(null)
+    setActiveTemplate(null)
+    setLogicFiles(null)
+    setSidebarCollapsed(false)
+    setChatPanelVisible(true)
     setActiveTab('chat')
   }
 
@@ -141,6 +154,8 @@ const App = () => {
     thinkingSteps: chat.thinkingSteps,
     coordinationAgents: chat.coordinationAgents,
     isRefineMode: chat.isRefineMode,
+    isRefining: chat.isRefining,
+    refiningAgentName: chat.refiningAgentName,
     onOpenMarketplace: () => setActiveTab('marketplace'),
     inactiveBotPrompt: chat.inactiveBotPrompt,
     onActivateBot: chat.handleActivateBot,
@@ -304,6 +319,7 @@ const App = () => {
                     onAutoFix={handleAutoFix}
                     isFixing={!!chat.streamingAgent}
                     conversationId={chat.conversationId ?? undefined}
+                    onSelectVersion={(d) => setActiveDeliverable(d as Deliverable)}
                   />
                 </div>
               </>

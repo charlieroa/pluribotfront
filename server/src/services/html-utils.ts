@@ -51,42 +51,98 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
   var selectedEl = null;
   var hoverEl = null;
   var overlay = null;
+  var undoStack = [];
+  var redoStack = [];
 
-  // Intercept link clicks: allow hash scroll, block real navigation
-  document.addEventListener('click', function(e) {
-    var target = e.target;
-    while (target && target !== document.body) {
-      if (target.tagName === 'A') {
-        var href = target.getAttribute('href') || '';
-        if (editMode) {
-          e.preventDefault();
-          e.stopPropagation();
-          selectElement(target);
-          return;
+  function saveState() {
+    undoStack.push(document.body.innerHTML);
+    redoStack = [];
+    if (undoStack.length > 50) undoStack.shift();
+    window.parent.postMessage({ type: 'undo-state', canUndo: undoStack.length > 0, canRedo: false }, '*');
+  }
+
+  function undo() {
+    if (undoStack.length === 0) return;
+    redoStack.push(document.body.innerHTML);
+    document.body.innerHTML = undoStack.pop();
+    selectedEl = null;
+    cleanup();
+    notifyContentUpdate();
+    window.parent.postMessage({ type: 'element-deselected' }, '*');
+    window.parent.postMessage({ type: 'undo-state', canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 }, '*');
+  }
+
+  function redo() {
+    if (redoStack.length === 0) return;
+    undoStack.push(document.body.innerHTML);
+    document.body.innerHTML = redoStack.pop();
+    selectedEl = null;
+    cleanup();
+    notifyContentUpdate();
+    window.parent.postMessage({ type: 'element-deselected' }, '*');
+    window.parent.postMessage({ type: 'undo-state', canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 }, '*');
+  }
+
+  // Find the deepest (most specific) visible element at a given point
+  function findDeepestElement(x, y) {
+    var el = document.elementFromPoint(x, y);
+    if (!el || el === overlay) return null;
+    var found = el;
+    while (true) {
+      var children = found.children;
+      var deeper = null;
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        if (child === overlay || child.tagName === 'SCRIPT') continue;
+        var r = child.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+          deeper = child;
         }
-        // Allow same-page hash links (scroll to section)
+      }
+      if (deeper) { found = deeper; } else { break; }
+    }
+    return found;
+  }
+
+  // Media elements that should always be selected over their wrappers
+  function isMediaElement(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === 'IMG' || tag === 'VIDEO' || tag === 'PICTURE' || tag === 'CANVAS' ||
+           tag === 'svg' || tag === 'SVG' || (el.closest && el.closest('svg'));
+  }
+
+  // Click handler: edit mode selects elements, normal mode handles links
+  document.addEventListener('click', function(e) {
+    if (editMode) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isMediaElement(e.target)) {
+        selectElement(e.target);
+        return;
+      }
+      var deep = findDeepestElement(e.clientX, e.clientY);
+      if (deep && deep !== overlay) {
+        selectElement(deep);
+      }
+      return;
+    }
+    var link = e.target;
+    while (link && link !== document.body) {
+      if (link.tagName === 'A') {
+        var href = link.getAttribute('href') || '';
         if (href.startsWith('#') && href.length > 1) {
           e.preventDefault();
-          var targetId = href.substring(1);
-          var section = document.getElementById(targetId);
+          var section = document.getElementById(href.substring(1));
           if (section) section.scrollIntoView({ behavior: 'smooth' });
           return;
         }
-        // Block all other navigation
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      target = target.parentElement;
-    }
-    // Edit mode: select any element
-    if (editMode) {
-      e.preventDefault();
-      e.stopPropagation();
-      var el = document.elementFromPoint(e.clientX, e.clientY);
-      if (el && el !== overlay) {
-        selectElement(el);
-      }
+      link = link.parentElement;
     }
   }, true);
 
@@ -94,8 +150,6 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
   document.addEventListener('submit', function(e) { e.preventDefault(); }, true);
 
   // Block programmatic navigation
-  var origAssign = window.location.assign;
-  var origReplace = window.location.replace;
   window.location.assign = function() {};
   window.location.replace = function() {};
   window.open = function() { return null; };
@@ -106,19 +160,86 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
       if (!editMode) cleanup();
     }
     if (e.data.type === 'replace-image' && selectedEl && selectedEl.tagName === 'IMG') {
+      saveState();
       selectedEl.src = e.data.url;
       selectedEl.alt = e.data.alt || '';
       notifyContentUpdate();
     }
     if (e.data.type === 'apply-style' && selectedEl) {
+      saveState();
       Object.assign(selectedEl.style, e.data.styles);
       notifyContentUpdate();
+    }
+    if (e.data.type === 'delete-element' && selectedEl) {
+      saveState();
+      selectedEl.remove();
+      selectedEl = null;
+      cleanup();
+      notifyContentUpdate();
+      window.parent.postMessage({ type: 'element-deselected' }, '*');
+    }
+    if (e.data.type === 'duplicate-element' && selectedEl) {
+      saveState();
+      var clone = selectedEl.cloneNode(true);
+      selectedEl.parentNode.insertBefore(clone, selectedEl.nextSibling);
+      selectElement(clone);
+      notifyContentUpdate();
+    }
+    if (e.data.type === 'move-element-up' && selectedEl) {
+      var prev = selectedEl.previousElementSibling;
+      if (prev && prev !== overlay) {
+        saveState();
+        selectedEl.parentNode.insertBefore(selectedEl, prev);
+        showOverlay(selectedEl);
+        notifyContentUpdate();
+      }
+    }
+    if (e.data.type === 'move-element-down' && selectedEl) {
+      var next = selectedEl.nextElementSibling;
+      if (next && next !== overlay) {
+        saveState();
+        selectedEl.parentNode.insertBefore(next, selectedEl);
+        showOverlay(selectedEl);
+        notifyContentUpdate();
+      }
+    }
+    if (e.data.type === 'hide-element' && selectedEl) {
+      saveState();
+      selectedEl.style.display = 'none';
+      selectedEl = null;
+      cleanup();
+      notifyContentUpdate();
+      window.parent.postMessage({ type: 'element-deselected' }, '*');
+    }
+    if (e.data.type === 'undo') { undo(); }
+    if (e.data.type === 'redo') { redo(); }
+  });
+
+  // Keyboard shortcuts inside iframe
+  document.addEventListener('keydown', function(e) {
+    if (!editMode) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      redo();
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEl && document.activeElement !== selectedEl) {
+      e.preventDefault();
+      saveState();
+      selectedEl.remove();
+      selectedEl = null;
+      cleanup();
+      notifyContentUpdate();
+      window.parent.postMessage({ type: 'element-deselected' }, '*');
     }
   });
 
   document.addEventListener('mousemove', function(e) {
     if (!editMode) return;
-    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var el = findDeepestElement(e.clientX, e.clientY);
     if (el && el !== hoverEl && el !== overlay) {
       hoverEl = el;
       showOverlay(el);
@@ -129,6 +250,7 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
     if (!editMode) return;
     var el = e.target;
     if (el.tagName === 'IMG' || el.tagName === 'SCRIPT') return;
+    saveState();
     el.contentEditable = 'true';
     el.focus();
     el.addEventListener('blur', function handler() {
@@ -142,11 +264,13 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
     selectedEl = el;
     showOverlay(el);
     var rect = el.getBoundingClientRect();
+    var isSvg = el.tagName === 'svg' || el.tagName === 'SVG' || (el.closest && el.closest('svg'));
     window.parent.postMessage({
       type: 'element-selected',
       tag: el.tagName.toLowerCase(),
       text: el.textContent ? el.textContent.substring(0, 100) : '',
       isImage: el.tagName === 'IMG',
+      isSvg: !!isSvg,
       imageSrc: el.tagName === 'IMG' ? el.src : null,
       rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
       classes: el.className || ''

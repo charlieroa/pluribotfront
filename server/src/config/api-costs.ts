@@ -9,6 +9,7 @@ export const apiCostsPerMillionTokens: Record<string, { input: number; output: n
   'gpt-4o-mini':                   { input: 0.15,  output: 0.60   },
   'gemini-2.5-pro':                { input: 1.25,  output: 10.00  },
   'gemini-2.5-flash':              { input: 0.30,  output: 2.50   },
+  'deepseek-chat':                 { input: 0.27,  output: 1.10   },
 }
 
 // Real API costs in USD per tool call
@@ -22,10 +23,11 @@ export const toolApiCosts: Record<string, number> = {
 }
 
 // Map model name prefix to provider
-export function getProviderForModel(model: string): 'anthropic' | 'openai' | 'google' {
+export function getProviderForModel(model: string): 'anthropic' | 'openai' | 'google' | 'deepseek' {
   if (model.startsWith('claude')) return 'anthropic'
   if (model.startsWith('gpt')) return 'openai'
   if (model.startsWith('gemini')) return 'google'
+  if (model.startsWith('deepseek')) return 'deepseek'
   return 'openai' // fallback
 }
 

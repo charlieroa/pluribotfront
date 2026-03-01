@@ -7,7 +7,7 @@ import { GoogleGenAI } from '@google/genai'
 export type ProviderStatus = 'active' | 'no_key' | 'invalid_key' | 'no_credits' | 'error'
 
 export interface ProviderHealth {
-  provider: 'anthropic' | 'openai' | 'google'
+  provider: 'anthropic' | 'openai' | 'google' | 'deepseek'
   status: ProviderStatus
   label: string
   message: string
@@ -37,6 +37,7 @@ export async function getProviderHealthStatus(): Promise<ProviderHealth[]> {
     checkAnthropic(),
     checkOpenAI(),
     checkGoogle(),
+    checkDeepSeek(),
   ])
 
   healthCache = { results, checkedAt: Date.now() }
@@ -56,7 +57,7 @@ export async function getDisabledProviders(): Promise<Set<string>> {
 }
 
 // Check if a specific provider is available
-export async function isProviderAvailable(provider: 'anthropic' | 'openai' | 'google'): Promise<boolean> {
+export async function isProviderAvailable(provider: 'anthropic' | 'openai' | 'google' | 'deepseek'): Promise<boolean> {
   const disabled = await getDisabledProviders()
   return !disabled.has(provider)
 }
@@ -159,6 +160,39 @@ async function checkGoogle(): Promise<ProviderHealth> {
     }
     if (status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota') || msg.includes('billing')) {
       return { ...base, status: 'no_credits', message: 'Cuota agotada o sin billing habilitado', checkedAt: new Date().toISOString() }
+    }
+    return { ...base, status: 'error', message: msg.slice(0, 200), checkedAt: new Date().toISOString() }
+  }
+}
+
+async function checkDeepSeek(): Promise<ProviderHealth> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  const base: Pick<ProviderHealth, 'provider' | 'label'> = { provider: 'deepseek', label: 'DeepSeek (V3)' }
+
+  if (!apiKey) {
+    return { ...base, status: 'no_key', message: 'API key no configurada', checkedAt: new Date().toISOString() }
+  }
+
+  try {
+    const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' })
+    const response = await client.chat.completions.create({
+      model: 'deepseek-chat',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    if (response.choices[0]) {
+      return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
+    }
+    return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
+  } catch (err: any) {
+    const msg = err?.message ?? String(err)
+    const status = err?.status ?? 0
+
+    if (status === 401 || msg.includes('invalid_api_key') || msg.includes('authentication')) {
+      return { ...base, status: 'invalid_key', message: 'API key invalida', checkedAt: new Date().toISOString() }
+    }
+    if (status === 429 || msg.includes('quota') || msg.includes('billing') || msg.includes('insufficient')) {
+      return { ...base, status: 'no_credits', message: 'Sin creditos o cuota agotada', checkedAt: new Date().toISOString() }
     }
     return { ...base, status: 'error', message: msg.slice(0, 200), checkedAt: new Date().toISOString() }
   }

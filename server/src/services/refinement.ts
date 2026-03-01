@@ -10,6 +10,7 @@ import type { LLMMessage, LLMUsage } from './llm/types.js'
 import { extractDesignContext, extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT } from './html-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
+import { getNextVersionInfo } from './deliverable-versioning.js'
 
 // Protected files that Logic must never overwrite (they belong to the template base)
 const LOGIC_PROTECTED_FILES = ['src/index.css', 'src/main.tsx']
@@ -34,8 +35,32 @@ function stripProtectedFiles(files: Record<string, string>): Record<string, stri
   return cleaned
 }
 
+// Apply search-replace diffs to existing files
+function applyDiffs(
+  previousFiles: Record<string, string>,
+  diffs: Record<string, Array<{ search: string; replace: string }>>
+): Record<string, string> {
+  const result = { ...previousFiles }
+  for (const [filePath, changes] of Object.entries(diffs)) {
+    if (!result[filePath]) {
+      console.warn(`[Logic] Diff target not found: ${filePath}, skipping`)
+      continue
+    }
+    let content = result[filePath]
+    for (const { search, replace } of changes) {
+      if (content.includes(search)) {
+        content = content.replace(search, replace)
+      } else {
+        console.warn(`[Logic] Diff search not found in ${filePath} (${search.slice(0, 60)}...), skipping`)
+      }
+    }
+    result[filePath] = content
+  }
+  return result
+}
+
 // Helper: robustly extract Logic agent JSON from LLM output
-function extractLogicJson(text: string): { templateId: string; description: string; files: Record<string, string> } {
+function extractLogicJson(text: string): { templateId: string; description: string; files: Record<string, string>; diffs?: Record<string, Array<{ search: string; replace: string }>> } {
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fenceMatch) {
     try { return JSON.parse(fenceMatch[1].trim()) } catch { /* try next */ }
@@ -92,8 +117,24 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   const previousOutput = plan.agentOutputs[step.instanceId] || ''
 
+  // For Logic refinements, extract previous files so we can merge later
+  let previousFiles: Record<string, string> = {}
+  if (agentConfig.id === 'logic' && previousOutput) {
+    try {
+      const prev = extractLogicJson(previousOutput)
+      previousFiles = stripProtectedFiles(prev.files || {})
+    } catch { /* if previous output doesn't parse, skip merge */ }
+  }
+
+  // For Logic, build a compact context showing file names so it knows what exists
+  let logicFileIndex = ''
+  if (agentConfig.id === 'logic' && Object.keys(previousFiles).length > 0) {
+    logicFileIndex = '\n\nArchivos actuales del proyecto:\n' +
+      Object.entries(previousFiles).map(([path, content]) => `- ${path} (${content.split('\n').length} lineas)`).join('\n')
+  }
+
   const refinePrompt = agentConfig.id === 'logic'
-    ? `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el JSON valido (templateId, description, files), sin texto adicional. Incluye TODOS los archivos del proyecto, no solo los modificados.`
+    ? `El cliente pide estos cambios:\n\n${userFeedback}${logicFileIndex}\n\nRESPONDE SOLO CON JSON. Usa "diffs" para cambios parciales y "files" para archivos nuevos o reescritos:\n{"templateId":"...","description":"...","files":{"ruta/nuevo.tsx":"contenido completo"},"diffs":{"ruta/existente.tsx":[{"search":"texto exacto actual","replace":"texto nuevo"}]}}\n\nREGLAS:\n1. Para cambios PEQUENOS en archivos existentes: usa "diffs" con pares search-replace. Cada "search" DEBE ser una subcadena EXACTA del archivo actual (incluye 2-3 lineas de contexto para unicidad).\n2. Para archivos NUEVOS o reescrituras mayores (>50% del archivo): usa "files" con contenido completo.\n3. No incluyas archivos sin cambios.\n4. Puedes combinar "files" y "diffs" en la misma respuesta.\n5. Si solo modificas unas lineas de un archivo de 100+ lineas, usa "diffs" — ahorra tokens.`
     : `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
 
   // Build conversation: original task → previous output → refinement request
@@ -173,15 +214,24 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
     try {
       const logicData = extractLogicJson(agentFullText)
       const { templateId, description } = logicData
-      const files = stripProtectedFiles(logicData.files || {})
+      const newFiles = stripProtectedFiles(logicData.files || {})
+
+      // Apply search-replace diffs to existing files, then merge with new/complete files
+      const diffedFiles = logicData.diffs ? applyDiffs(previousFiles, logicData.diffs) : previousFiles
+      const mergedFiles = { ...diffedFiles, ...newFiles }
+
+      // Update agentOutputs with merged JSON so next refinement has the full set
+      const mergedOutput = JSON.stringify({ templateId, description, files: mergedFiles })
+      plan.agentOutputs[step.instanceId] = mergedOutput
 
       broadcast(conversationId, {
         type: 'logic_project',
         templateId: templateId || 'blank',
         description: description || '',
-        files,
+        files: mergedFiles,
       })
 
+      const logicRefineVersionInfo = await getNextVersionInfo(conversationId, step.instanceId)
       const deliverableId = uuid()
       await prisma.deliverable.create({
         data: {
@@ -193,8 +243,21 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
           agent: agentConfig.name,
           botType: agentConfig.botType,
           instanceId: step.instanceId,
+          version: logicRefineVersionInfo.version,
+          parentId: logicRefineVersionInfo.parentId,
         },
       })
+
+      // Update kanban task to point to latest version
+      const logicKanban = await prisma.kanbanTask.findFirst({
+        where: { conversationId, instanceId: step.instanceId },
+      })
+      if (logicKanban) {
+        await prisma.kanbanTask.update({
+          where: { id: logicKanban.id },
+          data: { deliverableId },
+        })
+      }
 
       const agentMsg = await prisma.message.create({
         data: {
@@ -268,7 +331,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   // Create new deliverable with refined content
   const htmlBlock = extractHtmlBlock(agentFullText)
   const deliverableTypeMap: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
-    seo: 'report', brand: 'design', web: 'design', social: 'design', ads: 'copy', video: 'video', logic: 'code',
+    seo: 'report', web: 'design', ads: 'copy', video: 'video', logic: 'code',
   }
   const deliverableType = deliverableTypeMap[agentConfig.id] ?? 'report'
   const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 50)} (refinado)`
@@ -287,6 +350,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
     .replace(/src="\/uploads\//g, `src="${cdnBase}/uploads/`)
     .replace(/src='\/uploads\//g, `src='${cdnBase}/uploads/`)
 
+  const refineVersionInfo = await getNextVersionInfo(conversationId, step.instanceId)
   const deliverableId = uuid()
   const deliverable = await prisma.deliverable.create({
     data: {
@@ -298,8 +362,21 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
       agent: agentConfig.name,
       botType: agentConfig.botType,
       instanceId: step.instanceId,
+      version: refineVersionInfo.version,
+      parentId: refineVersionInfo.parentId,
     },
   })
+
+  // Update kanban task to point to latest version
+  const refineKanban = await prisma.kanbanTask.findFirst({
+    where: { conversationId, instanceId: step.instanceId },
+  })
+  if (refineKanban) {
+    await prisma.kanbanTask.update({
+      where: { id: refineKanban.id },
+      data: { deliverableId },
+    })
+  }
 
   broadcast(conversationId, {
     type: 'deliverable',
@@ -310,6 +387,8 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
       content: deliverable.content,
       agent: deliverable.agent,
       botType: deliverable.botType,
+      version: refineVersionInfo.version,
+      versionCount: refineVersionInfo.version,
     },
   })
 

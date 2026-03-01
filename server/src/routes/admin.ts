@@ -9,6 +9,7 @@ import { plans } from '../config/plans.js'
 import { calculateRealCost, toolApiCosts, getProviderForModel } from '../config/api-costs.js'
 import { getProviderHealthStatus, invalidateHealthCache } from '../services/provider-health.js'
 import { agentConfigs } from '../config/agents.js'
+import { getBudgets, setBudget, clearBudget, calculateRemaining, type BudgetProvider } from '../config/provider-budgets.js'
 
 const router = Router()
 const adminAuth = requireRole('superadmin', 'org_admin', 'agent')
@@ -371,6 +372,7 @@ router.post('/conversations/:id/deliverable', adminAuth, async (req, res) => {
         content,
         agent: 'Agente Humano',
         botType: 'human',
+        version: 1,
       },
     })
 
@@ -598,6 +600,7 @@ router.get('/costs', superadminAuth, async (_req, res) => {
       anthropic: { cost: 0, tokens: { input: 0, output: 0 } },
       openai: { cost: 0, tokens: { input: 0, output: 0 } },
       google: { cost: 0, tokens: { input: 0, output: 0 } },
+      deepseek: { cost: 0, tokens: { input: 0, output: 0 } },
     }
 
     const byModel: Array<{ model: string; calls: number; cost: number; creditsCharged: number }> = []
@@ -698,6 +701,23 @@ router.get('/costs', superadminAuth, async (_req, res) => {
     // Sort byModel by cost descending
     byModel.sort((a, b) => b.cost - a.cost)
 
+    // 7. Calculate budget remaining per provider
+    const budgets = getBudgets()
+
+    // Midjourney cost = sum of generate_image tool costs
+    const midjourneyToolData = toolCosts['generate_image']
+    const midjourneyCost = midjourneyToolData ? midjourneyToolData.cost : 0
+
+    const budgetStatus: Record<string, { budget: number; used: number; remaining: number; alert: boolean; setAt: string } | null> = {}
+    for (const provider of ['anthropic', 'openai', 'google', 'deepseek'] as const) {
+      const providerCost = byProvider[provider]?.cost ?? 0
+      const result = calculateRemaining(budgets[provider], providerCost)
+      budgetStatus[provider] = result ? { ...result, budget: budgets[provider]!.budget, setAt: budgets[provider]!.setAt } : null
+    }
+    // Midjourney budget
+    const mjResult = calculateRemaining(budgets.midjourney, midjourneyCost)
+    budgetStatus['midjourney'] = mjResult ? { ...mjResult, budget: budgets.midjourney!.budget, setAt: budgets.midjourney!.setAt } : null
+
     res.json({
       totalApiCost,
       totalCreditsConsumed,
@@ -707,11 +727,77 @@ router.get('/costs', superadminAuth, async (_req, res) => {
       byProvider,
       byModel,
       toolCosts,
+      budgetStatus,
     })
   } catch (err) {
     console.error('[Admin] Costs error:', err)
     res.status(500).json({ error: 'Error al obtener costos de API' })
   }
+})
+
+// ─── Provider Budgets ───
+
+router.get('/budgets', superadminAuth, async (_req, res) => {
+  res.json(getBudgets())
+})
+
+router.post('/budgets', superadminAuth, async (req, res) => {
+  try {
+    const { provider, budget } = req.body as { provider: BudgetProvider; budget: number }
+    if (!provider || !['anthropic', 'openai', 'google', 'midjourney', 'deepseek'].includes(provider)) {
+      res.status(400).json({ error: 'Provider invalido' })
+      return
+    }
+    if (typeof budget !== 'number' || budget <= 0) {
+      res.status(400).json({ error: 'Budget debe ser un numero positivo' })
+      return
+    }
+
+    // Get current cost for this provider to set as baseline
+    const usageByModel = await prisma.usageRecord.groupBy({
+      by: ['model'],
+      _sum: { inputTokens: true, outputTokens: true },
+    })
+
+    let currentCost = 0
+    if (provider === 'midjourney') {
+      // Midjourney cost from tool calls
+      const toolEntries = await prisma.creditLedger.findMany({
+        where: { type: 'tool_consumption' },
+        select: { description: true },
+      })
+      currentCost = toolEntries.filter(e =>
+        e.description.includes('generate_image')
+      ).length * 0.05
+    } else {
+      for (const record of usageByModel) {
+        const modelProvider = record.model.startsWith('claude') ? 'anthropic'
+          : record.model.startsWith('gpt') ? 'openai'
+          : record.model.startsWith('gemini') ? 'google'
+          : record.model.startsWith('deepseek') ? 'deepseek' : null
+        if (modelProvider === provider) {
+          const { calculateRealCost: calc } = await import('../config/api-costs.js')
+          currentCost += calc(record.model, record._sum.inputTokens ?? 0, record._sum.outputTokens ?? 0)
+        }
+      }
+    }
+
+    const budgets = setBudget(provider, budget, currentCost)
+    res.json({ success: true, budgets, baselineCost: Math.round(currentCost * 100) / 100 })
+  } catch (err) {
+    console.error('[Admin] Set budget error:', err)
+    res.status(500).json({ error: 'Error al configurar presupuesto' })
+  }
+})
+
+router.delete('/budgets/:provider', superadminAuth, async (req, res) => {
+  const provider = req.params.provider as BudgetProvider
+  if (!['anthropic', 'openai', 'google', 'midjourney', 'deepseek'].includes(provider)) {
+    res.status(400).json({ error: 'Provider invalido' })
+    return
+  }
+  const budgets = clearBudget(provider)
+  res.json({ success: true, budgets })
 })
 
 // ─── Users CRUD (superadmin) ───

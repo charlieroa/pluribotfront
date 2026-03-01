@@ -39,6 +39,7 @@ export const adsTools: ToolDefinition[] = [
           content: `## Copys para ${product}\n\n(Generado por ${context.agentName})`,
           agent: context.agentName,
           botType: context.agentId,
+          version: 1,
         },
       })
 
@@ -116,6 +117,7 @@ export const adsTools: ToolDefinition[] = [
           content: `## Plan de Campaña\n\nObjetivo: ${objective}\nPresupuesto: $${budget} USD/mes`,
           agent: context.agentName,
           botType: context.agentId,
+          version: 1,
         },
       })
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Type, ImageIcon, Palette, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, ChevronDown, MousePointer, Wand2, Paintbrush, RotateCcw, Sparkles } from 'lucide-react'
+import { Type, ImageIcon, Palette, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, ChevronDown, MousePointer, Wand2, Paintbrush, RotateCcw, Sparkles, Copy, ArrowUp, ArrowDown, EyeOff, Undo2, Redo2 } from 'lucide-react'
 import type { SelectedElement } from './VisualEditToolbar'
 import type { Deliverable } from '../../types'
 
@@ -169,13 +169,53 @@ const EditPanel = ({
   }
 
   // Page editing panel
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+
+  // Listen for undo state updates from iframe
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'undo-state') {
+        setCanUndo(e.data.canUndo)
+        setCanRedo(e.data.canRedo)
+      }
+      if (e.data?.type === 'element-deselected') {
+        // Parent will handle clearing selectedElement
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  const dispatchToIframe = (action: string) => {
+    window.dispatchEvent(new CustomEvent('editor-action', { detail: action }))
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header hint */}
-      <div className="px-4 py-2.5 border-b border-edge flex-shrink-0 bg-blue-500/5">
-        <p className="text-[11px] text-blue-600 font-medium text-center">
-          Click para seleccionar, doble-click para editar texto
+      {/* Header with undo/redo */}
+      <div className="px-4 py-2.5 border-b border-edge flex-shrink-0 bg-blue-500/5 flex items-center justify-between">
+        <p className="text-[11px] text-blue-600 font-medium">
+          Click para seleccionar, doble-click para editar
         </p>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => dispatchToIframe('undo')}
+            disabled={!canUndo}
+            className="p-1.5 text-ink-faint hover:text-ink disabled:opacity-30 rounded transition-colors hover:bg-subtle"
+            title="Deshacer (Ctrl+Z)"
+          >
+            <Undo2 size={14} />
+          </button>
+          <button
+            onClick={() => dispatchToIframe('redo')}
+            disabled={!canRedo}
+            className="p-1.5 text-ink-faint hover:text-ink disabled:opacity-30 rounded transition-colors hover:bg-subtle"
+            title="Rehacer (Ctrl+Y)"
+          >
+            <Redo2 size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -190,15 +230,56 @@ const EditPanel = ({
         ) : (
           <div className="p-4 space-y-1">
             {/* Selected element info */}
-            <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-4">
+            <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-3">
               <p className="text-[11px] font-medium text-blue-600">
-                Elemento seleccionado: &lt;{selectedElement.tag}&gt;
+                Elemento: &lt;{selectedElement.tag}&gt;
               </p>
               {selectedElement.text && (
                 <p className="text-[10px] text-ink-faint mt-0.5 truncate">
                   {selectedElement.text}
                 </p>
               )}
+            </div>
+
+            {/* Quick actions bar */}
+            <div className="flex items-center gap-1 mb-3">
+              <button
+                onClick={() => dispatchToIframe('delete-element')}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium text-red-600 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors"
+                title="Eliminar elemento (Delete)"
+              >
+                <Trash2 size={11} /> Eliminar
+              </button>
+              <button
+                onClick={() => dispatchToIframe('duplicate-element')}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium text-ink-light bg-subtle hover:bg-edge rounded-lg transition-colors"
+                title="Duplicar elemento"
+              >
+                <Copy size={11} /> Duplicar
+              </button>
+              <button
+                onClick={() => dispatchToIframe('hide-element')}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium text-ink-light bg-subtle hover:bg-edge rounded-lg transition-colors"
+                title="Ocultar elemento"
+              >
+                <EyeOff size={11} /> Ocultar
+              </button>
+            </div>
+            <div className="flex items-center gap-1 mb-3">
+              <button
+                onClick={() => dispatchToIframe('move-element-up')}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium text-ink-light bg-subtle hover:bg-edge rounded-lg transition-colors"
+                title="Mover arriba"
+              >
+                <ArrowUp size={11} /> Subir
+              </button>
+              <button
+                onClick={() => dispatchToIframe('move-element-down')}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium text-ink-light bg-subtle hover:bg-edge rounded-lg transition-colors"
+                title="Mover abajo"
+              >
+                <ArrowDown size={11} /> Bajar
+              </button>
             </div>
 
             {/* Text editing section */}

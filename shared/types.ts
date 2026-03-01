@@ -26,6 +26,8 @@ export interface DeliverableWire {
   content: string
   agent: string
   botType: string
+  version?: number
+  versionCount?: number
 }
 
 export interface KanbanTaskWire {
@@ -52,7 +54,7 @@ export interface PlanStep {
 }
 
 export type SSEEvent =
-  | { type: 'agent_start'; agentId: string; agentName: string; task?: string; instanceId?: string }
+  | { type: 'agent_start'; agentId: string; agentName: string; task?: string; instanceId?: string; model?: string }
   | { type: 'agent_thinking'; agentId: string; agentName: string; step: string; instanceId?: string }
   | { type: 'token'; content: string; agentId: string; instanceId?: string }
   | { type: 'agent_end'; agentId: string; messageId: string; fullText: string; instanceId?: string; creditsCost?: number; model?: string; inputTokens?: number; outputTokens?: number }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Layout, TrendingUp, Code, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Palette, Info } from 'lucide-react'
+import { Search, Layout, TrendingUp, Code, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Info } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -29,39 +29,15 @@ const bots = [
     featured: true,
   },
   {
-    id: 'brand',
-    name: 'Nova',
-    role: 'Especialista en Branding',
-    desc: 'Logos profesionales, identidad visual, paletas de color, tipografía y manual de marca completo con IA generativa.',
-    color: '#ec4899',
-    icon: <Palette size={20} />,
-    category: 'diseno',
-    capabilities: ['Logos con IA', 'Paletas de Color', 'Manual de Marca', 'Identidad Visual'],
-    prompt: 'Diseña un logo para mi negocio',
-    featured: true,
-  },
-  {
     id: 'web',
     name: 'Pixel',
-    role: 'Diseñador Web',
-    desc: 'Landing pages y sitios web completos, interactivos, responsivos, con SEO on-page, animaciones y Alpine.js.',
+    role: 'Diseñador Visual',
+    desc: 'Logos, branding, posts para redes, banners, flyers, stories, moodboards y todo lo gráfico con Midjourney. Tu diseñador visual completo.',
     color: '#a855f7',
     icon: <Layout size={20} />,
     category: 'diseno',
-    capabilities: ['Landing Pages', 'Sitios Web', 'SEO On-Page', 'Responsive'],
-    prompt: 'Crea una landing page para mi negocio',
-    featured: false,
-  },
-  {
-    id: 'social',
-    name: 'Spark',
-    role: 'Diseñador de Contenido Social',
-    desc: 'Banners, posts para Instagram/Facebook/TikTok, flyers, stories, carruseles y piezas gráficas para redes sociales.',
-    color: '#f97316',
-    icon: <Sparkles size={20} />,
-    category: 'diseno',
-    capabilities: ['Posts Redes', 'Banners con IA', 'Stories', 'Flyers'],
-    prompt: 'Diseña un post para Instagram de mi negocio',
+    capabilities: ['Logos con IA', 'Posts Redes', 'Banners', 'Moodboards'],
+    prompt: 'Diseña un logo para mi negocio',
     featured: true,
   },
   {
@@ -79,14 +55,14 @@ const bots = [
   {
     id: 'dev',
     name: 'Logic',
-    role: 'Desarrollador Full-Stack',
-    desc: 'Páginas web completas y funcionales con HTML/CSS/JS, responsive, con interactividad avanzada, SEO on-page y código limpio.',
+    role: 'Full-Stack Web Builder',
+    desc: 'Todo lo web: landings, apps, dashboards, blogs, portfolios, restaurantes, SaaS, e-commerce, CRM, booking y kanban.',
     color: '#f59e0b',
     icon: <Code size={20} />,
     category: 'desarrollo',
-    capabilities: ['HTML/CSS/JS', 'Responsive', 'Interactividad', 'SEO Técnico'],
+    capabilities: ['Landing Pages', 'Apps React', 'Dashboards', 'E-Commerce'],
     prompt: 'Construye una página web para mi negocio',
-    featured: false,
+    featured: true,
   },
   {
     id: 'video',
@@ -311,19 +287,17 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                       <div>
                         <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Herramientas</p>
                         <p className="text-xs text-ink">
-                          {bot.id === 'brand' ? 'Imagen 4 (IA generativa)' :
-                           bot.id === 'web' ? 'Imagen 4 + Stock Photos' :
-                           bot.id === 'social' ? 'Imagen 4 (IA generativa)' :
+                          {bot.id === 'web' ? 'Midjourney + Stock Photos' :
                            bot.id === 'video' ? 'Veo 3 (video IA)' :
                            bot.id === 'seo' ? 'Keywords, Backlinks, Competencia' :
                            bot.id === 'ads' ? 'Copys, Campañas' :
-                           'HTML/CSS/JS Builder'}
+                           'React + Stock Photos'}
                         </p>
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Tipo de entrega</p>
                         <p className="text-xs text-ink">
-                          {['brand', 'web', 'social', 'dev', 'video'].includes(bot.id) ? 'Visual (Canvas)' : 'Texto detallado'}
+                          {['web', 'dev', 'video'].includes(bot.id) ? 'Visual (Canvas)' : 'Texto detallado'}
                         </p>
                       </div>
                       <div>

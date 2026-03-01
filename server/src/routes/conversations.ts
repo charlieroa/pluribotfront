@@ -1,7 +1,10 @@
 import { Router } from 'express'
+import { v4 as uuid } from 'uuid'
+import JSZip from 'jszip'
 import { prisma } from '../db/client.js'
 import { optionalAuth } from '../middleware/auth.js'
 import { broadcast } from '../services/sse.js'
+import { getNextVersionInfo } from '../services/deliverable-versioning.js'
 import type { ConversationListItem } from '../../../shared/types.js'
 
 const router = Router()
@@ -67,6 +70,20 @@ router.get('/:id', optionalAuth, async (req, res) => {
     return
   }
 
+  // Compute version counts per instanceId
+  const instanceIds = [...new Set(
+    conversation.deliverables
+      .map((d: any) => d.instanceId)
+      .filter(Boolean)
+  )] as string[]
+
+  const versionCountMap: Record<string, number> = {}
+  for (const iid of instanceIds) {
+    versionCountMap[iid] = conversation.deliverables.filter(
+      (d: any) => d.instanceId === iid
+    ).length
+  }
+
   res.json({
     id: conversation.id,
     title: conversation.title,
@@ -90,6 +107,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
       content: d.content,
       agent: d.agent,
       botType: d.botType,
+      version: d.version,
+      instanceId: d.instanceId,
+      versionCount: d.instanceId ? (versionCountMap[d.instanceId] ?? 1) : 1,
     })),
     kanbanTasks: conversation.kanbanTasks.map((t: any) => ({
       id: t.id,
@@ -105,6 +125,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
         content: t.deliverable.content,
         agent: t.deliverable.agent,
         botType: t.deliverable.botType,
+        version: t.deliverable.version,
+        versionCount: t.deliverable.instanceId ? (versionCountMap[t.deliverable.instanceId] ?? 1) : 1,
       } : undefined,
     })),
   })
@@ -270,6 +292,255 @@ router.get('/:id/supabase', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('[Conversations] Supabase config read error:', err)
     res.status(500).json({ error: 'Error al leer config de Supabase' })
+  }
+})
+
+// ─── Version history endpoints ───
+
+// Get version history for a deliverable (metadata only, no content)
+router.get('/:convId/deliverables/:deliverableId/versions', optionalAuth, async (req, res) => {
+  const { convId, deliverableId } = req.params as { convId: string; deliverableId: string }
+
+  try {
+    const target = await prisma.deliverable.findUnique({
+      where: { id: deliverableId },
+      select: { instanceId: true, conversationId: true },
+    })
+
+    if (!target || target.conversationId !== convId) {
+      res.status(404).json({ error: 'Deliverable no encontrado' })
+      return
+    }
+
+    if (!target.instanceId) {
+      res.json([{ id: deliverableId, version: 1, title: '', agent: '', createdAt: '' }])
+      return
+    }
+
+    const versions = await prisma.deliverable.findMany({
+      where: { conversationId: convId, instanceId: target.instanceId },
+      orderBy: { version: 'desc' },
+      select: { id: true, version: true, title: true, agent: true, createdAt: true },
+    })
+
+    res.json(versions.map((v: any) => ({
+      id: v.id,
+      version: v.version,
+      title: v.title,
+      agent: v.agent,
+      createdAt: v.createdAt.toISOString(),
+    })))
+  } catch (err) {
+    console.error('[Conversations] Get versions error:', err)
+    res.status(500).json({ error: 'Error al obtener versiones' })
+  }
+})
+
+// Get a single deliverable with full content + version info
+router.get('/:convId/deliverables/:deliverableId', optionalAuth, async (req, res) => {
+  const { convId, deliverableId } = req.params as { convId: string; deliverableId: string }
+
+  try {
+    const deliverable = await prisma.deliverable.findUnique({
+      where: { id: deliverableId },
+    })
+
+    if (!deliverable || deliverable.conversationId !== convId) {
+      res.status(404).json({ error: 'Deliverable no encontrado' })
+      return
+    }
+
+    let versionCount = 1
+    if (deliverable.instanceId) {
+      versionCount = await prisma.deliverable.count({
+        where: { conversationId: convId, instanceId: deliverable.instanceId },
+      })
+    }
+
+    res.json({
+      id: deliverable.id,
+      title: deliverable.title,
+      type: deliverable.type,
+      content: deliverable.content,
+      agent: deliverable.agent,
+      botType: deliverable.botType,
+      version: deliverable.version,
+      versionCount,
+    })
+  } catch (err) {
+    console.error('[Conversations] Get deliverable error:', err)
+    res.status(500).json({ error: 'Error al obtener deliverable' })
+  }
+})
+
+// Restore a previous version (creates a new version with the old content)
+router.post('/:convId/deliverables/:deliverableId/restore', optionalAuth, async (req, res) => {
+  const { convId, deliverableId } = req.params as { convId: string; deliverableId: string }
+
+  try {
+    const source = await prisma.deliverable.findUnique({
+      where: { id: deliverableId },
+    })
+
+    if (!source || source.conversationId !== convId) {
+      res.status(404).json({ error: 'Deliverable no encontrado' })
+      return
+    }
+
+    if (!source.instanceId) {
+      res.status(400).json({ error: 'Este deliverable no soporta versionado' })
+      return
+    }
+
+    const versionInfo = await getNextVersionInfo(convId, source.instanceId)
+    const newId = uuid()
+    const restored = await prisma.deliverable.create({
+      data: {
+        id: newId,
+        conversationId: convId,
+        title: source.title,
+        type: source.type,
+        content: source.content,
+        agent: source.agent,
+        botType: source.botType,
+        instanceId: source.instanceId,
+        version: versionInfo.version,
+        parentId: versionInfo.parentId,
+      },
+    })
+
+    // Update kanban task to point to restored version
+    const kanbanTask = await prisma.kanbanTask.findFirst({
+      where: { conversationId: convId, instanceId: source.instanceId },
+    })
+    if (kanbanTask) {
+      await prisma.kanbanTask.update({
+        where: { id: kanbanTask.id },
+        data: { deliverableId: newId },
+      })
+    }
+
+    // Broadcast so all tabs see the change
+    broadcast(convId, {
+      type: 'deliverable',
+      deliverable: {
+        id: restored.id,
+        title: restored.title,
+        type: restored.type as any,
+        content: restored.content,
+        agent: restored.agent,
+        botType: restored.botType,
+        version: restored.version,
+        versionCount: versionInfo.version,
+      },
+    })
+
+    res.json({
+      id: restored.id,
+      title: restored.title,
+      type: restored.type,
+      content: restored.content,
+      agent: restored.agent,
+      botType: restored.botType,
+      version: restored.version,
+      versionCount: versionInfo.version,
+    })
+  } catch (err) {
+    console.error('[Conversations] Restore version error:', err)
+    res.status(500).json({ error: 'Error al restaurar version' })
+  }
+})
+
+// Export Logic project as ZIP
+router.get('/:convId/deliverables/:deliverableId/export-zip', optionalAuth, async (req, res) => {
+  const { convId, deliverableId } = req.params as { convId: string; deliverableId: string }
+
+  try {
+    const deliverable = await prisma.deliverable.findUnique({
+      where: { id: deliverableId },
+    })
+
+    if (!deliverable || deliverable.conversationId !== convId) {
+      res.status(404).json({ error: 'Deliverable no encontrado' })
+      return
+    }
+
+    if (deliverable.type !== 'code') {
+      res.status(400).json({ error: 'Solo proyectos de codigo se pueden exportar como ZIP' })
+      return
+    }
+
+    // Parse Logic JSON to get files
+    let files: Record<string, string> = {}
+    let description = ''
+    try {
+      const fenceMatch = deliverable.content.match(/```(?:json)?\s*([\s\S]*?)```/)
+      const jsonStr = fenceMatch ? fenceMatch[1].trim() : deliverable.content.trim()
+      const parsed = JSON.parse(jsonStr)
+      files = parsed.files || {}
+      description = parsed.description || deliverable.title
+    } catch {
+      // Try raw JSON
+      try {
+        const parsed = JSON.parse(deliverable.content.trim())
+        files = parsed.files || {}
+        description = parsed.description || deliverable.title
+      } catch {
+        res.status(400).json({ error: 'No se pudo parsear el proyecto' })
+        return
+      }
+    }
+
+    const zip = new JSZip()
+
+    // Add source files
+    for (const [path, content] of Object.entries(files)) {
+      zip.file(path, content)
+    }
+
+    // Add package.json
+    zip.file('package.json', JSON.stringify({
+      name: 'pluribots-project',
+      private: true,
+      version: '1.0.0',
+      description,
+      scripts: {
+        dev: 'vite',
+        build: 'tsc -b && vite build',
+        preview: 'vite preview',
+      },
+      dependencies: {
+        react: '^19.0.0',
+        'react-dom': '^19.0.0',
+        'lucide-react': '^0.468.0',
+        recharts: '^2.15.0',
+      },
+      devDependencies: {
+        '@types/react': '^19.0.0',
+        '@types/react-dom': '^19.0.0',
+        '@vitejs/plugin-react': '^4.3.4',
+        tailwindcss: '^4.0.0',
+        '@tailwindcss/vite': '^4.0.0',
+        typescript: '~5.7.2',
+        vite: '^6.0.5',
+      },
+    }, null, 2))
+
+    // Add README
+    zip.file('README.md', `# ${description}\n\nProyecto generado por Pluribots.\n\n## Setup\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n`)
+
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+    const safeName = deliverable.title.replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 50)
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${safeName}.zip"`,
+      'Content-Length': buffer.length.toString(),
+    })
+    res.send(buffer)
+  } catch (err) {
+    console.error('[Conversations] Export ZIP error:', err)
+    res.status(500).json({ error: 'Error al exportar proyecto' })
   }
 })
 

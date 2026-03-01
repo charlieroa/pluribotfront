@@ -12,6 +12,7 @@ export function resolveModelConfig(modelId: string, agentDefaults?: LLMProviderC
     'gpt-4o-mini': { provider: 'openai', model: 'gpt-4o-mini' },
     'gemini-2.5-pro': { provider: 'google', model: 'gemini-2.5-pro' },
     'gemini-2.5-flash': { provider: 'google', model: 'gemini-2.5-flash' },
+    'deepseek-chat': { provider: 'deepseek', model: 'deepseek-chat' },
   }
   const override = models[modelId]
   if (!override) return null
@@ -19,6 +20,7 @@ export function resolveModelConfig(modelId: string, agentDefaults?: LLMProviderC
     ...override,
     maxTokens: agentDefaults?.maxTokens,
     temperature: agentDefaults?.temperature,
+    jsonMode: agentDefaults?.jsonMode,
   }
 }
 
@@ -36,11 +38,15 @@ export const FALLBACK_MODELS: Record<string, LLMProviderConfig[]> = {
     { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
     { provider: 'openai', model: 'gpt-4o' },
   ],
+  deepseek: [
+    { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+    { provider: 'openai', model: 'gpt-4o' },
+  ],
 }
 
 export async function resolveAvailableConfig(config: LLMProviderConfig): Promise<LLMProviderConfig | null> {
   // First check if the requested provider is available
-  if (await isProviderAvailable(config.provider)) {
+  if (await isProviderAvailable(config.provider as any)) {
     return config
   }
 
@@ -55,6 +61,7 @@ export async function resolveAvailableConfig(config: LLMProviderConfig): Promise
         ...fb,
         maxTokens: config.maxTokens,
         temperature: config.temperature,
+        jsonMode: config.jsonMode,
       }
     }
   }

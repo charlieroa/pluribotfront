@@ -54,6 +54,7 @@ export const codegenTools: ToolDefinition[] = [
           content,
           agent: context.agentName,
           botType: context.agentId,
+          version: 1,
         },
       })
 
@@ -131,6 +132,7 @@ export const codegenTools: ToolDefinition[] = [
           content: `## Componente: ${componentName}\n\n(Código generado por ${context.agentName})`,
           agent: context.agentName,
           botType: context.agentId,
+          version: 1,
         },
       })
 

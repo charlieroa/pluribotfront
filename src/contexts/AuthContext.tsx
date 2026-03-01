@@ -12,7 +12,7 @@ interface User {
   creditBalance?: number
 }
 
-const ALL_BOT_IDS = ['seo', 'brand', 'web', 'social', 'ads', 'dev', 'video']
+const ALL_BOT_IDS = ['seo', 'web', 'ads', 'dev', 'video']
 
 interface AuthContextValue {
   user: User | null

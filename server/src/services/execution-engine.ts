@@ -14,6 +14,7 @@ import { extractDesignContext, validateHtml, extractHtmlBlock, wrapTextAsHtml, V
 import { readAndEncodeImage } from './image-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
+import { getNextVersionInfo, getVersionCount } from './deliverable-versioning.js'
 
 // Protected files that Logic must never overwrite (they belong to the template base)
 const LOGIC_PROTECTED_FILES = ['src/index.css', 'src/main.tsx']
@@ -43,10 +44,16 @@ function extractLogicJson(text: string): { templateId: string; description: stri
   // Try 1: code fence ```json ... ```
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1].trim()) } catch { /* try next */ }
+    try { return JSON.parse(fenceMatch[1].trim()) } catch (e) {
+      console.error(`[Logic] Fence parse error: ${(e as Error).message}`)
+    }
   }
   // Try 2: raw JSON parse
-  try { return JSON.parse(text.trim()) } catch { /* try next */ }
+  try { return JSON.parse(text.trim()) } catch (e) {
+    console.error(`[Logic] Raw parse error: ${(e as Error).message}`)
+    console.error(`[Logic] First 200 chars: ${text.trim().slice(0, 200)}`)
+    console.error(`[Logic] Last 200 chars: ${text.trim().slice(-200)}`)
+  }
   // Try 3: find first { ... } block containing "templateId"
   const braceStart = text.indexOf('{')
   if (braceStart >= 0) {
@@ -61,7 +68,12 @@ function extractLogicJson(text: string): { templateId: string; description: stri
       try {
         const parsed = JSON.parse(candidate)
         if (parsed.templateId || parsed.files) return parsed
-      } catch { /* fall through */ }
+      } catch (e) {
+        console.error(`[Logic] Brace parse error: ${(e as Error).message}`)
+        console.error(`[Logic] Brace candidate length: ${candidate.length}, full text length: ${text.length}`)
+      }
+    } else {
+      console.error(`[Logic] Brace matching failed: braces never close. depth=${depth} at end of text`)
     }
   }
   throw new Error('Could not extract valid JSON from Logic output')
@@ -368,10 +380,12 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
 
   const taskPrompt = `${step.task}${contextBlock}`
 
+  // Limit conversation history: Logic's system prompt is huge, keep context lean
+  const historyLimit = agentConfig.id === 'logic' ? 6 : 20
   const history = await prisma.message.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
-    take: 20,
+    take: historyLimit,
   })
 
   // Build task message, attaching user-uploaded image if available
@@ -402,20 +416,11 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
   // Visual agents (Nova, Pixel, Spark, Reel) work silently — no token streaming
   const isVisualAgent = VISUAL_AGENT_IDS.includes(agentConfig.id)
 
-  broadcast(conversationId, {
-    type: 'agent_start',
-    agentId: agentConfig.id,
-    agentName: agentConfig.name,
-    instanceId: step.instanceId,
-    task: step.task,
-  })
-
-  // Use modelOverride if provided, otherwise agent's default
+  // Resolve model BEFORE broadcast so we can include it in agent_start
   const rawAgentModelConfig = modelOverride
     ? resolveModelConfig(modelOverride, agentConfig.modelConfig) ?? agentConfig.modelConfig
     : agentConfig.modelConfig
 
-  // Check provider availability, try fallback if needed
   const agentModelConfig = await resolveAvailableConfig(rawAgentModelConfig)
   if (!agentModelConfig) {
     broadcast(conversationId, {
@@ -424,6 +429,15 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     })
     return
   }
+
+  broadcast(conversationId, {
+    type: 'agent_start',
+    agentId: agentConfig.id,
+    agentName: agentConfig.name,
+    instanceId: step.instanceId,
+    task: step.task,
+    model: agentModelConfig.model,
+  })
   const provider = getProvider(agentModelConfig)
   let agentFullText = ''
   let agentUsage: LLMUsage = { inputTokens: 0, outputTokens: 0 }
@@ -508,6 +522,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
       })
 
       // Save deliverable as code type
+      const logicVersionInfo = await getNextVersionInfo(conversationId, step.instanceId)
       const deliverableId = uuid()
       await prisma.deliverable.create({
         data: {
@@ -519,6 +534,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
           agent: agentConfig.name,
           botType: agentConfig.botType,
           instanceId: step.instanceId,
+          version: logicVersionInfo.version,
+          parentId: logicVersionInfo.parentId,
         },
       })
 
@@ -645,6 +662,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     .replace(/src="\/uploads\//g, `src="${cdnBase}/uploads/`)
     .replace(/src='\/uploads\//g, `src='${cdnBase}/uploads/`)
 
+  const versionInfo = await getNextVersionInfo(conversationId, step.instanceId)
   const deliverableId = uuid()
   const deliverable = await prisma.deliverable.create({
     data: {
@@ -656,6 +674,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
       agent: agentConfig.name,
       botType: agentConfig.botType,
       instanceId: step.instanceId,
+      version: versionInfo.version,
+      parentId: versionInfo.parentId,
     },
   })
 
@@ -668,6 +688,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
       content: deliverable.content,
       agent: deliverable.agent,
       botType: deliverable.botType,
+      version: versionInfo.version,
+      versionCount: versionInfo.version,
     },
   })
 

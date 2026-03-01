@@ -44,6 +44,9 @@ export class AnthropicProvider implements LLMProvider {
       cache_creation_input_tokens?: number
       cache_read_input_tokens?: number
     }
+    if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
+      console.log(`[Anthropic] Cache: model=${this.model} created=${usage.cache_creation_input_tokens ?? 0}, read=${usage.cache_read_input_tokens ?? 0}, input=${usage.input_tokens}`)
+    }
     return {
       inputTokens: usage.input_tokens,
       outputTokens: usage.output_tokens,
@@ -61,20 +64,27 @@ export class AnthropicProvider implements LLMProvider {
 
     try {
       const params = this.buildRequestParams(systemPrompt)
+      const mappedMessages = messages.map((m, i) => {
+        // Cache breakpoints: last-2 (existing) + midpoint for long conversations (3 total + system = 4 max)
+        const isBreakpoint = messages.length >= 2 && i === messages.length - 2
+        const isMidBreakpoint = messages.length >= 6 && i === Math.floor(messages.length / 2)
+        const shouldCache = isBreakpoint || isMidBreakpoint
+        const content = m.images && m.images.length > 0
+          ? [
+              ...m.images.map(img => ({
+                type: 'image' as const,
+                source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: img.source },
+              })),
+              { type: 'text' as const, text: m.content, ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}) },
+            ]
+          : shouldCache
+            ? [{ type: 'text' as const, text: m.content, cache_control: { type: 'ephemeral' as const } }]
+            : m.content
+        return { role: m.role, content }
+      })
       const stream = this.client.messages.stream({
         ...params,
-        messages: messages.map(m => ({
-          role: m.role,
-          content: m.images && m.images.length > 0
-            ? [
-                ...m.images.map(img => ({
-                  type: 'image' as const,
-                  source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: img.source },
-                })),
-                { type: 'text' as const, text: m.content },
-              ]
-            : m.content,
-        })),
+        messages: mappedMessages,
       } as Anthropic.MessageStreamParams)
 
       for await (const event of stream) {
@@ -111,18 +121,23 @@ export class AnthropicProvider implements LLMProvider {
       input_schema: t.parameters as Anthropic.Tool['input_schema'],
     }))
 
-    const conversationMessages: Anthropic.MessageParam[] = messages.map(m => ({
-      role: m.role,
-      content: m.images && m.images.length > 0
+    const conversationMessages: Anthropic.MessageParam[] = messages.map((m, i) => {
+      const isBreakpoint = messages.length >= 2 && i === messages.length - 2
+      const isMidBreakpoint = messages.length >= 6 && i === Math.floor(messages.length / 2)
+      const shouldCache = isBreakpoint || isMidBreakpoint
+      const content = m.images && m.images.length > 0
         ? [
             ...m.images.map(img => ({
               type: 'image' as const,
               source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: img.source },
             })),
-            { type: 'text' as const, text: m.content },
+            { type: 'text' as const, text: m.content, ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}) },
           ]
-        : m.content,
-    }))
+        : shouldCache
+          ? [{ type: 'text' as const, text: m.content, cache_control: { type: 'ephemeral' as const } }]
+          : m.content
+      return { role: m.role, content }
+    })
 
     try {
       let continueLoop = true

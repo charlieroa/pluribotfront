@@ -41,6 +41,8 @@ export interface Deliverable {
   content: string
   agent: string
   botType: string
+  version?: number
+  versionCount?: number
 }
 
 export interface KanbanTask {

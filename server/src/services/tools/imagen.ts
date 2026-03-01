@@ -1,29 +1,9 @@
-import { GoogleGenAI } from '@google/genai'
 import type { ToolDefinition } from './types.js'
 import { getStorageProvider } from '../storage/index.js'
 
-// ─── Failure cache: avoid hammering APIs that are down ───
+// ─── Failure cache: avoid hammering API when down ───
 const IMAGE_GEN_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
-// Google (Gemini / Imagen) cache
-let googleAvailable: boolean | null = null
-let googleLastCheck = 0
-
-function isGoogleCachedAsFailed(): boolean {
-  if (googleAvailable === null) return false
-  if (Date.now() - googleLastCheck > IMAGE_GEN_CACHE_TTL) {
-    googleAvailable = null
-    return false
-  }
-  return !googleAvailable
-}
-
-function markGoogleResult(success: boolean) {
-  googleAvailable = success
-  googleLastCheck = Date.now()
-}
-
-// Midjourney (Apiframe) cache
 let midjourneyAvailable: boolean | null = null
 let midjourneyLastCheck = 0
 
@@ -41,13 +21,12 @@ function markMidjourneyResult(success: boolean) {
   midjourneyLastCheck = Date.now()
 }
 
-// ─── Midjourney via Apiframe (priority #1) ───
+// ─── Midjourney via Apiframe ───
 async function generateWithMidjourney(prompt: string, aspectRatio: string): Promise<Buffer | null> {
   const apiKey = process.env.APIFRAME_API_KEY
   if (!apiKey) return null
 
   try {
-    // Submit imagine task
     console.log('[Imagen/Midjourney] Submitting imagine task...')
     const submitRes = await fetch('https://api.apiframe.pro/imagine', {
       method: 'POST',
@@ -124,73 +103,6 @@ async function generateWithMidjourney(prompt: string, aspectRatio: string): Prom
   }
 }
 
-// ─── Gemini native image generation ───
-async function generateWithGemini(client: GoogleGenAI, prompt: string): Promise<Buffer | null> {
-  const modelNames = [
-    'gemini-2.5-flash-preview-image-generation',
-    'gemini-2.5-flash-image',
-    'gemini-2.0-flash-exp-image-generation',
-  ]
-
-  for (const modelName of modelNames) {
-    try {
-      const response = await client.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-          responseModalities: ['IMAGE', 'TEXT'],
-        } as Record<string, unknown>,
-      })
-
-      const parts = response.candidates?.[0]?.content?.parts
-      if (parts) {
-        for (const part of parts) {
-          if (part.inlineData?.data) {
-            console.log(`[Imagen] Success with Gemini model: ${modelName}`)
-            return Buffer.from(part.inlineData.data, 'base64')
-          }
-        }
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.log(`[Imagen] Gemini model ${modelName} failed: ${msg.substring(0, 120)}`)
-    }
-  }
-
-  return null
-}
-
-// ─── Imagen API fallback (requires billing) ───
-async function generateWithImagen(client: GoogleGenAI, prompt: string, aspectRatio: string): Promise<Buffer | null> {
-  const modelNames = ['imagen-4.0-fast-generate-001', 'imagen-4.0-generate-001']
-
-  for (const modelName of modelNames) {
-    try {
-      const response = await client.models.generateImages({
-        model: modelName,
-        prompt,
-        config: {
-          numberOfImages: 1,
-          aspectRatio,
-        },
-      })
-
-      if (response.generatedImages && response.generatedImages.length > 0) {
-        const image = response.generatedImages[0]
-        if (image.image?.imageBytes) {
-          console.log(`[Imagen] Success with model: ${modelName}`)
-          return Buffer.from(image.image.imageBytes, 'base64')
-        }
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.log(`[Imagen] Model ${modelName} not available: ${msg.substring(0, 120)}`)
-    }
-  }
-
-  return null
-}
-
 const IMAGE_GEN_UNAVAILABLE_MSG = JSON.stringify({
   success: false,
   error: 'Image generation is temporarily unavailable (API quota exceeded or billing issue). DO NOT retry this tool — instead, create the design using only HTML, CSS, and Font Awesome icons. Use creative CSS techniques (gradients, clip-path, box-shadow, SVG inline) to produce a professional result without generated images.',
@@ -199,7 +111,7 @@ const IMAGE_GEN_UNAVAILABLE_MSG = JSON.stringify({
 export const imagenTools: ToolDefinition[] = [
   {
     name: 'generate_image',
-    description: 'Generates a high-quality image using AI. Use this to create logos, graphics, illustrations, photos, product images, and any visual content. The prompt MUST be in English for best results. If this tool fails, DO NOT call it again — use Font Awesome icons and CSS instead.',
+    description: 'Generates a high-quality image using Midjourney AI. Use this to create logos, graphics, illustrations, photos, product images, and any visual content. The prompt MUST be in English for best results. If this tool fails, DO NOT call it again — use Font Awesome icons and CSS instead.',
     parameters: {
       type: 'object',
       properties: {
@@ -219,53 +131,25 @@ export const imagenTools: ToolDefinition[] = [
       const prompt = input.prompt as string
       const aspectRatio = (input.aspectRatio as string) || '1:1'
 
-      // Fast-fail if ALL providers recently failed
-      if (isMidjourneyCachedAsFailed() && isGoogleCachedAsFailed()) {
-        console.log('[Imagen] Skipping — all providers cached as unavailable')
+      // Fast-fail if Midjourney recently failed
+      if (isMidjourneyCachedAsFailed()) {
+        console.log('[Imagen] Skipping — Midjourney cached as unavailable')
         return IMAGE_GEN_UNAVAILABLE_MSG
       }
 
       let imageBuffer: Buffer | null = null
 
-      // ── Priority 1: Midjourney via Apiframe — best quality for logos ──
-      if (!isMidjourneyCachedAsFailed() && process.env.APIFRAME_API_KEY) {
+      // Midjourney via Apiframe — best quality for logos and visuals
+      if (process.env.APIFRAME_API_KEY) {
         imageBuffer = await generateWithMidjourney(prompt, aspectRatio)
         if (imageBuffer) {
           markMidjourneyResult(true)
         } else {
-          console.log('[Imagen] Midjourney failed, trying Google fallback...')
           markMidjourneyResult(false)
         }
       }
 
-      // ── Priority 2 & 3: Google (Gemini → Imagen 4) — fallback ──
-      if (!imageBuffer && !isGoogleCachedAsFailed()) {
-        const googleApiKey = process.env.GOOGLE_API_KEY
-        if (googleApiKey) {
-          try {
-            const client = new GoogleGenAI({ apiKey: googleApiKey })
-
-            imageBuffer = await generateWithGemini(client, prompt)
-
-            if (!imageBuffer) {
-              console.log('[Imagen] Gemini failed, falling back to Imagen 4...')
-              imageBuffer = await generateWithImagen(client, prompt, aspectRatio)
-            }
-
-            if (imageBuffer) {
-              markGoogleResult(true)
-            } else {
-              markGoogleResult(false)
-            }
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err)
-            console.error('[Imagen] Google error:', message)
-            markGoogleResult(false)
-          }
-        }
-      }
-
-      // ── All providers failed ──
+      // Provider failed
       if (!imageBuffer) {
         return IMAGE_GEN_UNAVAILABLE_MSG
       }

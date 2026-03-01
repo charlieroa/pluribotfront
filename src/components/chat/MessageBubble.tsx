@@ -447,7 +447,7 @@ export interface StepApprovalCardProps {
 }
 
 export const StepApprovalCard = ({ step, onApproveStep, onRequestHuman, humanRequested }: StepApprovalCardProps) => {
-  const isVisualAgent = ['brand', 'web', 'social', 'dev', 'video'].includes(step.agentId)
+  const isVisualAgent = ['web', 'dev', 'video', 'logic'].includes(step.agentId)
 
   return (
     <div className="flex gap-4 max-w-2xl">

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil } from 'lucide-react'
+import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil, FolderArchive, Smartphone, Tablet, Globe, ExternalLink, Loader2 } from 'lucide-react'
 import type { Deliverable } from '../../types'
 import type { SelectedElement } from './VisualEditToolbar'
 import UnsplashModal from './UnsplashModal'
+import VersionSelector from './VersionSelector'
+import DiffModal from './DiffModal'
 
 interface WorkspacePanelProps {
   deliverable: Deliverable
@@ -14,6 +16,7 @@ interface WorkspacePanelProps {
   onAutoFix?: (errorMessage: string) => void
   isFixing?: boolean
   conversationId?: string
+  onSelectVersion?: (d: Deliverable) => void
 }
 
 const typeConfig: Record<Deliverable['type'], { icon: ReactNode; label: string; color: string }> = {
@@ -29,7 +32,7 @@ const isHtmlContent = (content: string): boolean => {
   return t.startsWith('<!doctype') || t.startsWith('<html') || t.startsWith('<!') || t.includes('<body')
 }
 
-const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChange, onElementSelected, onSwitchToEditTab }: WorkspacePanelProps) => {
+const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChange, onElementSelected, onSwitchToEditTab, conversationId, onSelectVersion }: WorkspacePanelProps) => {
   const config = typeConfig[deliverable.type]
   const canPreview = isHtmlContent(deliverable.content)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>(canPreview ? 'preview' : 'code')
@@ -37,6 +40,10 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
   const [iframeError, setIframeError] = useState<{ error: string; line: number } | null>(null)
   const [modifiedContent, setModifiedContent] = useState<string | null>(null)
   const [unsplashOpen, setUnsplashOpen] = useState(false)
+  const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+  const [compareVersion, setCompareVersion] = useState<{ version: number; content: string } | null>(null)
+  const [deployState, setDeployState] = useState<'idle' | 'deploying' | 'deployed'>('idle')
+  const [deployUrl, setDeployUrl] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   const currentContent = modifiedContent ?? deliverable.content
@@ -74,6 +81,9 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
         onElementSelected?.(el)
         onSwitchToEditTab?.()
       }
+      if (event.data?.type === 'element-deselected') {
+        onElementSelected?.(null)
+      }
       if (event.data?.type === 'content-updated') {
         setModifiedContent(event.data.html)
       }
@@ -97,14 +107,22 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
         iframeRef.current.contentWindow.postMessage({ type: 'replace-image', url, alt }, '*')
       }
     }
+    const handleEditorAction = (e: Event) => {
+      const action = (e as CustomEvent).detail as string
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: action }, '*')
+      }
+    }
 
     window.addEventListener('open-unsplash-modal', handleOpenUnsplash)
     window.addEventListener('apply-style-to-iframe', handleApplyStyle)
     window.addEventListener('replace-image-in-iframe', handleReplaceImage)
+    window.addEventListener('editor-action', handleEditorAction)
     return () => {
       window.removeEventListener('open-unsplash-modal', handleOpenUnsplash)
       window.removeEventListener('apply-style-to-iframe', handleApplyStyle)
       window.removeEventListener('replace-image-in-iframe', handleReplaceImage)
+      window.removeEventListener('editor-action', handleEditorAction)
     }
   }, [])
 
@@ -133,6 +151,30 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
     if (modifiedContent) {
       deliverable.content = modifiedContent
       setModifiedContent(null)
+    }
+  }
+
+  const handleDeploy = async () => {
+    setDeployState('deploying')
+    try {
+      const token = localStorage.getItem('pluribots_token')
+      const res = await fetch('/api/deploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ deliverableId: deliverable.id }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setDeployUrl(data.url)
+        setDeployState('deployed')
+      } else {
+        setDeployState('idle')
+      }
+    } catch {
+      setDeployState('idle')
     }
   }
 
@@ -179,6 +221,16 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
             <h3 className="font-bold text-ink text-sm truncate">{deliverable.title}</h3>
             <p className="text-[10px] text-ink-faint">{deliverable.agent} &middot; {config.label}</p>
           </div>
+          {conversationId && onSelectVersion && (
+            <VersionSelector
+              deliverableId={deliverable.id}
+              currentVersion={deliverable.version}
+              versionCount={deliverable.versionCount}
+              conversationId={conversationId}
+              onSelectVersion={onSelectVersion}
+              onCompare={setCompareVersion}
+            />
+          )}
         </div>
         <div className="flex items-center gap-2">
           {canPreview && (
@@ -220,13 +272,38 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
                 </button>
               </div>
               {viewMode === 'preview' && (
-                <button
-                  onClick={() => setIsFullscreen(true)}
-                  className="p-1.5 text-ink-faint hover:text-ink transition-colors rounded-lg hover:bg-subtle"
-                  title="Pantalla completa"
-                >
-                  <Maximize2 size={16} />
-                </button>
+                <>
+                  <div className="flex bg-subtle rounded-lg p-0.5">
+                    <button
+                      onClick={() => setViewport('mobile')}
+                      className={`p-1.5 rounded-md transition-all ${viewport === 'mobile' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'}`}
+                      title="Mobile (375px)"
+                    >
+                      <Smartphone size={14} />
+                    </button>
+                    <button
+                      onClick={() => setViewport('tablet')}
+                      className={`p-1.5 rounded-md transition-all ${viewport === 'tablet' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'}`}
+                      title="Tablet (768px)"
+                    >
+                      <Tablet size={14} />
+                    </button>
+                    <button
+                      onClick={() => setViewport('desktop')}
+                      className={`p-1.5 rounded-md transition-all ${viewport === 'desktop' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'}`}
+                      title="Desktop (100%)"
+                    >
+                      <Monitor size={14} />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setIsFullscreen(true)}
+                    className="p-1.5 text-ink-faint hover:text-ink transition-colors rounded-lg hover:bg-subtle"
+                    title="Pantalla completa"
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                </>
               )}
             </>
           )}
@@ -238,11 +315,15 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
 
       {/* Content */}
       {canPreview && viewMode === 'preview' ? (
-        <div className="flex-1 overflow-hidden bg-white relative">
+        <div className={`flex-1 overflow-hidden relative ${viewport !== 'desktop' ? 'bg-slate-100 flex justify-center' : 'bg-white'}`}>
           <iframe
             ref={iframeRef}
             srcDoc={currentContent}
-            className="w-full h-full border-0"
+            className={`h-full border-0 transition-all duration-300 ${
+              viewport === 'mobile' ? 'w-[375px] shadow-xl rounded-lg border border-slate-200 my-2 bg-white' :
+              viewport === 'tablet' ? 'w-[768px] shadow-xl rounded-lg border border-slate-200 my-2 bg-white' :
+              'w-full'
+            }`}
             sandbox="allow-scripts allow-same-origin"
             title={deliverable.title}
           />
@@ -288,6 +369,20 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
               <Download size={14} /> Exportar HTML
             </button>
           )}
+          {deliverable.type === 'code' && conversationId && (
+            <button
+              onClick={() => {
+                const url = `/api/conversations/${conversationId}/deliverables/${deliverable.id}/export-zip`
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `${deliverable.title.replace(/[^a-zA-Z0-9]/g, '_')}.zip`
+                a.click()
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-all"
+            >
+              <FolderArchive size={14} /> Descargar ZIP
+            </button>
+          )}
           {hasChanges && (
             <button
               onClick={handleSaveChanges}
@@ -295,6 +390,27 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
             >
               <Save size={14} /> Guardar cambios
             </button>
+          )}
+          {canPreview && (
+            deployState === 'deployed' && deployUrl ? (
+              <a
+                href={deployUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-500 hover:bg-violet-600 rounded-lg transition-all"
+              >
+                <ExternalLink size={14} /> Ver sitio
+              </a>
+            ) : (
+              <button
+                onClick={handleDeploy}
+                disabled={deployState === 'deploying'}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-500 hover:bg-violet-600 rounded-lg transition-all disabled:opacity-60"
+              >
+                {deployState === 'deploying' ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+                {deployState === 'deploying' ? 'Publicando...' : 'Publicar'}
+              </button>
+            )
           )}
         </div>
         <p className="text-[10px] text-ink-faint">Generado por {deliverable.agent}</p>
@@ -306,6 +422,19 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
         onClose={() => setUnsplashOpen(false)}
         onSelect={handleUnsplashSelect}
       />
+
+      {/* Diff Modal */}
+      {compareVersion && (
+        <DiffModal
+          open={true}
+          onClose={() => setCompareVersion(null)}
+          oldVersion={compareVersion.version}
+          newVersion={deliverable.version ?? 1}
+          oldContent={compareVersion.content}
+          newContent={currentContent}
+          type={deliverable.type}
+        />
+      )}
     </div>
   )
 }

@@ -103,13 +103,19 @@ model Deliverable {
   agent          String
   botType        String
   instanceId     String?
+  version        Int      @default(1)
+  parentId       String?
   netlifySiteId  String?
   netlifyUrl     String?
   isPublic       Boolean  @default(false)
   shareSlug      String?  @unique
   createdAt      DateTime @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
+  parent         Deliverable?  @relation("DeliverableVersions", fields: [parentId], references: [id])
+  children       Deliverable[] @relation("DeliverableVersions")
   kanbanTask     KanbanTask?
+
+  @@index([conversationId, instanceId])
 }
 
 model KanbanTask {
