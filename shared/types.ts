@@ -73,7 +73,6 @@ export type SSEEvent =
   | { type: 'human_message'; agentName: string; agentRole: string; text: string; messageId: string; specialty?: string; specialtyColor?: string; avatarUrl?: string }
   | { type: 'human_agent_left' }
   | { type: 'thinking_update'; agentId: string; instanceId?: string; content: string }
-  | { type: 'logic_project'; templateId: string; description: string; files: Record<string, string> }
   | { type: 'error'; message: string }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
 
@@ -163,15 +162,17 @@ export interface AvailableModel {
   name: string
   provider: 'anthropic' | 'openai' | 'google'
   model: string
+  label?: string
+  desc?: string
 }
 
 export const AVAILABLE_MODELS: AvailableModel[] = [
-  { id: 'claude-opus', name: 'Claude Opus', provider: 'anthropic', model: 'claude-opus-4-6' },
-  { id: 'claude-sonnet', name: 'Claude Sonnet', provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
-  { id: 'claude-haiku', name: 'Claude Haiku', provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  { id: 'gpt-4.5', name: 'GPT-4.5', provider: 'openai', model: 'gpt-4.5-preview' },
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', model: 'gpt-4o' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', model: 'gpt-4o-mini' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', model: 'gemini-2.5-pro' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', model: 'gemini-2.5-flash' },
+  { id: 'claude-opus', name: 'Claude Opus', label: 'Máxima calidad', desc: 'El más inteligente y creativo', provider: 'anthropic', model: 'claude-opus-4-6' },
+  { id: 'claude-sonnet', name: 'Claude Sonnet', label: 'Equilibrado', desc: 'Rápido y de gran calidad', provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+  { id: 'claude-haiku', name: 'Claude Haiku', label: 'Rápido', desc: 'El más veloz, ideal para tareas simples', provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  { id: 'gpt-4.5', name: 'GPT-4.5', label: 'Premium', desc: 'Alta calidad de OpenAI', provider: 'openai', model: 'gpt-4.5-preview' },
+  { id: 'gpt-4o', name: 'GPT-4o', label: 'Versátil', desc: 'Rápido y multimodal', provider: 'openai', model: 'gpt-4o' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', label: 'Económico', desc: 'Rápido y bajo consumo', provider: 'openai', model: 'gpt-4o-mini' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', label: 'Avanzado', desc: 'El más potente de Google', provider: 'google', model: 'gemini-2.5-pro' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', label: 'Ultra rápido', desc: 'Velocidad extrema de Google', provider: 'google', model: 'gemini-2.5-flash' },
 ]

@@ -44,8 +44,14 @@ export class AnthropicProvider implements LLMProvider {
       cache_creation_input_tokens?: number
       cache_read_input_tokens?: number
     }
-    if (usage.cache_creation_input_tokens || usage.cache_read_input_tokens) {
-      console.log(`[Anthropic] Cache: model=${this.model} created=${usage.cache_creation_input_tokens ?? 0}, read=${usage.cache_read_input_tokens ?? 0}, input=${usage.input_tokens}`)
+    const created = usage.cache_creation_input_tokens ?? 0
+    const read = usage.cache_read_input_tokens ?? 0
+    const totalInput = created + read + usage.input_tokens
+    if (created || read) {
+      const hitRate = totalInput > 0 ? Math.round((read / totalInput) * 100) : 0
+      const savedTokens = read  // these would have been full-price input tokens
+      const savedUSD = (savedTokens / 1_000_000) * 2.7  // 90% of $3/M for sonnet
+      console.log(`[Anthropic] Cache: model=${this.model} created=${created}, read=${read}, input=${usage.input_tokens} | hitRate=${hitRate}% saved~$${savedUSD.toFixed(4)}`)
     }
     return {
       inputTokens: usage.input_tokens,
@@ -100,7 +106,7 @@ export class AnthropicProvider implements LLMProvider {
       }
 
       const finalMessage = await stream.finalMessage()
-      callbacks.onComplete(fullText, this.extractUsage(finalMessage))
+      await callbacks.onComplete(fullText, this.extractUsage(finalMessage))
     } catch (err) {
       callbacks.onError(err instanceof Error ? err : new Error(String(err)))
     }
@@ -212,7 +218,7 @@ export class AnthropicProvider implements LLMProvider {
 
           continueLoop = true
         } else {
-          callbacks.onComplete(fullText, totalUsage)
+          await callbacks.onComplete(fullText, totalUsage)
         }
       }
     } catch (err) {

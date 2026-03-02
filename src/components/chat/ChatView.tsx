@@ -54,7 +54,6 @@ const agentMeta: Record<string, { name: string; color: string }> = {
   web: { name: 'Pixel', color: '#a855f7' },
   ads: { name: 'Metric', color: '#10b981' },
   video: { name: 'Reel', color: '#ef4444' },
-  logic: { name: 'Logic', color: '#6366f1' },
   base: { name: 'Pluria', color: '#6366f1' },
   human: { name: 'Agente Humano', color: '#8b5cf6' },
   system: { name: 'Sistema', color: '#6b7280' },
@@ -179,7 +178,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
 
       {/* Refining card — shows while agent refines without full coordination */}
       {isRefining && !isCoordinating && !pendingStepApproval && !streamingAgent && (
-        <RefiningCard agentName={refiningAgentName || 'Logic'} thinkingSteps={thinkingSteps || []} />
+        <RefiningCard agentName={refiningAgentName || 'Pluria'} thinkingSteps={thinkingSteps || []} />
       )}
 
       {isCoordinating && !pendingStepApproval && (
@@ -226,7 +225,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
 
 // Refining card — shows a spinner while a single agent refines
 const RefiningCard = ({ agentName, thinkingSteps }: { agentName: string; thinkingSteps: ThinkingStep[] }) => {
-  const agentId = Object.keys(agentMeta).find(k => agentMeta[k].name === agentName) || 'logic'
+  const agentId = Object.keys(agentMeta).find(k => agentMeta[k].name === agentName) || 'web'
   const color = agentMeta[agentId]?.color ?? '#6366f1'
   const latestStep = thinkingSteps.length > 0 ? thinkingSteps[thinkingSteps.length - 1] : null
 

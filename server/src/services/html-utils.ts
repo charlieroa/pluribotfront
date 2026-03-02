@@ -1,4 +1,4 @@
-// Extract structured design context from Pixel's HTML output for Logic
+// Extract structured design context from Pixel's HTML output
 export function extractDesignContext(html: string): string {
   const parts: string[] = []
 

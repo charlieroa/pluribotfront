@@ -20,7 +20,6 @@ const agentColorMap: Record<string, string> = {
   seo: '#3b82f6',
   web: '#a855f7',
   ads: '#10b981',
-  dev: '#f59e0b',
   video: '#ef4444',
 }
 
@@ -28,7 +27,6 @@ const agentNameMap: Record<string, string> = {
   seo: 'Lupa',
   web: 'Pixel',
   ads: 'Metric',
-  dev: 'Logic',
   video: 'Reel',
 }
 

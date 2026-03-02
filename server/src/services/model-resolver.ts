@@ -1,20 +1,15 @@
 import type { LLMProviderConfig } from './llm/types.js'
 import { isProviderAvailable } from './provider-health.js'
+import { AVAILABLE_MODELS } from '../../../shared/types.js'
+
+// Build model lookup from the single source of truth
+const MODEL_LOOKUP: Record<string, LLMProviderConfig> = Object.fromEntries(
+  AVAILABLE_MODELS.map(m => [m.id, { provider: m.provider, model: m.model }])
+)
 
 // Resolve a model override string to a provider config
 export function resolveModelConfig(modelId: string, agentDefaults?: LLMProviderConfig): LLMProviderConfig | null {
-  const models: Record<string, LLMProviderConfig> = {
-    'claude-opus': { provider: 'anthropic', model: 'claude-opus-4-6' },
-    'claude-sonnet': { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
-    'claude-haiku': { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-    'gpt-4.5': { provider: 'openai', model: 'gpt-4.5-preview' },
-    'gpt-4o': { provider: 'openai', model: 'gpt-4o' },
-    'gpt-4o-mini': { provider: 'openai', model: 'gpt-4o-mini' },
-    'gemini-2.5-pro': { provider: 'google', model: 'gemini-2.5-pro' },
-    'gemini-2.5-flash': { provider: 'google', model: 'gemini-2.5-flash' },
-    'deepseek-chat': { provider: 'deepseek', model: 'deepseek-chat' },
-  }
-  const override = models[modelId]
+  const override = MODEL_LOOKUP[modelId]
   if (!override) return null
   return {
     ...override,

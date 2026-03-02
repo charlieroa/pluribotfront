@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { MessageCircle, Pencil, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import type { AdminTab } from './components/admin/AdminDashboard'
 import { agents } from './data/agents'
 import { quickActions } from './data/quickActions'
-import { useChat, type LogicProject } from './hooks/useChat'
+import { useChat } from './hooks/useChat'
 import { useSpecialists } from './hooks/useSpecialists'
 import { useAuth } from './contexts/AuthContext'
 import type { Deliverable } from './types'
@@ -16,7 +16,6 @@ import MarketplaceView from './components/marketplace/MarketplaceView'
 import PortfolioView from './components/portfolio/PortfolioView'
 import WorkspacePanel from './components/workspace/WorkspacePanel'
 import EditPanel from './components/workspace/EditPanel'
-import LogicWorkspace from './components/workspace/ide/LogicWorkspace'
 import OnboardingView from './components/onboarding/OnboardingView'
 import AdminDashboard from './components/admin/AdminDashboard'
 import type { SelectedElement } from './components/workspace/VisualEditToolbar'
@@ -27,7 +26,6 @@ const App = () => {
   const showOnboarding = isAuthenticated && !user.onboardingDone
 
   const [activeTab, setActiveTab] = useState('chat')
-  const [activeTemplate, setActiveTemplate] = useState<string | null>(null)
   const [adminSubTab, setAdminSubTab] = useState<AdminTab>('users')
   const [activeDeliverable, setActiveDeliverable] = useState<Deliverable | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -39,10 +37,6 @@ const App = () => {
   const [editMode, setEditMode] = useState(false)
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null)
 
-  // Logic IDE state
-  const [logicFiles, setLogicFiles] = useState<Record<string, string> | null>(null)
-  const activeTemplateRef = useRef(activeTemplate)
-  activeTemplateRef.current = activeTemplate
 
   const handleDeliverable = (d: Deliverable) => {
     setActiveDeliverable(d)
@@ -51,18 +45,7 @@ const App = () => {
     setChatPanelVisible(window.innerWidth >= 768)
   }
 
-  const handleLogicProject = useCallback((project: LogicProject) => {
-    // If IDE not open, open it with the template
-    if (!activeTemplateRef.current) {
-      setActiveTemplate(project.templateId || 'blank')
-    }
-    // Set the files for LogicWorkspace to write into WebContainer
-    setLogicFiles(project.files)
-    // Collapse sidebar like Pixel's canvas
-    setSidebarCollapsed(true)
-  }, [])
-
-  const chat = useChat({ onDeliverable: handleDeliverable, onLogicProject: handleLogicProject, isAuthenticated, onCreditUpdate: updateCreditBalance })
+  const chat = useChat({ onDeliverable: handleDeliverable, isAuthenticated, onCreditUpdate: updateCreditBalance })
   const { specialists } = useSpecialists()
 
   const displayDeliverable = activeDeliverable
@@ -96,8 +79,6 @@ const App = () => {
   const handleNewChat = () => {
     chat.resetChat()
     setActiveDeliverable(null)
-    setActiveTemplate(null)
-    setLogicFiles(null)
     setSidebarCollapsed(false)
     setChatPanelVisible(true)
     setEditMode(false)
@@ -118,17 +99,10 @@ const App = () => {
   const handleLoadConversation = (convId: string) => {
     chat.loadConversation(convId)
     setActiveDeliverable(null)
-    setActiveTemplate(null)
-    setLogicFiles(null)
     setSidebarCollapsed(false)
     setChatPanelVisible(true)
     setActiveTab('chat')
   }
-
-  const handleAutoFix = useCallback((errorMessage: string) => {
-    const prompt = `El proyecto tiene un error de compilacion. Corrige SOLO el error sin cambiar funcionalidad ni diseño. Error:\n\n${errorMessage}\n\nGenera el JSON completo con los archivos corregidos.`
-    chat.sendRefineMessage(prompt)
-  }, [chat.sendRefineMessage])
 
   const chatViewProps = {
     messages: chat.messages,
@@ -168,7 +142,6 @@ const App = () => {
     disabledProviders,
     onAbort: chat.handleAbort,
     activeAgents: chat.activeAgents,
-    onLoadTemplate: (id: string) => setActiveTemplate(id),
   }
 
   return (
@@ -213,20 +186,7 @@ const App = () => {
           <Header isCoordinating={chat.isCoordinating} activeTab={activeTab} onMobileMenuToggle={() => setMobileMenuOpen(prev => !prev)} setActiveTab={handleSetActiveTab} />
 
           <div className="flex-1 flex overflow-hidden relative">
-            {activeTemplate ? (
-              <>
-                {/* Chat panel alongside IDE */}
-                <div className="w-[320px] flex-shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden hidden md:flex">
-                  <ChatView {...chatViewProps} />
-                </div>
-                <LogicWorkspace
-                  templateId={activeTemplate}
-                  onClose={() => { setActiveTemplate(null); setLogicFiles(null) }}
-                  logicFiles={logicFiles}
-                  onAutoFix={handleAutoFix}
-                />
-              </>
-            ) : displayDeliverable ? (
+            {displayDeliverable ? (
               <>
                 {/* Chat side panel — collapsible, overlay on mobile */}
                 {chatPanelVisible && (
@@ -316,7 +276,6 @@ const App = () => {
                     onEditModeChange={setEditMode}
                     onElementSelected={setSelectedElement}
                     onSwitchToEditTab={() => setSidePanelTab('edit')}
-                    onAutoFix={handleAutoFix}
                     isFixing={!!chat.streamingAgent}
                     conversationId={chat.conversationId ?? undefined}
                     onSelectVersion={(d) => setActiveDeliverable(d as Deliverable)}

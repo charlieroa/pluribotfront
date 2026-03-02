@@ -39,10 +39,10 @@ interface CostsData {
 }
 
 const agentNames: Record<string, string> = {
-  seo: 'Lupa', web: 'Pixel', ads: 'Metric', dev: 'Logic', video: 'Reel', base: 'Pluria',
+  seo: 'Lupa', web: 'Pixel', ads: 'Metric', video: 'Reel', base: 'Pluria',
 }
 const agentColors: Record<string, string> = {
-  seo: '#3b82f6', web: '#a855f7', ads: '#10b981', dev: '#f59e0b', video: '#ef4444', base: '#6366f1',
+  seo: '#3b82f6', web: '#a855f7', ads: '#10b981', video: '#ef4444', base: '#6366f1',
 }
 
 const BUDGET_PROVIDERS = [

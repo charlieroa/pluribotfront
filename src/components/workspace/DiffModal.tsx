@@ -70,7 +70,7 @@ function computeLineDiff(oldText: string, newText: string): DiffLine[] {
   return temp.reverse()
 }
 
-function parseLogicFiles(content: string): Record<string, string> | null {
+function parseCodeFiles(content: string): Record<string, string> | null {
   try {
     const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/)
     const json = fenceMatch ? JSON.parse(fenceMatch[1].trim()) : JSON.parse(content.trim())
@@ -99,8 +99,8 @@ const DiffModal = ({ open, onClose, oldVersion, newVersion, oldContent, newConte
 
   const { isCode, oldFiles, newFiles, allPaths } = useMemo(() => {
     if (type !== 'code') return { isCode: false, oldFiles: null, newFiles: null, allPaths: [] as string[] }
-    const of = parseLogicFiles(oldContent)
-    const nf = parseLogicFiles(newContent)
+    const of = parseCodeFiles(oldContent)
+    const nf = parseCodeFiles(newContent)
     if (!of || !nf) return { isCode: false, oldFiles: null, newFiles: null, allPaths: [] as string[] }
     const paths = [...new Set([...Object.keys(of), ...Object.keys(nf)])].sort()
     return { isCode: true, oldFiles: of, newFiles: nf, allPaths: paths }

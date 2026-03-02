@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
-import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil, FolderArchive, Smartphone, Tablet, Globe, ExternalLink, Loader2 } from 'lucide-react'
+import { X, Copy, Download, FileText, Code, Palette, MessageSquare, Monitor, Code2, Maximize2, Minimize2, Film, AlertTriangle, Save, Pencil, Smartphone, Tablet, Globe, ExternalLink } from 'lucide-react'
 import type { Deliverable } from '../../types'
 import type { SelectedElement } from './VisualEditToolbar'
 import UnsplashModal from './UnsplashModal'
 import VersionSelector from './VersionSelector'
 import DiffModal from './DiffModal'
+import PublishModal from './PublishModal'
 
 interface WorkspacePanelProps {
   deliverable: Deliverable
@@ -13,8 +14,6 @@ interface WorkspacePanelProps {
   onEditModeChange?: (enabled: boolean) => void
   onElementSelected?: (el: SelectedElement | null) => void
   onSwitchToEditTab?: () => void
-  onAutoFix?: (errorMessage: string) => void
-  isFixing?: boolean
   conversationId?: string
   onSelectVersion?: (d: Deliverable) => void
 }
@@ -44,6 +43,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
   const [compareVersion, setCompareVersion] = useState<{ version: number; content: string } | null>(null)
   const [deployState, setDeployState] = useState<'idle' | 'deploying' | 'deployed'>('idle')
   const [deployUrl, setDeployUrl] = useState<string | null>(null)
+  const [publishModalOpen, setPublishModalOpen] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   const currentContent = modifiedContent ?? deliverable.content
@@ -154,28 +154,9 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
     }
   }
 
-  const handleDeploy = async () => {
-    setDeployState('deploying')
-    try {
-      const token = localStorage.getItem('pluribots_token')
-      const res = await fetch('/api/deploy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ deliverableId: deliverable.id }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setDeployUrl(data.url)
-        setDeployState('deployed')
-      } else {
-        setDeployState('idle')
-      }
-    } catch {
-      setDeployState('idle')
-    }
+  const handlePublished = (url: string, _slug: string) => {
+    setDeployUrl(url)
+    setDeployState('deployed')
   }
 
   const handleUnsplashSelect = (url: string, alt: string) => {
@@ -369,20 +350,6 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
               <Download size={14} /> Exportar HTML
             </button>
           )}
-          {deliverable.type === 'code' && conversationId && (
-            <button
-              onClick={() => {
-                const url = `/api/conversations/${conversationId}/deliverables/${deliverable.id}/export-zip`
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `${deliverable.title.replace(/[^a-zA-Z0-9]/g, '_')}.zip`
-                a.click()
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-all"
-            >
-              <FolderArchive size={14} /> Descargar ZIP
-            </button>
-          )}
           {hasChanges && (
             <button
               onClick={handleSaveChanges}
@@ -392,29 +359,37 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
             </button>
           )}
           {canPreview && (
-            deployState === 'deployed' && deployUrl ? (
-              <a
-                href={deployUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+            <>
+              {deployState === 'deployed' && deployUrl && (
+                <a
+                  href={deployUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-500 hover:bg-violet-600 rounded-lg transition-all"
+                >
+                  <ExternalLink size={14} /> Ver sitio
+                </a>
+              )}
+              <button
+                onClick={() => setPublishModalOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-500 hover:bg-violet-600 rounded-lg transition-all"
               >
-                <ExternalLink size={14} /> Ver sitio
-              </a>
-            ) : (
-              <button
-                onClick={handleDeploy}
-                disabled={deployState === 'deploying'}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-violet-500 hover:bg-violet-600 rounded-lg transition-all disabled:opacity-60"
-              >
-                {deployState === 'deploying' ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
-                {deployState === 'deploying' ? 'Publicando...' : 'Publicar'}
+                <Globe size={14} />
+                {deployState === 'deployed' ? 'Actualizar' : 'Publicar'}
               </button>
-            )
+            </>
           )}
         </div>
         <p className="text-[10px] text-ink-faint">Generado por {deliverable.agent}</p>
       </div>
+
+      {/* Publish Modal */}
+      <PublishModal
+        isOpen={publishModalOpen}
+        onClose={() => setPublishModalOpen(false)}
+        deliverable={deliverable}
+        onPublished={handlePublished}
+      />
 
       {/* Unsplash Modal */}
       <UnsplashModal

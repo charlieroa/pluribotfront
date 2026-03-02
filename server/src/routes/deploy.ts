@@ -3,16 +3,45 @@ import { prisma } from '../db/client.js'
 import { optionalAuth } from '../middleware/auth.js'
 import { deployProject, getDeployStatus, removeDeploy } from '../services/deploy.js'
 import { deployToNetlify } from '../services/netlify-deploy.js'
+import { slugify, isSlugValid, isSlugAvailable, generateUniqueSlug } from '../utils/slugify.js'
 
 const router = Router()
+const APP_DOMAIN = process.env.APP_DOMAIN || 'pluribots.com'
+
+/**
+ * GET /api/deploy/check-slug/:slug — Check if a slug is available
+ */
+router.get('/check-slug/:slug', async (req, res) => {
+  const slug = req.params.slug.toLowerCase()
+  const validation = isSlugValid(slug)
+  if (!validation.valid) {
+    res.json({ available: false, error: validation.error })
+    return
+  }
+  const available = await isSlugAvailable(slug)
+  res.json({ available })
+})
+
+/**
+ * POST /api/deploy/suggest-slug — Suggest a slug from a title
+ * Body: { title: string }
+ */
+router.post('/suggest-slug', async (req, res) => {
+  const { title } = req.body as { title?: string }
+  if (!title) {
+    res.status(400).json({ error: 'title requerido' })
+    return
+  }
+  const slug = await generateUniqueSlug(title)
+  res.json({ slug })
+})
 
 /**
  * POST /api/deploy — Deploy a deliverable as a static site
- * Body: { deliverableId: string }
- * Response: { url: string, deployId: string, provider: 'netlify' | 'local', adminUrl?: string }
+ * Body: { deliverableId: string, slug?: string }
  */
 router.post('/', optionalAuth, async (req, res) => {
-  const { deliverableId } = req.body as { deliverableId: string }
+  const { deliverableId, slug: requestedSlug } = req.body as { deliverableId: string; slug?: string }
 
   if (!deliverableId) {
     res.status(400).json({ error: 'deliverableId requerido' })
@@ -34,45 +63,49 @@ router.post('/', optionalAuth, async (req, res) => {
       return
     }
 
-    // Try Netlify deploy if token is configured
-    if (process.env.NETLIFY_TOKEN) {
-      try {
-        const result = await deployToNetlify(
-          deliverable.content,
-          deliverable.netlifySiteId ?? undefined
-        )
+    // --- Determine publish slug ---
+    let finalSlug = deliverable.publishSlug // reuse existing slug on re-deploy
 
-        // Persist site ID and URL for re-deploy
-        await prisma.deliverable.update({
-          where: { id: deliverableId },
-          data: {
-            netlifySiteId: result.siteId,
-            netlifyUrl: result.url,
-          },
-        })
-
-        console.log(`[Deploy] Netlify deployed: ${result.url}`)
-
-        res.json({
-          url: result.url,
-          deployId: result.deployId,
-          provider: 'netlify',
-          adminUrl: result.adminUrl,
-        })
-        return
-      } catch (netlifyErr) {
-        console.error('[Deploy] Netlify error, falling back to local:', netlifyErr)
-        // Fall through to local deploy
+    if (!finalSlug) {
+      if (requestedSlug) {
+        const slug = requestedSlug.toLowerCase()
+        const validation = isSlugValid(slug)
+        if (!validation.valid) {
+          res.status(400).json({ error: validation.error })
+          return
+        }
+        if (!(await isSlugAvailable(slug))) {
+          res.status(409).json({ error: 'Este slug ya está en uso' })
+          return
+        }
+        finalSlug = slug
+      } else {
+        finalSlug = await generateUniqueSlug(deliverable.title)
       }
     }
 
-    // Fallback: local deploy
-    const deployId = deliverableId
-    const url = await deployProject(deployId, deliverable.content)
+    // --- Write HTML to disk ---
+    const deployId = deliverable.id
+    await deployProject(deployId, deliverable.content)
 
-    console.log(`[Deploy] Local deployed: ${url}`)
+    // --- Update DB with publish info ---
+    await prisma.deliverable.update({
+      where: { id: deliverableId },
+      data: {
+        publishSlug: finalSlug,
+        publishedAt: new Date(),
+      },
+    })
 
-    res.json({ url, deployId, provider: 'local' })
+    const subdomainUrl = `https://${finalSlug}.${APP_DOMAIN}`
+    console.log(`[Deploy] Subdomain deployed: ${subdomainUrl}`)
+
+    res.json({
+      url: subdomainUrl,
+      slug: finalSlug,
+      deployId,
+      provider: 'subdomain',
+    })
   } catch (err) {
     console.error('[Deploy] Error:', err)
     res.status(500).json({ error: 'Error al desplegar el proyecto' })

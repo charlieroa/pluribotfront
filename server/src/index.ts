@@ -1,4 +1,12 @@
 import 'dotenv/config'
+
+// Safety net: prevent unhandled promise rejections from crashing the process
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err)
+})
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
@@ -15,8 +23,10 @@ import unsplashRouter from './routes/unsplash.js'
 import seniorRouter from './routes/senior.js'
 import deployRouter from './routes/deploy.js'
 import portfolioRouter from './routes/portfolio.js'
+import domainsRouter from './routes/domains.js'
 import { errorHandler } from './middleware/errors.js'
 import { getDeployDir } from './services/deploy.js'
+import { subdomainMiddleware } from './middleware/subdomain.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,11 +45,19 @@ app.use(cors({
     // Allow requests with no origin (server-to-server, curl, mobile apps)
     if (!origin) return callback(null, true)
     if (allowedOrigins.includes(origin)) return callback(null, true)
+    // Allow any *.pluribots.com subdomain
+    try {
+      const url = new URL(origin)
+      if (url.hostname.endsWith('.pluribots.com')) return callback(null, true)
+    } catch { /* ignore parse errors */ }
     callback(new Error(`Origin ${origin} not allowed by CORS`))
   },
   credentials: true,
 }))
 app.use(express.json())
+
+// Subdomain routing — MUST be before all routes
+app.use(subdomainMiddleware)
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')))
@@ -56,6 +74,7 @@ app.use('/api/organization', organizationRouter)
 app.use('/api/unsplash', unsplashRouter)
 app.use('/api/senior', seniorRouter)
 app.use('/api/deploy', deployRouter)
+app.use('/api/domains', domainsRouter)
 app.use('/api/portfolio', portfolioRouter)
 
 // Serve deployed projects as static files

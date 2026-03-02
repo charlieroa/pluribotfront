@@ -43,6 +43,9 @@ export interface Deliverable {
   botType: string
   version?: number
   versionCount?: number
+  publishSlug?: string
+  customDomain?: string
+  customDomainStatus?: string
 }
 
 export interface KanbanTask {
@@ -63,33 +66,7 @@ export interface QuickAction {
   desc: string
 }
 
-// ─── Plan & Model types (mirrored from shared/types.ts for frontend use) ───
+// ─── Plan & Model types (re-exported from shared/types.ts) ───
 
-export interface PlanStep {
-  agentId: string
-  agentName: string
-  instanceId: string
-  task: string
-  userDescription: string
-  dependsOn?: string[]
-}
-
-export interface AvailableModel {
-  id: string
-  name: string
-  label: string
-  desc: string
-  provider: 'anthropic' | 'openai' | 'google'
-  model: string
-}
-
-export const AVAILABLE_MODELS: AvailableModel[] = [
-  { id: 'claude-opus', name: 'Claude Opus', label: 'Máxima calidad', desc: 'El más inteligente y creativo', provider: 'anthropic', model: 'claude-opus-4-6' },
-  { id: 'claude-sonnet', name: 'Claude Sonnet', label: 'Equilibrado', desc: 'Rápido y de gran calidad', provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
-  { id: 'claude-haiku', name: 'Claude Haiku', label: 'Rápido', desc: 'El más veloz, ideal para tareas simples', provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  { id: 'gpt-4.5', name: 'GPT-4.5', label: 'Premium', desc: 'Alta calidad de OpenAI', provider: 'openai', model: 'gpt-4.5-preview' },
-  { id: 'gpt-4o', name: 'GPT-4o', label: 'Versátil', desc: 'Rápido y multimodal', provider: 'openai', model: 'gpt-4o' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', label: 'Económico', desc: 'Rápido y bajo consumo', provider: 'openai', model: 'gpt-4o-mini' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', label: 'Avanzado', desc: 'El más potente de Google', provider: 'google', model: 'gemini-2.5-pro' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', label: 'Ultra rápido', desc: 'Velocidad extrema de Google', provider: 'google', model: 'gemini-2.5-flash' },
-]
+export type { PlanStep, AvailableModel } from '../../shared/types'
+export { AVAILABLE_MODELS } from '../../shared/types'

@@ -19,7 +19,7 @@ export interface LLMUsage {
 
 export interface LLMStreamCallbacks {
   onToken: (token: string) => void
-  onComplete: (fullText: string, usage: LLMUsage) => void
+  onComplete: (fullText: string, usage: LLMUsage) => void | Promise<void>
   onError: (error: Error) => void
   onThinking?: (text: string) => void
 }

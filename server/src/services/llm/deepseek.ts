@@ -74,7 +74,7 @@ export class DeepSeekProvider implements LLMProvider {
       }
 
       console.log(`[DeepSeek] Stream done: ${chunkCount} chunks, ${fullText.length} chars, ${outputTokens} tokens`)
-      callbacks.onComplete(fullText, { inputTokens, outputTokens })
+      await callbacks.onComplete(fullText, { inputTokens, outputTokens })
     } catch (err) {
       console.error(`[DeepSeek] Stream error:`, err)
       callbacks.onError(err instanceof Error ? err : new Error(String(err)))
@@ -169,7 +169,7 @@ export class DeepSeekProvider implements LLMProvider {
 
           continueLoop = true
         } else {
-          callbacks.onComplete(fullText, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+          await callbacks.onComplete(fullText, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
         }
       }
     } catch (err) {

@@ -86,9 +86,9 @@ describe('ensureSequentialVisualAgents', () => {
     const steps = [
       makeStep('web', 'web-1'),
       makeStep('video', 'video-1'),
-      makeStep('logic', 'logic-1'),
+      makeStep('ads', 'ads-1'),
     ]
-    const groups = [{ instanceIds: ['web-1', 'video-1', 'logic-1'] }]
+    const groups = [{ instanceIds: ['web-1', 'video-1', 'ads-1'] }]
     const result = ensureSequentialVisualAgents(groups, steps)
     // All are visual → should split: first visual in one group, rest separate
     expect(result.length).toBeGreaterThan(1)

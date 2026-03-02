@@ -49,7 +49,12 @@ export function removeConnection(conversationId: string, res: Response): void {
 
 export function broadcast(conversationId: string, event: SSEEvent): void {
   const conns = connections.get(conversationId)
-  if (!conns) return
+  if (!conns) {
+    if (event.type === 'deliverable') {
+      console.warn(`[SSE] ${event.type} broadcast to ${conversationId} — 0 connections (event lost!)`)
+    }
+    return
+  }
 
   const data = `data: ${JSON.stringify(event)}\n\n`
 

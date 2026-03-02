@@ -1,4 +1,4 @@
-import { Search, Layout, TrendingUp, Film, UserCircle, Code2 } from 'lucide-react'
+import { Search, Layout, TrendingUp, Film, UserCircle } from 'lucide-react'
 import type { Agent } from '../types'
 
 export const agents: Agent[] = [
@@ -6,7 +6,6 @@ export const agents: Agent[] = [
   { id: 'web', name: 'Pixel', role: 'Diseñador Visual', color: '#a855f7', icon: <Layout size={16} />, desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual con Midjourney.' },
   { id: 'ads', name: 'Metric', role: 'Ads Specialist', color: '#10b981', icon: <TrendingUp size={16} />, desc: 'Pauta en Meta, Google Ads y Optimización de ROAS.' },
   { id: 'video', name: 'Reel', role: 'Creador de Video', color: '#ef4444', icon: <Film size={16} />, desc: 'Videos cortos, reels y contenido audiovisual con IA.' },
-  { id: 'logic', name: 'Logic', role: 'Desarrollador Full-Stack', color: '#6366f1', icon: <Code2 size={16} />, desc: 'Todo lo web: landings, apps, dashboards, blogs y más.' },
 ]
 
 // Human agent for visualization only (not in marketplace)

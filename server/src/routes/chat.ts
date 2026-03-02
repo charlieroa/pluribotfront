@@ -3,27 +3,18 @@ import { v4 as uuid } from 'uuid'
 import { prisma } from '../db/client.js'
 import { optionalAuth } from '../middleware/auth.js'
 import { addConnection, broadcast } from '../services/sse.js'
-import { getProvider } from '../services/llm/router.js'
-import { getAgentConfig, orchestratorConfig, VISUAL_AGENT_IDS, REFINE_AGENT_IDS } from '../config/agents.js'
-import { trackUsage } from '../services/token-tracker.js'
-import { checkCredits, consumeCredits } from '../services/credit-tracker.js'
+import { REFINE_AGENT_IDS } from '../config/agents.js'
 import {
   getPendingPlan, removePendingPlan,
   getExecutingPlan, setExecutingPlan, removeExecutingPlan,
   type OrchestratorStep,
 } from '../services/plan-cache.js'
 import type { SendMessageRequest, SendMessageResponse, ApprovalRequest, StepApprovalRequest, RefineStepRequest } from '../../../shared/types.js'
-import type { LLMMessage } from '../services/llm/types.js'
-import { readAndEncodeImage } from '../services/image-utils.js'
-import { handleAnonymousMessage } from '../services/anonymous-handler.js'
-import { resolveModelConfig, resolveAvailableConfig } from '../services/model-resolver.js'
 import { createTodoKanbanTask, startParallelExecution, executeCurrentGroup, executeSingleStep } from '../services/execution-engine.js'
 import { refineStep } from '../services/refinement.js'
+import { processMessage } from '../services/orchestrator.js'
 
 const router = Router()
-
-// Helper: sleep for typing effect
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 // Create a new conversation (client calls this first, then connects SSE)
 router.post('/conversation', optionalAuth, async (req, res) => {
@@ -498,208 +489,5 @@ router.post('/activate-and-continue', optionalAuth, async (req, res) => {
     res.status(500).json({ error: 'Error al activar bot' })
   }
 })
-
-// ─── Internal functions ───
-
-interface OrchestratorOutput {
-  requiresApproval?: boolean  // deprecated, ignored — agents auto-execute
-  approvalMessage?: string    // deprecated
-  directResponse?: string
-  steps: Array<{
-    agentId: string
-    instanceId?: string
-    task: string
-    userDescription?: string
-    dependsOn?: string[]
-  }>
-}
-
-async function processMessage(conversationId: string, text: string, userId: string, modelOverride?: string, imageUrl?: string): Promise<void> {
-  console.log('[processMessage] Start for:', conversationId)
-
-  // ─── Anonymous users: only Pluria responds about the platform, no bots ───
-  if (userId === 'anonymous') {
-    await handleAnonymousMessage(conversationId, text)
-    return
-  }
-
-  // ─── Credit check before processing ───
-  const creditCheck = await checkCredits(userId)
-  if (!creditCheck.allowed) {
-    broadcast(conversationId, {
-      type: 'credits_exhausted',
-      balance: creditCheck.balance,
-      planId: creditCheck.planId,
-    })
-    const exhaustedMsg = await prisma.message.create({
-      data: {
-        id: uuid(),
-        conversationId,
-        sender: 'Sistema',
-        text: 'Tus creditos se han agotado. Actualiza tu plan para seguir usando los agentes.',
-        type: 'agent',
-        botType: 'system',
-      },
-    })
-    broadcast(conversationId, {
-      type: 'agent_end',
-      agentId: 'system',
-      messageId: exhaustedMsg.id,
-      fullText: exhaustedMsg.text,
-    })
-    return
-  }
-
-  broadcast(conversationId, {
-    type: 'agent_thinking',
-    agentId: 'base',
-    agentName: 'Pluria',
-    step: 'Analizando tu solicitud...',
-  })
-
-  const history = await prisma.message.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'asc' },
-    take: 20,
-  })
-
-  const messages: LLMMessage[] = history.map(m => ({
-    role: m.type === 'user' ? 'user' as const : 'assistant' as const,
-    content: m.text,
-  }))
-
-  // Attach image to the last user message if provided
-  if (imageUrl) {
-    const encoded = await readAndEncodeImage(imageUrl)
-    if (encoded) {
-      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
-      if (lastUserMsg) {
-        lastUserMsg.images = [{ type: 'image', source: encoded.source, mediaType: encoded.mediaType }]
-      }
-    }
-  }
-
-  broadcast(conversationId, {
-    type: 'agent_thinking',
-    agentId: 'base',
-    agentName: 'Pluria',
-    step: 'Decidiendo que agentes activar...',
-  })
-
-  console.log('[processMessage] Calling orchestrator LLM...')
-
-  // Use modelOverride for orchestrator if provided
-  const orchConfig = modelOverride
-    ? resolveModelConfig(modelOverride, orchestratorConfig.modelConfig) ?? orchestratorConfig.modelConfig
-    : orchestratorConfig.modelConfig
-
-  // Check if the orchestrator's provider is available, try fallback if not
-  const resolvedOrchConfig = await resolveAvailableConfig(orchConfig)
-  if (!resolvedOrchConfig) {
-    broadcast(conversationId, {
-      type: 'error',
-      message: 'Ningun proveedor de IA esta disponible en este momento. Verifica las API keys en el panel de administracion.',
-    })
-    return
-  }
-  const provider = getProvider(resolvedOrchConfig)
-
-  let orchestratorOutput: OrchestratorOutput | null = null
-
-  await provider.stream(orchestratorConfig.systemPrompt, messages, {
-    onToken: () => {},
-    onComplete: (fullText, usage) => {
-      console.log('[processMessage] LLM complete:', fullText.substring(0, 100))
-      try {
-        const cleanText = fullText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        orchestratorOutput = JSON.parse(cleanText) as OrchestratorOutput
-      } catch {
-        orchestratorOutput = {
-          directResponse: fullText,
-          steps: [],
-        }
-      }
-      trackUsage(userId, 'base', orchConfig.model, usage.inputTokens, usage.outputTokens).catch(console.error)
-      consumeCredits(userId, 'base', orchConfig.model, usage.inputTokens, usage.outputTokens).catch(console.error)
-    },
-    onError: (err) => {
-      console.error('[Orchestrator] Error:', err)
-      broadcast(conversationId, { type: 'error', message: 'Error al analizar el mensaje' })
-    },
-  })
-
-  console.log('[processMessage] Output:', orchestratorOutput ? 'ready' : 'null')
-  if (!orchestratorOutput) return
-
-  broadcast(conversationId, {
-    type: 'agent_thinking',
-    agentId: 'base',
-    agentName: 'Pluria',
-    step: 'Preparando plan de ejecucion...',
-  })
-
-  const output = orchestratorOutput as OrchestratorOutput
-
-  // Ensure all steps have instanceId and userDescription
-  const instanceCounts: Record<string, number> = {}
-  for (const s of output.steps) {
-    if (!s.instanceId) {
-      instanceCounts[s.agentId] = (instanceCounts[s.agentId] || 0) + 1
-      s.instanceId = `${s.agentId}-${instanceCounts[s.agentId]}`
-    }
-    if (!s.userDescription) {
-      s.userDescription = s.task
-    }
-  }
-
-  if (output.steps.length > 0) {
-    // Auto-execute: no approval needed, start working immediately
-    const stepsForExec: OrchestratorStep[] = output.steps.map(s => ({
-      agentId: s.agentId,
-      instanceId: s.instanceId!,
-      task: s.task,
-      userDescription: s.userDescription!,
-      dependsOn: s.dependsOn,
-    }))
-    await startParallelExecution(conversationId, stepsForExec, userId, modelOverride, imageUrl)
-  } else if (output.directResponse) {
-    const directMsg = await prisma.message.create({
-      data: {
-        id: uuid(),
-        conversationId,
-        sender: 'Pluria',
-        text: output.directResponse,
-        type: 'agent',
-        botType: 'base',
-      },
-    })
-
-    // Typing effect for direct responses
-    broadcast(conversationId, {
-      type: 'agent_thinking',
-      agentId: 'base',
-      agentName: 'Pluria',
-      step: 'Escribiendo respuesta...',
-    })
-    await sleep(150)
-    broadcast(conversationId, { type: 'agent_start', agentId: 'base', agentName: 'Pluria' })
-
-    const words = output.directResponse.split(' ')
-    const chunkSize = 5
-    for (let i = 0; i < words.length; i += chunkSize) {
-      const chunk = words.slice(i, i + chunkSize).join(' ')
-      const prefix = i === 0 ? '' : ' '
-      broadcast(conversationId, { type: 'token', content: prefix + chunk, agentId: 'base' })
-      await sleep(10)
-    }
-
-    broadcast(conversationId, {
-      type: 'agent_end',
-      agentId: 'base',
-      messageId: directMsg.id,
-      fullText: output.directResponse,
-    })
-  }
-}
 
 export default router

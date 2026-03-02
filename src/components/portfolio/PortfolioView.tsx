@@ -24,7 +24,7 @@ const examples = [
     desc: 'Sitio completo para un salón de belleza con formulario de reservas, galería y testimonios.',
     gradientFrom: '#a855f7',
     gradientTo: '#7c3aed',
-    bots: [{ name: 'Pixel', color: '#a855f7' }, { name: 'Logic', color: '#f59e0b' }],
+    bots: [{ name: 'Pixel', color: '#a855f7' }],
     type: 'Landing page',
     categoryId: 'landing',
     typeColor: 'text-purple-600 bg-purple-500/10',
@@ -72,7 +72,7 @@ const examples = [
     desc: 'Sitio web de tienda online con filtros, carrito de compras y diseño responsivo.',
     gradientFrom: '#8b5cf6',
     gradientTo: '#7c3aed',
-    bots: [{ name: 'Logic', color: '#f59e0b' }, { name: 'Pixel', color: '#a855f7' }],
+    bots: [{ name: 'Pixel', color: '#a855f7' }],
     type: 'Web',
     categoryId: 'web',
     typeColor: 'text-violet-600 bg-violet-500/10',
@@ -96,7 +96,7 @@ const examples = [
     desc: 'Página de captura de leads con formulario y campaña de Google Ads integrada.',
     gradientFrom: '#f59e0b',
     gradientTo: '#ea580c',
-    bots: [{ name: 'Logic', color: '#f59e0b' }, { name: 'Metric', color: '#10b981' }],
+    bots: [{ name: 'Metric', color: '#10b981' }],
     type: 'Landing page',
     categoryId: 'landing',
     typeColor: 'text-purple-600 bg-purple-500/10',
@@ -128,7 +128,6 @@ interface PublicProject {
 }
 
 const botColorMap: Record<string, string> = {
-  dev: '#f59e0b',
   brand: '#ec4899',
   web: '#a855f7',
   seo: '#3b82f6',

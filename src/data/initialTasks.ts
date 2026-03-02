@@ -104,9 +104,9 @@ export const initialTasks: KanbanTask[] = [
   {
     id: 'task-4',
     title: 'Integracion API Pagos',
-    agent: 'Logic',
+    agent: 'Pixel',
     status: 'todo',
-    botType: 'dev',
+    botType: 'web',
     createdAt: hoursAgo(3),
   },
   {
@@ -194,16 +194,16 @@ export const initialTasks: KanbanTask[] = [
   {
     id: 'task-7',
     title: 'Setup Analytics & Tag Manager',
-    agent: 'Logic',
+    agent: 'Lupa',
     status: 'done',
-    botType: 'dev',
+    botType: 'seo',
     createdAt: hoursAgo(1),
     deliverable: {
       id: 'd-7',
       title: 'Setup Analytics & Tag Manager',
-      type: 'code',
-      agent: 'Logic',
-      botType: 'dev',
+      type: 'report',
+      agent: 'Lupa',
+      botType: 'seo',
       content: `## Setup Analytics & Tag Manager
 
 ### Google Analytics 4 — Configurado

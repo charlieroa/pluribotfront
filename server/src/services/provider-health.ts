@@ -166,8 +166,11 @@ async function checkGoogle(): Promise<ProviderHealth> {
 }
 
 async function checkDeepSeek(): Promise<ProviderHealth> {
-  const apiKey = process.env.DEEPSEEK_API_KEY
   const base: Pick<ProviderHealth, 'provider' | 'label'> = { provider: 'deepseek', label: 'DeepSeek (V3)' }
+  // DeepSeek deshabilitado — todo lo maneja Sonnet
+  return { ...base, status: 'no_key', message: 'DeepSeek deshabilitado — usando Sonnet', checkedAt: new Date().toISOString() }
+
+  const apiKey = process.env.DEEPSEEK_API_KEY
 
   if (!apiKey) {
     return { ...base, status: 'no_key', message: 'API key no configurada', checkedAt: new Date().toISOString() }

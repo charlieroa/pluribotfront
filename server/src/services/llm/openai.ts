@@ -62,7 +62,7 @@ export class OpenAIProvider implements LLMProvider {
         }
       }
 
-      callbacks.onComplete(fullText, { inputTokens, outputTokens })
+      await callbacks.onComplete(fullText, { inputTokens, outputTokens })
     } catch (err) {
       callbacks.onError(err instanceof Error ? err : new Error(String(err)))
     }
@@ -155,7 +155,7 @@ export class OpenAIProvider implements LLMProvider {
 
           continueLoop = true
         } else {
-          callbacks.onComplete(fullText, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+          await callbacks.onComplete(fullText, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
         }
       }
     } catch (err) {

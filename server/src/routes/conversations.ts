@@ -451,7 +451,7 @@ router.post('/:convId/deliverables/:deliverableId/restore', optionalAuth, async 
   }
 })
 
-// Export Logic project as ZIP
+// Export code project as ZIP
 router.get('/:convId/deliverables/:deliverableId/export-zip', optionalAuth, async (req, res) => {
   const { convId, deliverableId } = req.params as { convId: string; deliverableId: string }
 
@@ -470,7 +470,7 @@ router.get('/:convId/deliverables/:deliverableId/export-zip', optionalAuth, asyn
       return
     }
 
-    // Parse Logic JSON to get files
+    // Parse code JSON to get files
     let files: Record<string, string> = {}
     let description = ''
     try {

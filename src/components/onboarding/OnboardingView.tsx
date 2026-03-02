@@ -21,16 +21,15 @@ const professions: Array<{ id: Profession; label: string; icon: React.ReactNode;
 const botSuggestions: Record<Profession, string[]> = {
   designer: ['web', 'video'],
   marketing: ['seo', 'ads', 'web'],
-  developer: ['dev', 'seo'],
-  entrepreneur: ['seo', 'web', 'ads', 'dev', 'video'],
-  other: ['seo', 'web', 'ads', 'dev', 'video'],
+  developer: ['seo', 'web'],
+  entrepreneur: ['seo', 'web', 'ads', 'video'],
+  other: ['seo', 'web', 'ads', 'video'],
 }
 
 const allBots = [
   { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorías SEO, keywords y posicionamiento' },
   { id: 'web', name: 'Pixel', role: 'Diseñador Visual', color: '#a855f7', desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual' },
   { id: 'ads', name: 'Metric', role: 'Especialista en Publicidad', color: '#10b981', desc: 'Campañas Meta Ads y Google Ads' },
-  { id: 'dev', name: 'Logic', role: 'Full-Stack Web Builder', color: '#f59e0b', desc: 'Landings, apps, dashboards, blogs y todo lo web' },
   { id: 'video', name: 'Reel', role: 'Creador de video', color: '#ef4444', desc: 'Reels y videos con IA generativa' },
 ]
 

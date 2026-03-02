@@ -15,130 +15,13 @@ import { readAndEncodeImage } from './image-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
 import { getNextVersionInfo, getVersionCount } from './deliverable-versioning.js'
-
-// Protected files that Logic must never overwrite (they belong to the template base)
-const LOGIC_PROTECTED_FILES = ['src/index.css', 'src/main.tsx']
-const LOGIC_PROTECTED_PREFIXES = ['src/components/ui/']
-
-function stripProtectedFiles(files: Record<string, string>): Record<string, string> {
-  const cleaned: Record<string, string> = {}
-  for (const [path, content] of Object.entries(files)) {
-    if (LOGIC_PROTECTED_FILES.includes(path)) {
-      console.warn(`[Logic] Stripped protected file from output: ${path}`)
-      continue
-    }
-    if (LOGIC_PROTECTED_PREFIXES.some(prefix => path.startsWith(prefix))) {
-      console.warn(`[Logic] Stripped protected file from output: ${path}`)
-      continue
-    }
-    cleaned[path] = content
-  }
-  if (!cleaned['src/App.tsx']) {
-    console.warn('[Logic] WARNING: output is missing src/App.tsx')
-  }
-  return cleaned
-}
-
-// Try to recover truncated JSON by closing open strings, arrays, and braces
-function recoverTruncatedJson(text: string): { templateId: string; description: string; files: Record<string, string> } | null {
-  const braceStart = text.indexOf('{')
-  if (braceStart < 0) return null
-
-  let json = text.slice(braceStart)
-
-  // If we're inside a string value, close it
-  // Count unescaped quotes to determine if we're inside a string
-  let inString = false
-  let lastKey = ''
-  for (let i = 0; i < json.length; i++) {
-    if (json[i] === '\\') { i++; continue }
-    if (json[i] === '"') inString = !inString
-  }
-  if (inString) {
-    // We're inside an unclosed string — truncate to last complete file entry
-    // Find the last complete "filepath": "content" pair
-    const lastCompleteFile = json.lastIndexOf('",\n')
-    const lastCompleteFile2 = json.lastIndexOf('"\n')
-    const cutPoint = Math.max(lastCompleteFile, lastCompleteFile2)
-    if (cutPoint > 0) {
-      json = json.slice(0, cutPoint + 1) // keep the closing "
-    } else {
-      json += '"'
-    }
-  }
-
-  // Close any open braces/brackets
-  let depth = 0
-  let arrayDepth = 0
-  let inStr = false
-  for (let i = 0; i < json.length; i++) {
-    if (json[i] === '\\') { i++; continue }
-    if (json[i] === '"') { inStr = !inStr; continue }
-    if (inStr) continue
-    if (json[i] === '{') depth++
-    else if (json[i] === '}') depth--
-    else if (json[i] === '[') arrayDepth++
-    else if (json[i] === ']') arrayDepth--
-  }
-
-  // Remove trailing comma before closing
-  json = json.replace(/,\s*$/, '')
-
-  // Close arrays then braces
-  for (let i = 0; i < arrayDepth; i++) json += ']'
-  for (let i = 0; i < depth; i++) json += '}'
-
-  try {
-    const parsed = JSON.parse(json)
-    if (parsed.files && Object.keys(parsed.files).length > 0) {
-      console.log(`[Logic] Truncation recovery succeeded: ${Object.keys(parsed.files).length} files recovered`)
-      return parsed
-    }
-  } catch (e) {
-    console.error(`[Logic] Truncation recovery failed: ${(e as Error).message}`)
-  }
-  return null
-}
-
-// Helper: robustly extract Logic agent JSON from LLM output
-function extractLogicJson(text: string): { templateId: string; description: string; files: Record<string, string> } {
-  // Try 1: code fence ```json ... ```
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1].trim()) } catch (e) {
-      console.error(`[Logic] Fence parse error: ${(e as Error).message}`)
-    }
-  }
-  // Try 2: raw JSON parse
-  try { return JSON.parse(text.trim()) } catch (e) {
-    console.error(`[Logic] Raw parse error: ${(e as Error).message}`)
-  }
-  // Try 3: find first { ... } block containing "templateId"
-  const braceStart = text.indexOf('{')
-  if (braceStart >= 0) {
-    let depth = 0
-    let end = -1
-    for (let i = braceStart; i < text.length; i++) {
-      if (text[i] === '{') depth++
-      else if (text[i] === '}') { depth--; if (depth === 0) { end = i; break } }
-    }
-    if (end > braceStart) {
-      const candidate = text.slice(braceStart, end + 1)
-      try {
-        const parsed = JSON.parse(candidate)
-        if (parsed.templateId || parsed.files) return parsed
-      } catch (e) {
-        console.error(`[Logic] Brace parse error: ${(e as Error).message}`)
-      }
-    } else {
-      console.log(`[Logic] JSON truncated (depth=${depth}), attempting recovery...`)
-      // Try 4: recover truncated JSON by closing open structures
-      const fenceContent = fenceMatch ? fenceMatch[1] : text
-      const recovered = recoverTruncatedJson(fenceContent)
-      if (recovered) return recovered
-    }
-  }
-  throw new Error('Could not extract valid JSON from Logic output')
+const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
+  seo: 'report',
+  brand: 'design',
+  web: 'design',
+  social: 'design',
+  ads: 'copy',
+  video: 'video',
 }
 
 // Helper: create a 'todo' kanban task for a plan step
@@ -442,8 +325,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
 
   const taskPrompt = `${step.task}${contextBlock}`
 
-  // Limit conversation history: Logic's system prompt is huge, keep context lean
-  const historyLimit = agentConfig.id === 'logic' ? 6 : 20
+  // History limit: enough context for cache hits (cache reads cost 0.1x)
+  const historyLimit = 20
   const history = await prisma.message.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
@@ -459,11 +342,25 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     }
   }
 
+  // Include user + agent messages for cache continuity (Anthropic requires alternating roles)
+  const historyMessages: LLMMessage[] = []
+  for (const m of history) {
+    const role = m.type === 'user' ? 'user' as const : 'assistant' as const
+    // Skip consecutive same-role messages (Anthropic requires alternation)
+    if (historyMessages.length > 0 && historyMessages[historyMessages.length - 1].role === role) continue
+    // Truncate long agent responses in history to save tokens (keep first 500 chars as context)
+    const content = role === 'assistant' && m.text.length > 500
+      ? m.text.substring(0, 500) + '...[truncated]'
+      : m.text
+    historyMessages.push({ role, content })
+  }
+  // Ensure last history message is assistant so taskMessage (user) can follow
+  if (historyMessages.length > 0 && historyMessages[historyMessages.length - 1].role === 'user') {
+    historyMessages.pop()
+  }
+
   const messages: LLMMessage[] = [
-    ...history.filter(m => m.type === 'user').map(m => ({
-      role: 'user' as const,
-      content: m.text,
-    })),
+    ...historyMessages,
     taskMessage,
   ]
 
@@ -569,82 +466,6 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     })
   }
 
-  // ─── Logic agent: parse JSON and broadcast logic_project ───
-  if (agentConfig.id === 'logic') {
-    try {
-      const logicData = extractLogicJson(agentFullText)
-      const { templateId, description } = logicData
-      const files = stripProtectedFiles(logicData.files || {})
-
-      broadcast(conversationId, {
-        type: 'logic_project',
-        templateId: templateId || 'blank',
-        description: description || '',
-        files,
-      })
-
-      // Save deliverable as code type
-      const logicVersionInfo = await getNextVersionInfo(conversationId, step.instanceId)
-      const deliverableId = uuid()
-      await prisma.deliverable.create({
-        data: {
-          id: deliverableId,
-          conversationId,
-          title: `Logic: ${description || step.task.slice(0, 60)}`,
-          type: 'code',
-          content: agentFullText,
-          agent: agentConfig.name,
-          botType: agentConfig.botType,
-          instanceId: step.instanceId,
-          version: logicVersionInfo.version,
-          parentId: logicVersionInfo.parentId,
-        },
-      })
-
-      // Update kanban
-      const kanbanTask = await prisma.kanbanTask.findFirst({
-        where: { conversationId, instanceId: step.instanceId },
-      })
-      if (kanbanTask) {
-        await prisma.kanbanTask.update({
-          where: { id: kanbanTask.id },
-          data: { deliverableId, status: 'done' },
-        })
-        broadcast(conversationId, {
-          type: 'kanban_update',
-          task: { id: kanbanTask.id, title: kanbanTask.title, agent: agentConfig.name, status: 'done' as const, botType: agentConfig.botType, deliverableId, instanceId: step.instanceId, createdAt: kanbanTask.createdAt.toISOString() },
-        })
-      }
-
-      // Save agent message
-      const agentMsg = await prisma.message.create({
-        data: {
-          id: uuid(),
-          conversationId,
-          sender: agentConfig.name,
-          text: `Logic genero un proyecto: ${description || 'Ver en el IDE'}`,
-          type: 'agent',
-          botType: agentConfig.botType,
-        },
-      })
-
-      broadcast(conversationId, {
-        type: 'agent_end',
-        agentId: agentConfig.id,
-        instanceId: step.instanceId,
-        messageId: agentMsg.id,
-        fullText: `Logic genero un proyecto: ${description || 'Ver en el IDE'}`,
-        model: agentModelConfig.model,
-        inputTokens: agentUsage.inputTokens,
-        outputTokens: agentUsage.outputTokens,
-        creditsCost: agentCreditsCost,
-      })
-      return
-    } catch (parseErr) {
-      console.error(`[Logic:${step.instanceId}] JSON parse error, falling back to normal flow:`, parseErr)
-    }
-  }
-
   // Create deliverable
   console.log(`[${agentConfig.name}:${step.instanceId}] Response length: ${agentFullText.length} chars`)
   let htmlBlock = extractHtmlBlock(agentFullText)
@@ -676,8 +497,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         },
         onComplete: async (fullText, usage) => {
           retryText = fullText
-          await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens)
-          const retryCreditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
+          await trackUsage(userId, agentConfig.id, agentModelConfig!.model, usage.inputTokens, usage.outputTokens)
+          const retryCreditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig!.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
           agentCreditsCost += retryCreditResult.creditsUsed
         },
         onError: (err) => {
@@ -698,16 +519,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     }
   }
 
-  const deliverableTypeMap: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
-    seo: 'report',
-    brand: 'design',
-    web: 'design',
-    social: 'design',
-    ads: 'copy',
-    video: 'video',
-    logic: 'code',
-  }
-  const deliverableType = deliverableTypeMap[agentConfig.id] ?? 'report'
+  const deliverableType = DELIVERABLE_TYPE_MAP[agentConfig.id] ?? 'report'
   const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 60)}`
 
   let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)

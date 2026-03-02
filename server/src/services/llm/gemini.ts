@@ -72,7 +72,7 @@ export class GeminiProvider implements LLMProvider {
       const inputTokens = Math.ceil(JSON.stringify(contents).length / 4)
       const outputTokens = Math.ceil(fullText.length / 4)
 
-      callbacks.onComplete(fullText, { inputTokens, outputTokens })
+      await callbacks.onComplete(fullText, { inputTokens, outputTokens })
     } catch (err) {
       callbacks.onError(err instanceof Error ? err : new Error(String(err)))
     }
@@ -175,7 +175,7 @@ export class GeminiProvider implements LLMProvider {
               parts: assistantParts,
             })
           }
-          callbacks.onComplete(fullText, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+          await callbacks.onComplete(fullText, { inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
         }
       }
     } catch (err) {

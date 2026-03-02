@@ -108,8 +108,13 @@ model Deliverable {
   netlifySiteId  String?
   netlifyUrl     String?
   isPublic       Boolean  @default(false)
-  shareSlug      String?  @unique
-  createdAt      DateTime @default(now())
+  shareSlug               String?   @unique
+  publishSlug             String?   @unique
+  publishedAt             DateTime?
+  customDomain            String?   @unique
+  customDomainStatus      String?   // 'pending_dns' | 'dns_verified' | 'active' | 'error'
+  customDomainVerifiedAt  DateTime?
+  createdAt               DateTime  @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   parent         Deliverable?  @relation("DeliverableVersions", fields: [parentId], references: [id])
   children       Deliverable[] @relation("DeliverableVersions")

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Layout, TrendingUp, Code, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Info } from 'lucide-react'
+import { Search, Layout, TrendingUp, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Info } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -51,18 +51,6 @@ const bots = [
     capabilities: ['Meta Ads', 'Google Ads', 'Copywriting', 'A/B Testing'],
     prompt: 'Crea una campaña publicitaria para mi producto',
     featured: false,
-  },
-  {
-    id: 'dev',
-    name: 'Logic',
-    role: 'Full-Stack Web Builder',
-    desc: 'Todo lo web: landings, apps, dashboards, blogs, portfolios, restaurantes, SaaS, e-commerce, CRM, booking y kanban.',
-    color: '#f59e0b',
-    icon: <Code size={20} />,
-    category: 'desarrollo',
-    capabilities: ['Landing Pages', 'Apps React', 'Dashboards', 'E-Commerce'],
-    prompt: 'Construye una página web para mi negocio',
-    featured: true,
   },
   {
     id: 'video',
