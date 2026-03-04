@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowRight, Zap } from 'lucide-react'
+import { ArrowRight, Zap, Users } from 'lucide-react'
 import gsap from 'gsap'
 
 interface HeroSectionProps {
@@ -8,7 +8,7 @@ interface HeroSectionProps {
 
 const suggestions = [
   'Crea una landing page para mi startup',
-  'Diseña el logo de mi marca',
+  'Disena el logo de mi marca',
   'Haz una auditoria SEO de mi web',
   'Genera un video promocional',
 ]
@@ -16,6 +16,7 @@ const suggestions = [
 const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
   const [inputValue, setInputValue] = useState('')
   const sectionRef = useRef<HTMLElement>(null)
+  const floatRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = sectionRef.current
@@ -25,6 +26,17 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
     gsap.fromTo(items, { opacity: 0, y: 30 }, {
       opacity: 1, y: 0, duration: 0.8, stagger: 0.1, ease: 'power3.out', delay: 0.1,
     })
+
+    // Floating senior card — entrance + continuous float
+    if (floatRef.current) {
+      gsap.fromTo(floatRef.current,
+        { opacity: 0, x: 30, y: 10, scale: 0.9 },
+        { opacity: 1, x: 0, y: 0, scale: 1, duration: 0.8, ease: 'back.out(1.5)', delay: 1.2 }
+      )
+      gsap.to(floatRef.current, {
+        y: -8, duration: 3, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2,
+      })
+    }
   }, [])
 
   const handleSubmit = () => {
@@ -44,25 +56,24 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
         {/* Badge */}
         <div className="hero-anim inline-flex items-center gap-2 px-4 py-1.5 mb-7 rounded-full border border-purple-500/20 bg-purple-500/[0.08] text-[12.5px] font-medium text-purple-300">
           <Zap size={13} className="text-purple-400" />
-          7 agentes de IA trabajando para tu negocio
+          Agentes de IA trabajando para ti
         </div>
 
-        {/* Headline */}
+        {/* Headline — THE MAIN MESSAGE */}
         <h1 className="hero-anim text-[40px] sm:text-[56px] md:text-[68px] font-extrabold leading-[1.05] tracking-[-0.04em] text-white mb-6">
-          Tu equipo creativo{' '}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#6d28d9]">completo</span>
-          <br className="hidden sm:block" />
-          {' '}potenciado por IA
+          La IA llega al 90%.
+          <br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#6d28d9]">Nosotros hacemos el 100%.</span>
         </h1>
 
-        {/* Subtitle - THIS SELLS */}
+        {/* Subtitle */}
         <p className="hero-anim text-[16px] sm:text-[19px] text-zinc-400 leading-[1.65] max-w-[620px] mx-auto mb-10">
-          Webs y apps desplegadas en segundos. Branding, SEO, ads, video y contenido.
-          Todo desde un chat. Y si no te convence, un <span className="text-white font-medium">senior humano</span> lo revisa por ti.
+          Webs, apps, branding, SEO, ads y video — todo desde un chat.
+          Y cuando la IA no alcanza, un <span className="text-white font-medium">senior humano</span> lo termina por ti.
         </p>
 
-        {/* Input box - THE MONEY MAKER */}
-        <div className="hero-anim max-w-[600px] mx-auto mb-6">
+        {/* Input box */}
+        <div className="hero-anim max-w-[600px] mx-auto mb-6 relative">
           <div className="relative group">
             <div className="absolute -inset-[1px] bg-gradient-to-r from-purple-500/40 via-violet-500/30 to-purple-500/40 rounded-2xl blur-sm opacity-60 group-focus-within:opacity-100 transition-opacity duration-500" />
             <div className="relative bg-[#111113] border border-white/[0.1] rounded-2xl shadow-2xl">
@@ -82,6 +93,24 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
                   Crear <ArrowRight size={14} />
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Floating senior card — right side of input */}
+          <div
+            ref={floatRef}
+            style={{ opacity: 0 }}
+            className="absolute -right-4 sm:-right-44 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2.5 bg-zinc-800/90 backdrop-blur-sm border border-zinc-700 px-3.5 py-2.5 rounded-2xl shadow-2xl shadow-black/50 z-30"
+          >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+              <Users size={14} className="text-white" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                Senior disponible
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              </p>
+              <p className="text-[9.5px] text-zinc-400">Humano real si la IA no alcanza</p>
             </div>
           </div>
         </div>

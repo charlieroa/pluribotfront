@@ -35,13 +35,14 @@ const SeniorSection = ({ onRegister }: SeniorSectionProps) => {
           // After entrance, start floating animation on each card
           floats.forEach((card, i) => {
             gsap.to(card, {
-              y: 'random(-8, 8)',
-              x: 'random(-4, 4)',
-              duration: 'random(2.5, 4)',
+              y: 'random(-14, 14)',
+              x: 'random(-8, 8)',
+              rotation: 'random(-2, 2)',
+              duration: 'random(3, 5)',
               repeat: -1,
               yoyo: true,
               ease: 'sine.inOut',
-              delay: i * 0.3,
+              delay: i * 0.4,
             })
           })
         },
@@ -82,8 +83,8 @@ const SeniorSection = ({ onRegister }: SeniorSectionProps) => {
           <div className="absolute right-0 bottom-0 w-1/3 h-full bg-gradient-to-l from-purple-900/10 to-transparent pointer-events-none" />
 
           <div className="relative z-10 flex flex-col lg:flex-row items-start gap-10 lg:gap-12">
-            {/* Left — conversation mockup */}
-            <div ref={mockupRef} className="w-full lg:w-[55%] senior-anim order-2 lg:order-1">
+            {/* Right — conversation mockup */}
+            <div ref={mockupRef} className="w-full lg:w-[55%] senior-anim order-2 lg:order-2">
               <div className="relative">
                 <div className="bg-[#0A0A0A] border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
                   {/* Window chrome */}
@@ -222,8 +223,8 @@ const SeniorSection = ({ onRegister }: SeniorSectionProps) => {
               </div>
             </div>
 
-            {/* Right — copy + tiers */}
-            <div className="w-full lg:w-[45%] order-1 lg:order-2">
+            {/* Left — copy + tiers */}
+            <div className="w-full lg:w-[45%] order-1 lg:order-1">
               {/* Features list */}
               <div className="senior-anim space-y-5 border-l-2 border-zinc-800 pl-5 mb-10">
                 <div>
