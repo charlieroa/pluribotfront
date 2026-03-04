@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { MessageSquareText, Cpu, Rocket } from 'lucide-react'
+import { MessageSquareText, Cpu, Globe } from 'lucide-react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
@@ -7,115 +7,87 @@ gsap.registerPlugin(ScrollTrigger)
 
 const steps = [
   {
-    num: '01',
+    num: '1',
     icon: MessageSquareText,
     title: 'Describe tu idea',
-    desc: 'Escribe en lenguaje natural lo que necesitas: una landing page, un logo, una campana de ads, un video o una auditoria SEO. El sistema entiende el contexto y asigna al agente correcto.',
+    desc: 'Escribe lo que necesitas en lenguaje natural. El sistema asigna al agente correcto automaticamente.',
     color: 'from-purple-500 to-violet-600',
-    glow: 'bg-purple-500/15',
+    badge: 'Prompt',
   },
   {
-    num: '02',
+    num: '2',
     icon: Cpu,
-    title: 'La IA crea por ti',
-    desc: 'Agentes especializados trabajan en paralelo: generan codigo, diseno, copy, estrategia y assets visuales. Ves el progreso en tiempo real y puedes iterar con feedback instantaneo.',
+    title: 'La IA construye',
+    desc: 'Agentes especializados generan codigo, diseno, copy y assets en paralelo. Ves el progreso en tiempo real.',
     color: 'from-blue-500 to-cyan-500',
-    glow: 'bg-blue-500/15',
+    badge: 'Build',
   },
   {
-    num: '03',
-    icon: Rocket,
+    num: '3',
+    icon: Globe,
     title: 'Publica al instante',
-    desc: 'Un click y tu proyecto esta live con dominio personalizado. Edita visualmente, refina con IA o solicita revision de un profesional senior si lo necesitas.',
+    desc: 'Un click y tu proyecto esta live con dominio propio. Edita visualmente o pide cambios por chat.',
     color: 'from-emerald-500 to-green-500',
-    glow: 'bg-emerald-500/15',
+    badge: 'Ship',
   },
 ]
 
 const HowItWorksSection = () => {
   const sectionRef = useRef<HTMLElement>(null)
-  const titleRef = useRef<HTMLDivElement>(null)
-  const stepsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = sectionRef.current
-    if (!el || !titleRef.current || !stepsRef.current) return
+    if (!el) return
 
-    const anims: gsap.core.Tween[] = []
-
-    anims.push(gsap.fromTo(titleRef.current, { opacity: 0, y: 30 }, {
-      opacity: 1, y: 0, duration: 0.8,
+    const items = el.querySelectorAll('.how-anim')
+    const anim = gsap.fromTo(items, { opacity: 0, y: 40 }, {
+      opacity: 1, y: 0, duration: 0.7, stagger: 0.12, ease: 'power3.out',
       scrollTrigger: { trigger: el, start: 'top 80%', scroller: '#landing-scroll' },
-    }))
+    })
 
-    const cards = stepsRef.current.querySelectorAll('.step-card')
-    anims.push(gsap.fromTo(cards, { opacity: 0, y: 50, scale: 0.95 }, {
-      opacity: 1, y: 0, scale: 1, duration: 0.7, stagger: 0.15, ease: 'power3.out',
-      scrollTrigger: { trigger: stepsRef.current, start: 'top 85%', scroller: '#landing-scroll' },
-    }))
-
-    // Animate the connecting line
-    const line = el.querySelector('.connect-line') as HTMLElement
-    if (line) {
-      anims.push(gsap.fromTo(line, { scaleX: 0 }, {
-        scaleX: 1, duration: 1.2, ease: 'power2.inOut',
-        scrollTrigger: { trigger: stepsRef.current, start: 'top 80%', scroller: '#landing-scroll' },
-      }))
-    }
-
-    return () => {
-      anims.forEach(a => a.kill())
-      ScrollTrigger.getAll().forEach(st => st.kill())
-    }
+    return () => { anim.kill() }
   }, [])
 
   return (
-    <section ref={sectionRef} className="py-24 sm:py-32 px-4">
+    <section ref={sectionRef} className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
-        <div ref={titleRef} style={{ opacity: 0 }} className="text-center mb-20">
-          <p className="text-[12px] text-zinc-500 uppercase tracking-[0.15em] font-semibold mb-3">Como funciona</p>
-          <h2 className="text-[34px] sm:text-[48px] font-bold tracking-[-0.03em] text-white mb-4">
-            De la idea al producto en minutos
+        <div className="how-anim text-center mb-16">
+          <p className="text-[12px] text-purple-400 uppercase tracking-[0.15em] font-semibold mb-3">Como funciona</p>
+          <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.03em] text-white mb-4">
+            Prompt. Build. Ship.
           </h2>
-          <p className="text-[17px] text-zinc-400 max-w-lg mx-auto">
-            Tres pasos. Sin codigo, sin esperas, sin complicaciones.
+          <p className="text-[16px] text-zinc-400 max-w-md mx-auto">
+            De la idea al producto en minutos. Sin codigo, sin esperas.
           </p>
         </div>
 
-        <div ref={stepsRef} className="relative">
-          {/* Connecting line (desktop only) */}
-          <div className="connect-line hidden lg:block absolute top-[72px] left-[16%] right-[16%] h-[1px] bg-gradient-to-r from-purple-500/30 via-blue-500/30 to-emerald-500/30 origin-left" />
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-6">
-            {steps.map((step, i) => {
-              const Icon = step.icon
-              return (
-                <div key={i} className="step-card relative" style={{ opacity: 0 }}>
-                  <div className="text-center">
-                    {/* Step number + icon */}
-                    <div className="relative inline-flex mb-8">
-                      <div className={`absolute inset-0 ${step.glow} rounded-full blur-[30px] scale-150`} />
-                      <div className={`relative w-[88px] h-[88px] rounded-2xl bg-gradient-to-br ${step.color} p-[1px]`}>
-                        <div className="w-full h-full rounded-2xl bg-[#0a0a0a] flex items-center justify-center">
-                          <Icon size={32} className="text-white/80" />
-                        </div>
-                      </div>
-                      <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-white text-black text-[11px] font-bold flex items-center justify-center">
-                        {step.num}
-                      </span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {steps.map((step, i) => {
+            const Icon = step.icon
+            return (
+              <div key={i} className="how-anim relative group">
+                <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-7 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all h-full">
+                  {/* Step number */}
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${step.color} flex items-center justify-center`}>
+                      <Icon size={18} className="text-white" />
                     </div>
-
-                    <h3 className="text-[20px] sm:text-[22px] font-bold text-white tracking-[-0.02em] mb-3">
-                      {step.title}
-                    </h3>
-                    <p className="text-[14px] text-zinc-400 leading-[1.7] max-w-[340px] mx-auto">
-                      {step.desc}
-                    </p>
+                    <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">{step.badge}</span>
                   </div>
+
+                  <h3 className="text-[18px] font-bold text-white mb-2">{step.title}</h3>
+                  <p className="text-[14px] text-zinc-400 leading-[1.65]">{step.desc}</p>
                 </div>
-              )
-            })}
-          </div>
+
+                {/* Arrow connector (desktop) */}
+                {i < 2 && (
+                  <div className="hidden md:flex absolute top-1/2 -right-3 translate-x-0 -translate-y-1/2 text-zinc-700 z-10">
+                    <svg width="24" height="24" fill="none"><path d="M5 12h14m0 0l-5-5m5 5l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </section>

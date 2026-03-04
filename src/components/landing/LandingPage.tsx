@@ -4,11 +4,9 @@ import HeroSection from './HeroSection'
 import CompaniesBar from './CompaniesBar'
 import HowItWorksSection from './HowItWorksSection'
 import FeaturesSection from './FeaturesSection'
-import AgentShowcase from './AgentShowcase'
-import DifferentiatorsSection from './DifferentiatorsSection'
+import AgencySection from './AgencySection'
 import TestimonialsSection from './TestimonialsSection'
 import ShowcaseSection from './ShowcaseSection'
-import StatsSection from './StatsSection'
 import PricingSection from './PricingSection'
 import CtaSection from './CtaSection'
 import LandingFooter from './LandingFooter'
@@ -36,18 +34,16 @@ const LandingPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] font-['Plus_Jakarta_Sans'] text-zinc-50 selection:bg-purple-500/30">
+    <div className="min-h-screen bg-[#09090b] font-['Plus_Jakarta_Sans'] text-zinc-50 selection:bg-purple-500/30">
       <div id="landing-scroll" className="h-screen overflow-y-auto scroll-smooth">
         <LandingNavbar onLogin={openLogin} onRegister={openRegister} />
         <HeroSection onPromptClick={handlePromptClick} />
         <CompaniesBar />
         <HowItWorksSection />
         <FeaturesSection />
-        <AgentShowcase />
-        <DifferentiatorsSection onRegister={openRegister} />
+        <AgencySection onRegister={openRegister} />
         <TestimonialsSection />
         <ShowcaseSection />
-        <StatsSection />
         <PricingSection onRegister={openRegister} />
         <CtaSection onRegister={openRegister} />
         <LandingFooter />
