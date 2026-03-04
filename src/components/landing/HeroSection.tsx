@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { ArrowRight, Zap, Users, Check } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { ArrowRight, Zap, Users } from 'lucide-react'
 import gsap from 'gsap'
 
 interface HeroSectionProps {
@@ -13,10 +13,58 @@ const suggestions = [
   'Genera un video promocional',
 ]
 
+const typingExamples = [
+  'Crea una web para mi restaurante...',
+  'Desarrolla una app tipo Airbnb...',
+  'Disena un flyer para mi evento...',
+  'Genera el logo de mi startup...',
+  'Haz un video promocional de 30s...',
+  'Audita el SEO de mi sitio web...',
+  'Campana de ads para Black Friday...',
+  'Landing page para captar leads...',
+  'Tu creatividad es el limite...',
+]
+
 const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
   const [inputValue, setInputValue] = useState('')
+  const [placeholder, setPlaceholder] = useState('')
   const sectionRef = useRef<HTMLElement>(null)
   const floatRef = useRef<HTMLDivElement>(null)
+  const typingRef = useRef({ idx: 0, charIdx: 0, deleting: false })
+
+  const tick = useCallback(() => {
+    const t = typingRef.current
+    const word = typingExamples[t.idx]
+
+    if (!t.deleting) {
+      t.charIdx++
+      setPlaceholder(word.slice(0, t.charIdx))
+      if (t.charIdx >= word.length) {
+        t.deleting = true
+        return 2000 // pause before deleting
+      }
+      return 60
+    } else {
+      t.charIdx--
+      setPlaceholder(word.slice(0, t.charIdx))
+      if (t.charIdx <= 0) {
+        t.deleting = false
+        t.idx = (t.idx + 1) % typingExamples.length
+        return 400 // pause before next word
+      }
+      return 30
+    }
+  }, [])
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    const loop = () => {
+      const delay = tick()
+      timer = setTimeout(loop, delay)
+    }
+    timer = setTimeout(loop, 1000)
+    return () => clearTimeout(timer)
+  }, [tick])
 
   useEffect(() => {
     const el = sectionRef.current
@@ -102,7 +150,7 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
                   value={inputValue}
                   onChange={e => setInputValue(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                  placeholder="¿Que quieres crear hoy?"
+                  placeholder={inputValue ? '' : placeholder || '¿Que quieres crear hoy?'}
                   className="flex-1 bg-transparent text-[15px] text-white placeholder:text-zinc-500 px-5 py-4 focus:outline-none"
                 />
                 <button
