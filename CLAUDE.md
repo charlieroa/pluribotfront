@@ -15,8 +15,8 @@ When the user says "conectate", "ssh pluribots", or any variation asking to conn
 ## VPS Quick Reference
 - **Host**: 37.60.224.195 | **User**: root | **Alias**: `ssh pluribots`
 - **OS**: Ubuntu 24.04 | **Node**: v20.20.0
-- **PM2 process**: `pluribots-api` (port 3002, path: `/var/www/pluribots/server`)
-- **Domain**: `pluribots.com` (SSL via Let's Encrypt)
+- **PM2 process**: `plury-api` (port 3002, path: `/var/www/pluribots/server`)
+- **Domain**: `plury.co` (SSL via Let's Encrypt)
 - **Web server**: Nginx (reverse proxy to :3002 for /api/, static files from `/var/www/pluribots/dist`)
 - **Deploy path**: `/var/www/pluribots/`
 - **Frontend build**: `/var/www/pluribots/dist/`
@@ -29,10 +29,10 @@ When the user says "conectate", "ssh pluribots", or any variation asking to conn
 ssh pluribots 'pm2 list'
 
 # Restart backend:
-ssh pluribots 'pm2 restart pluribots-api'
+ssh pluribots 'pm2 restart plury-api'
 
 # View backend logs:
-ssh pluribots 'pm2 logs pluribots-api --lines 50'
+ssh pluribots 'pm2 logs plury-api --lines 50'
 
 # Nginx restart:
 ssh pluribots 'systemctl restart nginx'

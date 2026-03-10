@@ -140,7 +140,7 @@ const UnsplashModal = ({ isOpen, onClose, onSelect }: UnsplashModalProps) => {
         {/* Footer */}
         <div className="px-5 py-2.5 border-t border-edge flex-shrink-0">
           <p className="text-[10px] text-ink-faint text-center">
-            Fotos de <a href="https://unsplash.com/?utm_source=pluribots&utm_medium=referral" target="_blank" rel="noopener noreferrer" className="underline hover:text-ink-light">Unsplash</a>
+            Fotos de <a href="https://unsplash.com/?utm_source=plury&utm_medium=referral" target="_blank" rel="noopener noreferrer" className="underline hover:text-ink-light">Unsplash</a>
           </p>
         </div>
       </div>

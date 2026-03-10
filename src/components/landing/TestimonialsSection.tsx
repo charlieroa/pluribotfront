@@ -10,7 +10,7 @@ const testimonials = [
     name: 'Sofia Ramirez',
     role: 'CEO, Studio Digital',
     avatar: 'S',
-    color: 'from-purple-400 to-violet-500',
+    color: 'from-[#a78bfa] to-[#a78bfa]',
     metric: '3x mas rapido',
   },
   {
@@ -50,7 +50,7 @@ const testimonials = [
     name: 'Diego Navarro',
     role: 'Growth, FinApp',
     avatar: 'D',
-    color: 'from-indigo-400 to-violet-500',
+    color: 'from-[#a78bfa] to-[#a78bfa]',
     metric: '5x velocidad de entrega',
   },
 ]
@@ -75,7 +75,7 @@ const TestimonialsSection = () => {
     <section ref={sectionRef} className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
         <div className="test-anim text-center mb-14">
-          <p className="text-[12px] text-purple-400 uppercase tracking-[0.15em] font-semibold mb-3">Casos de exito</p>
+          <p className="text-[12px] text-[#a78bfa] uppercase tracking-[0.15em] font-semibold mb-3">Casos de exito</p>
           <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.03em] text-white mb-4">
             Resultados reales de negocios reales
           </h2>
@@ -85,7 +85,7 @@ const TestimonialsSection = () => {
           {testimonials.map((t, i) => (
             <div key={i} className="test-anim bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all">
               {/* Metric badge */}
-              <div className="inline-flex px-2.5 py-1 text-[11px] font-bold text-purple-300 bg-purple-500/10 border border-purple-500/15 rounded-full mb-4">
+              <div className="inline-flex px-2.5 py-1 text-[11px] font-bold text-[#a78bfa] bg-[#a78bfa]/10 border border-[#a78bfa]/15 rounded-full mb-4">
                 {t.metric}
               </div>
 

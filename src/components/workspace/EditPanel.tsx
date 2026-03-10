@@ -3,6 +3,12 @@ import { Type, ImageIcon, Palette, Trash2, Bold, Italic, AlignLeft, AlignCenter,
 import type { SelectedElement } from './VisualEditToolbar'
 import type { Deliverable } from '../../types'
 
+interface SelectedLogo {
+  index: number
+  src: string
+  style: string
+}
+
 interface EditPanelProps {
   editMode: boolean
   onToggleEditMode: (enabled: boolean) => void
@@ -13,12 +19,13 @@ interface EditPanelProps {
   onChangeImage: () => void
   onApplyStyle: (styles: Record<string, string>) => void
   onReplaceImage: (url: string, alt: string) => void
+  selectedLogo?: SelectedLogo | null
 }
 
 const PRESET_COLORS = [
   '#000000', '#ffffff', '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280', '#0f172a', '#1e40af',
-  '#15803d', '#b91c1c', '#7c3aed', '#db2777', '#0891b2', '#ca8a04',
+  '#3b82f6', '#a78bfa', '#ec4899', '#6b7280', '#0f172a', '#1e40af',
+  '#15803d', '#b91c1c', '#a78bfa', '#db2777', '#0891b2', '#ca8a04',
 ]
 
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px', '64px']
@@ -36,7 +43,7 @@ const LOGO_COLOR_PALETTES = [
   { label: 'Azul corporativo', colors: '#1e40af, #3b82f6, #93c5fd', prompt: 'Cambia la paleta del logo a tonos azules corporativos' },
   { label: 'Verde natura', colors: '#15803d, #22c55e, #86efac', prompt: 'Cambia la paleta del logo a tonos verdes naturales' },
   { label: 'Rojo energico', colors: '#b91c1c, #ef4444, #fca5a5', prompt: 'Cambia la paleta del logo a tonos rojos energicos' },
-  { label: 'Purpura premium', colors: '#7c3aed, #a855f7, #d8b4fe', prompt: 'Cambia la paleta del logo a tonos purpura premium' },
+  { label: 'Purpura premium', colors: '#a78bfa, #a78bfa, #d8b4fe', prompt: 'Cambia la paleta del logo a tonos purpura premium' },
   { label: 'Negro y dorado', colors: '#0f172a, #ca8a04, #fde68a', prompt: 'Cambia la paleta del logo a negro con acentos dorados, look luxury' },
   { label: 'Pastel suave', colors: '#f9a8d4, #a5b4fc, #86efac', prompt: 'Cambia la paleta del logo a colores pastel suaves y modernos' },
 ]
@@ -55,6 +62,7 @@ const EditPanel = ({
   onEditText,
   onChangeImage,
   onApplyStyle,
+  selectedLogo,
 }: EditPanelProps) => {
   const [activeSection, setActiveSection] = useState<string | null>('general')
   const isLogo = isLogoDeliverable(deliverable)
@@ -71,10 +79,24 @@ const EditPanel = ({
   if (isLogo) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="px-4 py-3 border-b border-edge flex-shrink-0 bg-purple-500/5">
-          <p className="text-[11px] text-purple-600 font-medium text-center">
-            Edicion de logo e identidad visual
-          </p>
+        <div className="px-4 py-3 border-b border-edge flex-shrink-0 bg-[#a78bfa]/5">
+          {selectedLogo ? (
+            <div className="flex items-center gap-2.5">
+              <img src={selectedLogo.src} alt="" className="w-8 h-8 rounded-lg object-contain border border-edge bg-white" />
+              <div>
+                <p className="text-[11px] text-[#8b5cf6] font-semibold">
+                  Logo {selectedLogo.index + 1} seleccionado
+                </p>
+                {selectedLogo.style && (
+                  <p className="text-[9px] text-ink-faint truncate max-w-[150px]">{selectedLogo.style}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-[#8b5cf6] font-medium text-center">
+              Selecciona un logo del canvas para editarlo
+            </p>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1">
@@ -85,12 +107,19 @@ const EditPanel = ({
             isOpen={activeSection === 'style' || activeSection === 'general'}
             onToggle={() => setActiveSection(activeSection === 'style' ? null : 'style')}
           >
-            <p className="text-[10px] text-ink-faint mb-2">Selecciona un estilo y se regenerara el logo</p>
+            <p className="text-[10px] text-ink-faint mb-2">
+              {selectedLogo ? `Editar logo ${selectedLogo.index + 1}` : 'Selecciona un estilo y se regenerara el logo'}
+            </p>
             <div className="grid grid-cols-2 gap-1.5">
               {LOGO_STYLES.map(style => (
                 <button
                   key={style.label}
-                  onClick={() => onSendMessage(style.prompt)}
+                  onClick={() => {
+                    const prefix = selectedLogo
+                      ? `Trabaja SOLO sobre la opcion ${selectedLogo.index + 1} (URL: ${selectedLogo.src}). `
+                      : ''
+                    onSendMessage(prefix + style.prompt)
+                  }}
                   className="px-3 py-2 text-[11px] font-medium text-ink bg-subtle hover:bg-edge rounded-lg transition-colors text-left"
                 >
                   {style.label}

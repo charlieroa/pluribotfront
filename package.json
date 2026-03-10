@@ -1,5 +1,5 @@
 {
-  "name": "pluribots",
+  "name": "plury",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,11 @@
   "dependencies": {
     "@dicebear/collection": "^9.3.1",
     "@dicebear/core": "^9.3.1",
+    "@webcontainer/api": "^1.6.1",
+    "@xyflow/react": "^12.10.1",
+    "gsap": "^3.14.2",
     "highlight.js": "^11.11.1",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.563.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

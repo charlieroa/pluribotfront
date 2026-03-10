@@ -30,7 +30,7 @@ const LoginView = () => {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-primary-fg font-bold text-lg mx-auto mb-3">P</div>
-          <h1 className="text-2xl font-bold text-ink">Pluribots</h1>
+          <h1 className="text-2xl font-bold text-ink">Plury</h1>
           <p className="text-sm text-ink-faint mt-1">Agentes IA que trabajan por ti</p>
         </div>
 

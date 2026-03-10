@@ -30,7 +30,7 @@ const PricingSection = ({ onRegister }: PricingSectionProps) => {
     <section ref={sectionRef} id="precios" className="py-20 sm:py-28 px-4">
       <div className="max-w-[1200px] mx-auto">
         <div className="price-anim text-center mb-14">
-          <p className="text-[12px] text-purple-400 uppercase tracking-[0.15em] font-semibold mb-3">Precios</p>
+          <p className="text-[12px] text-[#43f1f2] uppercase tracking-[0.15em] font-semibold mb-3">Precios</p>
           <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.025em] text-white mb-3">Simple y transparente</h2>
           <p className="text-[16px] text-zinc-400 max-w-md mx-auto">Empieza gratis. Escala cuando lo necesites. Agrega Senior cuando quieras.</p>
         </div>
@@ -43,19 +43,19 @@ const PricingSection = ({ onRegister }: PricingSectionProps) => {
                 key={plan.id}
                 className={`price-anim relative rounded-2xl border flex flex-col transition-all p-6 ${
                   isPro
-                    ? 'border-purple-500/30 bg-purple-500/[0.04] shadow-[0_0_40px_rgba(124,58,237,0.08)]'
+                    ? 'border-[#a78bfa]/30 bg-[#a78bfa]/[0.04] shadow-[0_0_40px_rgba(139,92,246,0.08)]'
                     : 'border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1] hover:bg-white/[0.04]'
                 }`}
               >
                 {isPro && (
-                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-[#7c3aed] rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
+                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-[#8b5cf6] rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
                     Popular
                   </div>
                 )}
 
                 <p className="text-[14px] font-semibold text-white">{plan.name}</p>
                 <p className="text-[32px] font-bold text-white mt-1.5 tracking-[-0.02em]">{plan.price}</p>
-                <p className="text-[11.5px] font-semibold text-purple-400 mt-0.5">{plan.credits} creditos/mes</p>
+                <p className="text-[11.5px] font-semibold text-[#a78bfa] mt-0.5">{plan.credits} creditos/mes</p>
 
                 <div className="mt-5 space-y-2.5 flex-1">
                   {plan.features.map(f => (
@@ -69,7 +69,7 @@ const PricingSection = ({ onRegister }: PricingSectionProps) => {
                   onClick={onRegister}
                   className={`mt-6 w-full py-2.5 text-[13px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                     isPro
-                      ? 'bg-[#7c3aed] text-white hover:bg-[#6d28d9] shadow-[0_0_20px_rgba(124,58,237,0.2)]'
+                      ? 'bg-[#8b5cf6] text-white hover:bg-[#7c3aed] shadow-[0_0_20px_rgba(139,92,246,0.2)]'
                       : 'bg-white/[0.06] text-white border border-white/[0.08] hover:bg-white/[0.1]'
                   }`}
                 >

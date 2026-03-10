@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plury para Agencias — Escala sin contratar</title>
+<link rel="icon" href="/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,sans-serif;background:#09090b;color:#fafafa;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit}button{border:none;background:none;cursor:pointer;font-family:inherit}img{display:block}
+::selection{background:rgba(99,102,241,0.3)}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+
+:root{--bg:#09090b;--surface:#111113;--surface2:#18181b;--border:rgba(255,255,255,0.06);--text:#fafafa;--text2:#a1a1aa;--text3:#71717a;--accent1:#6366f1;--accent2:#a855f7;--accent3:#818cf8;--glow1:rgba(99,102,241,0.12);--glow2:rgba(168,85,247,0.08);--radius:12px;--radius-lg:16px;--radius-xl:24px;--pill:100px;--ease:cubic-bezier(0.2,0,0,1)}
+
+.mesh{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.mesh-orb{position:absolute;border-radius:50%;filter:blur(120px);animation:float 20s ease-in-out infinite}
+.mesh-orb:nth-child(1){width:600px;height:600px;background:var(--glow1);top:-10%;right:20%;animation-delay:0s}
+.mesh-orb:nth-child(2){width:500px;height:500px;background:var(--glow2);bottom:20%;left:-5%;animation-delay:-7s}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-40px) scale(1.05)}66%{transform:translate(-20px,30px) scale(0.95)}}
+
+/* NAV */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;height:72px;display:flex;align-items:center;background:rgba(9,9,11,0.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+.nav-inner{max-width:1200px;width:100%;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo img{height:24px}
+.nav-links{display:flex;align-items:center;gap:4px}
+.nav-link{font-size:14px;font-weight:500;color:var(--text2);padding:8px 16px;border-radius:var(--pill);transition:all .2s}
+.nav-link:hover{color:var(--text);background:rgba(255,255,255,0.05)}
+.nav-cta{font-size:13px;font-weight:600;color:white;background:var(--accent1);padding:9px 20px;border-radius:var(--pill);transition:all .2s;margin-left:4px}
+.nav-cta:hover{background:#4f46e5}
+
+/* HERO */
+.hero{position:relative;z-index:1;padding:160px 32px 80px;text-align:center;max-width:900px;margin:0 auto}
+.hero-label{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:var(--pill);border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);font-size:13px;font-weight:600;color:var(--accent3);margin-bottom:28px}
+.hero h1{font-size:clamp(36px,6vw,68px);font-weight:900;line-height:1.08;letter-spacing:-0.04em;margin-bottom:24px}
+.hero h1 .g{background:linear-gradient(135deg,var(--accent1),var(--accent2),#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-size:200% 200%;animation:shimmer 4s ease infinite}
+@keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+.hero-sub{font-size:18px;color:var(--text2);line-height:1.65;max-width:600px;margin:0 auto 40px}
+.hero-sub strong{color:var(--text);font-weight:600}
+.hero-cta{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--accent1),var(--accent2));color:white;font-size:16px;font-weight:700;padding:16px 36px;border-radius:var(--radius-lg);transition:all .2s;box-shadow:0 0 40px rgba(99,102,241,0.3)}
+.hero-cta:hover{filter:brightness(1.1);transform:translateY(-2px);box-shadow:0 0 60px rgba(99,102,241,0.4)}
+.hero-cta svg{width:18px;height:18px}
+
+/* STATS */
+.stats{display:flex;justify-content:center;gap:48px;flex-wrap:wrap;padding:48px 32px;position:relative;z-index:1;border-top:1px solid var(--border);border-bottom:1px solid var(--border);max-width:800px;margin:0 auto}
+.stat{text-align:center}.stat-num{font-size:36px;font-weight:900;letter-spacing:-0.02em;background:linear-gradient(135deg,var(--accent3),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-label{font-size:13px;color:var(--text3);margin-top:4px}
+
+/* SECTION */
+.section{position:relative;z-index:1;padding:80px 32px;max-width:1100px;margin:0 auto}
+.section-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--accent3);margin-bottom:12px}
+.section-title{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-0.03em;line-height:1.1;margin-bottom:12px}
+.section-sub{font-size:16px;color:var(--text2);line-height:1.6;max-width:560px}
+.section-divider{border-top:1px solid var(--border);max-width:1100px;margin:0 auto}
+
+/* PERKS GRID */
+.perks{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px}
+@media(max-width:768px){.perks{grid-template-columns:1fr}}
+.perk{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:32px;transition:all .3s}
+.perk:hover{border-color:rgba(99,102,241,0.15);background:rgba(99,102,241,0.02)}
+.perk-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:20px;background:linear-gradient(135deg,var(--accent1),var(--accent2))}
+.perk-icon svg{width:24px;height:24px;color:white}
+.perk h3{font-size:18px;font-weight:700;margin-bottom:8px}
+.perk p{font-size:14px;color:var(--text3);line-height:1.6}
+
+/* WORKFLOW */
+.workflow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:48px}
+@media(max-width:900px){.workflow{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:550px){.workflow{grid-template-columns:1fr}}
+.wf-step{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;text-align:center;position:relative}
+.wf-num{font-size:56px;font-weight:900;color:rgba(255,255,255,0.03);line-height:1;margin-bottom:8px}
+.wf-step h3{font-size:15px;font-weight:700;margin-bottom:6px}
+.wf-step p{font-size:13px;color:var(--text3);line-height:1.5}
+
+/* SENIOR TIERS */
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px}
+@media(max-width:768px){.tiers{grid-template-columns:1fr}}
+.tier{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:32px;position:relative;transition:all .3s}
+.tier:hover{border-color:rgba(99,102,241,0.15)}
+.tier.pop{border-color:var(--accent1);background:rgba(99,102,241,0.04)}
+.tier-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--accent1),var(--accent2));color:white;font-size:12px;font-weight:700;padding:4px 14px;border-radius:var(--pill)}
+.tier h3{font-size:18px;font-weight:700;margin-bottom:4px}.tier .tier-desc{font-size:14px;color:var(--text3)}
+.tier .tier-price{margin:20px 0;font-size:36px;font-weight:900;letter-spacing:-0.03em}.tier .tier-price span{font-size:16px;font-weight:500;color:var(--text3)}
+.tier ul{list-style:none;margin-bottom:24px}.tier li{font-size:14px;color:var(--text2);padding:5px 0;display:flex;align-items:center;gap:8px}
+.tier li svg{width:16px;height:16px;color:#22c55e;flex-shrink:0}
+.tier-cta{display:block;text-align:center;padding:12px;border-radius:var(--radius);font-size:14px;font-weight:600;transition:all .2s}
+.tier-cta.outline{border:1px solid var(--border);color:var(--text)}.tier-cta.outline:hover{border-color:var(--accent1)}
+.tier-cta.solid{background:linear-gradient(135deg,var(--accent1),var(--accent2));color:white}.tier-cta.solid:hover{filter:brightness(1.1)}
+
+/* FAQ */
+.faq{margin-top:48px}.faq-item{border-bottom:1px solid var(--border);padding:20px 0}
+.faq-q{font-size:16px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.faq-q svg{width:20px;height:20px;color:var(--text3);transition:transform .2s;flex-shrink:0}
+.faq-a{font-size:14px;color:var(--text3);line-height:1.6;max-height:0;overflow:hidden;transition:all .3s}
+.faq-item.open .faq-a{max-height:200px;padding-top:12px}.faq-item.open .faq-q svg{transform:rotate(45deg)}
+
+/* CTA */
+.cta{text-align:center;padding:80px 32px 100px;position:relative;z-index:1}
+.cta h2{font-size:clamp(32px,5vw,48px);font-weight:900;letter-spacing:-0.03em;margin-bottom:16px}
+.cta p{font-size:17px;color:var(--text2);margin-bottom:32px}
+
+/* FOOTER */
+.footer{border-top:1px solid var(--border);padding:32px;position:relative;z-index:1;text-align:center}
+.footer p{font-size:13px;color:var(--text3)}
+.footer a{color:var(--text3);margin:0 12px}.footer a:hover{color:var(--text)}
+
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(30px);transition:all .6s ease}.reveal.vis{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="mesh"><div class="mesh-orb"></div><div class="mesh-orb"></div></div>
+
+<!-- NAV -->
+<nav class="nav">
+<div class="nav-inner">
+  <a href="/" class="nav-logo"><img src="/logo-light.png" alt="Plury"></a>
+  <div class="nav-links">
+    <a href="/landing-v2" class="nav-link">Explora</a>
+    <a href="#perks" class="nav-link">Beneficios</a>
+    <a href="#planes" class="nav-link">Planes</a>
+    <a href="/" class="nav-cta">Empieza gratis</a>
+  </div>
+</div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-label">Para agencias y equipos</div>
+  <h1>Tu propia agencia de IA<br>con <span class="g">marca blanca</span></h1>
+  <p class="hero-sub">Usa Plury con tu logo, tus colores y tu dominio. Tus clientes creen que tienes un <strong>equipo de 20 personas</strong>. Escala sin contratar. Entrega en horas, no semanas.</p>
+  <a href="/" class="hero-cta">Empezar como agencia <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg></a>
+</section>
+
+<!-- STATS -->
+<div class="stats reveal">
+  <div class="stat"><div class="stat-num">10x</div><div class="stat-label">Mas rapido que contratar</div></div>
+  <div class="stat"><div class="stat-num">85%</div><div class="stat-label">Ahorro en costos</div></div>
+  <div class="stat"><div class="stat-num">24h</div><div class="stat-label">Revision senior</div></div>
+  <div class="stat"><div class="stat-num">99.9%</div><div class="stat-label">Uptime SLA</div></div>
+</div>
+
+<!-- PERKS -->
+<div class="section-divider" id="perks"></div>
+<section class="section reveal">
+  <div class="section-label">Beneficios</div>
+  <div class="section-title">Todo lo que tu agencia necesita</div>
+  <div class="section-sub">Desde marca blanca hasta supervision senior. Una plataforma, multiples clientes.</div>
+  <div class="perks">
+    <div class="perk"><div class="perk-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 0h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z"/></svg></div><h3>Tu marca, tu dominio</h3><p>Plury desaparece completamente. Tus clientes ven tu logo, tus colores, tu URL. Es tu plataforma.</p></div>
+    <div class="perk"><div class="perk-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg></div><h3>Equipo ilimitado</h3><p>Invita disenadores, developers y managers. Gestiona multiples clientes y proyectos desde un solo panel.</p></div>
+    <div class="perk"><div class="perk-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg></div><h3>Seniors bajo demanda</h3><p>Profesionales reales revisan y mejoran cada entrega critica. Developers, disenadores y estrategas listos.</p></div>
+    <div class="perk"><div class="perk-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg></div><h3>Acceso por API</h3><p>Integra los agentes de Plury en tu propio producto o flujo de trabajo. REST API documentada.</p></div>
+    <div class="perk"><div class="perk-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605"/></svg></div><h3>Dashboard completo</h3><p>Metricas de uso, creditos, proyectos activos y reportes para cada cliente. Todo en tiempo real.</p></div>
+    <div class="perk"><div class="perk-icon"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg></div><h3>SLA garantizado</h3><p>99.9% uptime, soporte prioritario, account manager dedicado y backups automaticos.</p></div>
+  </div>
+</section>
+
+<!-- WORKFLOW -->
+<div class="section-divider"></div>
+<section class="section reveal">
+  <div class="section-label">Flujo de trabajo</div>
+  <div class="section-title">Asi funciona para tu agencia</div>
+  <div class="section-sub">De la solicitud del cliente al entregable final.</div>
+  <div class="workflow">
+    <div class="wf-step"><div class="wf-num">01</div><h3>Cliente pide</h3><p>Tu cliente envia su brief por tu plataforma con marca blanca.</p></div>
+    <div class="wf-step"><div class="wf-num">02</div><h3>IA construye</h3><p>Agentes especializados crean webs, logos, ads y mas en paralelo.</p></div>
+    <div class="wf-step"><div class="wf-num">03</div><h3>Senior revisa</h3><p>Un profesional humano verifica calidad y hace ajustes finos.</p></div>
+    <div class="wf-step"><div class="wf-num">04</div><h3>Tu entregas</h3><p>Resultado profesional listo. Tu cliente ve tu marca en todo.</p></div>
+  </div>
+</section>
+
+<!-- SENIOR TIERS -->
+<div class="section-divider" id="planes"></div>
+<section class="section reveal">
+  <div class="section-label">Planes para agencias</div>
+  <div class="section-title">Escala a tu ritmo</div>
+  <div class="section-sub">Todos incluyen marca blanca, multi-usuario y acceso API.</div>
+  <div class="tiers">
+    <div class="tier">
+      <h3>Starter</h3><p class="tier-desc">Para agencias que empiezan</p>
+      <div class="tier-price">$149 <span>/mes</span></div>
+      <ul>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>10,000 creditos/mes</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>3 usuarios</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>Marca blanca basica</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>Soporte email</li>
+      </ul>
+      <a href="/" class="tier-cta outline">Empezar</a>
+    </div>
+    <div class="tier pop">
+      <div class="tier-badge">Recomendado</div>
+      <h3>Growth</h3><p class="tier-desc">Para agencias en crecimiento</p>
+      <div class="tier-price">$349 <span>/mes</span></div>
+      <ul>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>30,000 creditos/mes</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>10 usuarios</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>Marca blanca completa + dominio</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>2 revisiones senior/mes</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>API access</li>
+      </ul>
+      <a href="/" class="tier-cta solid">Elegir Growth</a>
+    </div>
+    <div class="tier">
+      <h3>Enterprise</h3><p class="tier-desc">Para agencias grandes</p>
+      <div class="tier-price">$799 <span>/mes</span></div>
+      <ul>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>Creditos ilimitados</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>Usuarios ilimitados</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>5 revisiones senior/mes</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>Account manager dedicado</li>
+        <li><svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.5 12.75l6 6 9-13.5"/></svg>SLA 99.9% + soporte 24/7</li>
+      </ul>
+      <a href="/" class="tier-cta outline">Contactar ventas</a>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<div class="section-divider"></div>
+<section class="section reveal">
+  <div class="section-label">FAQ</div>
+  <div class="section-title">Preguntas frecuentes</div>
+  <div class="faq">
+    <div class="faq-item"><div class="faq-q">Mis clientes pueden ver que uso Plury?<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg></div><div class="faq-a">No. Con marca blanca tu logo, colores y dominio reemplazan completamente a Plury. Tus clientes solo ven tu marca.</div></div>
+    <div class="faq-item"><div class="faq-q">Que pasa si un resultado de IA no es perfecto?<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg></div><div class="faq-a">Solicitas revision senior. Un profesional humano (developer, disenador o estratega) toma el contexto completo y lo ajusta en 24-48h.</div></div>
+    <div class="faq-item"><div class="faq-q">Puedo conectar Plury a mis herramientas?<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg></div><div class="faq-a">Si. Ofrecemos API REST documentada para integrar los agentes en tu flujo. Webhooks disponibles para notificaciones.</div></div>
+    <div class="faq-item"><div class="faq-q">Cuantos clientes puedo gestionar?<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15"/></svg></div><div class="faq-a">Sin limite. Cada cliente es un proyecto separado con su propia configuracion, assets y historial. Escala todo lo que necesites.</div></div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta reveal">
+  <h2>Escala tu agencia <span class="g">hoy</span></h2>
+  <p>Empieza con 10,000 creditos. Sin contratos largos. Cancela cuando quieras.</p>
+  <a href="/" class="hero-cta">Empezar como agencia <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg></a>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <p>&copy; 2026 Plury &middot; <a href="/landing-v2">Volver al inicio</a> <a href="#">Terminos</a> <a href="#">Privacidad</a></p>
+</footer>
+
+<script>
+// Scroll reveal
+const obs=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.classList.add('vis');obs.unobserve(x.target)}})},{threshold:0.05})
+document.querySelectorAll('.reveal').forEach(c=>obs.observe(c))
+
+// FAQ toggle
+document.querySelectorAll('.faq-item').forEach(item=>{item.querySelector('.faq-q').addEventListener('click',()=>item.classList.toggle('open'))})
+
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(a=>{a.addEventListener('click',e=>{e.preventDefault();const t=document.querySelector(a.getAttribute('href'));if(t)t.scrollIntoView({behavior:'smooth'})})})
+</script>
+
+</body>
+</html>

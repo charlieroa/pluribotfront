@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Globe, Check, AlertCircle, Copy, ExternalLink, Loader2 } from 'lucide-react'
+import { X, Globe, Check, AlertCircle, Copy, ExternalLink, Loader2, Users } from 'lucide-react'
 import type { Deliverable } from '../../types'
 
 interface PublishModalProps {
@@ -12,7 +12,7 @@ interface PublishModalProps {
 type SlugStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 type PublishState = 'form' | 'publishing' | 'success'
 
-const APP_DOMAIN = 'pluribots.com'
+const APP_DOMAIN = 'plury.co'
 
 export default function PublishModal({ isOpen, onClose, deliverable, onPublished }: PublishModalProps) {
   const [slug, setSlug] = useState('')
@@ -21,6 +21,7 @@ export default function PublishModal({ isOpen, onClose, deliverable, onPublished
   const [publishState, setPublishState] = useState<PublishState>('form')
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [shareWithCommunity, setShareWithCommunity] = useState(true)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -37,7 +38,7 @@ export default function PublishModal({ isOpen, onClose, deliverable, onPublished
     }
 
     // Suggest slug from title
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     fetch('/api/deploy/suggest-slug', {
       method: 'POST',
       headers: {
@@ -125,14 +126,14 @@ export default function PublishModal({ isOpen, onClose, deliverable, onPublished
 
     setPublishState('publishing')
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch('/api/deploy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ deliverableId: deliverable.id, slug }),
+        body: JSON.stringify({ deliverableId: deliverable.id, slug, isPublic: shareWithCommunity }),
       })
 
       if (res.ok) {
@@ -207,6 +208,15 @@ export default function PublishModal({ isOpen, onClose, deliverable, onPublished
                 </button>
               </div>
 
+              {shareWithCommunity && (
+                <div className="flex items-center gap-2 p-2.5 bg-primary/5 border border-primary/20 rounded-lg mb-4">
+                  <Users size={14} className="text-primary flex-shrink-0" />
+                  <p className="text-[11px] text-ink">
+                    Tu proyecto aparecerá en la <span className="font-semibold">galería de la comunidad</span> con un screenshot automático.
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <a
                   href={publishedUrl!}
@@ -260,6 +270,36 @@ export default function PublishModal({ isOpen, onClose, deliverable, onPublished
                 <p className="mt-1.5 text-xs text-red-500">{slugError}</p>
               )}
 
+              {/* Community toggle */}
+              <button
+                type="button"
+                onClick={() => setShareWithCommunity(v => !v)}
+                className={`mt-4 w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  shareWithCommunity
+                    ? 'border-primary/30 bg-primary/5'
+                    : 'border-edge bg-subtle'
+                }`}
+              >
+                <div className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${
+                  shareWithCommunity ? 'bg-primary' : 'bg-ink-faint/30'
+                }`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                    shareWithCommunity ? 'left-[18px]' : 'left-0.5'
+                  }`} />
+                </div>
+                <div className="text-left flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Users size={13} className={shareWithCommunity ? 'text-primary' : 'text-ink-faint'} />
+                    <span className="text-xs font-semibold text-ink">Compartir con la comunidad</span>
+                  </div>
+                  <p className="text-[11px] text-ink-faint mt-0.5">
+                    {shareWithCommunity
+                      ? 'Tu proyecto aparecerá en la galería pública de Plury'
+                      : 'Solo accesible con el enlace directo'}
+                  </p>
+                </div>
+              </button>
+
               {/* Publish button */}
               <button
                 onClick={handlePublish}
@@ -267,7 +307,7 @@ export default function PublishModal({ isOpen, onClose, deliverable, onPublished
                   publishState === 'publishing' ||
                   (slugStatus !== 'available' && !deliverable.publishSlug)
                 }
-                className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:opacity-90 transition-all disabled:opacity-50"
+                className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold text-white bg-primary rounded-lg hover:opacity-90 transition-all disabled:opacity-50"
               >
                 {publishState === 'publishing' ? (
                   <>

@@ -10,7 +10,7 @@ const features = [
     icon: Code2,
     title: 'Webs y apps en segundos',
     desc: 'Como Lovable o v0, pero en espanol y con todo tu equipo creativo incluido. Genera aplicaciones completas con HTML, CSS, JS y despliegalas al instante.',
-    accent: 'from-purple-500 to-violet-600',
+    accent: 'from-[#a78bfa] to-[#8b5cf6]',
     span: true,
   },
   {
@@ -47,7 +47,7 @@ const features = [
     icon: Globe,
     title: 'Deploy con dominio propio',
     desc: 'Un click y tu app esta live. Dominio personalizado, SSL y hosting incluido.',
-    accent: 'from-indigo-500 to-violet-500',
+    accent: 'from-[#a78bfa] to-[#a78bfa]',
   },
   {
     icon: MessageSquare,
@@ -83,7 +83,7 @@ const FeaturesSection = () => {
     <section ref={sectionRef} id="soluciones" className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
         <div className="feat-anim text-center mb-16">
-          <p className="text-[12px] text-purple-400 uppercase tracking-[0.15em] font-semibold mb-3">Soluciones</p>
+          <p className="text-[12px] text-[#a78bfa] uppercase tracking-[0.15em] font-semibold mb-3">Soluciones</p>
           <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.03em] text-white mb-4">
             Todo tu negocio digital en un solo lugar
           </h2>

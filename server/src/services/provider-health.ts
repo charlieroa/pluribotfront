@@ -1,13 +1,11 @@
-// Provider health check service — validates API keys and tracks provider status
+// Provider health check service — validates Anthropic API key and tracks status
 
 import Anthropic from '@anthropic-ai/sdk'
-import OpenAI from 'openai'
-import { GoogleGenAI } from '@google/genai'
 
 export type ProviderStatus = 'active' | 'no_key' | 'invalid_key' | 'no_credits' | 'error'
 
 export interface ProviderHealth {
-  provider: 'anthropic' | 'openai' | 'google' | 'deepseek'
+  provider: 'anthropic'
   status: ProviderStatus
   label: string
   message: string
@@ -33,12 +31,7 @@ export async function getProviderHealthStatus(): Promise<ProviderHealth[]> {
     return healthCache.results
   }
 
-  const results = await Promise.all([
-    checkAnthropic(),
-    checkOpenAI(),
-    checkGoogle(),
-    checkDeepSeek(),
-  ])
+  const results = await Promise.all([checkAnthropic()])
 
   healthCache = { results, checkedAt: Date.now() }
   return results
@@ -57,12 +50,12 @@ export async function getDisabledProviders(): Promise<Set<string>> {
 }
 
 // Check if a specific provider is available
-export async function isProviderAvailable(provider: 'anthropic' | 'openai' | 'google' | 'deepseek'): Promise<boolean> {
+export async function isProviderAvailable(provider: 'anthropic'): Promise<boolean> {
   const disabled = await getDisabledProviders()
   return !disabled.has(provider)
 }
 
-// ─── Individual provider checks ───
+// ─── Anthropic check ───
 
 async function checkAnthropic(): Promise<ProviderHealth> {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -74,13 +67,11 @@ async function checkAnthropic(): Promise<ProviderHealth> {
 
   try {
     const client = new Anthropic({ apiKey })
-    // Minimal API call — count tokens only (cheapest operation)
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1,
       messages: [{ role: 'user', content: 'hi' }],
     })
-    // If we get here, the key works
     if (response.stop_reason === 'end_turn' || response.stop_reason === 'max_tokens') {
       return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
     }
@@ -94,108 +85,6 @@ async function checkAnthropic(): Promise<ProviderHealth> {
     }
     if (status === 429 || msg.includes('rate_limit') || msg.includes('credit') || msg.includes('billing')) {
       return { ...base, status: 'no_credits', message: 'Sin creditos o limite alcanzado', checkedAt: new Date().toISOString() }
-    }
-    return { ...base, status: 'error', message: msg.slice(0, 200), checkedAt: new Date().toISOString() }
-  }
-}
-
-async function checkOpenAI(): Promise<ProviderHealth> {
-  const apiKey = process.env.OPENAI_API_KEY
-  const base: Pick<ProviderHealth, 'provider' | 'label'> = { provider: 'openai', label: 'OpenAI (GPT)' }
-
-  if (!apiKey) {
-    return { ...base, status: 'no_key', message: 'API key no configurada', checkedAt: new Date().toISOString() }
-  }
-
-  try {
-    const client = new OpenAI({ apiKey })
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    })
-    if (response.choices[0]) {
-      return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
-    }
-    return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
-  } catch (err: any) {
-    const msg = err?.message ?? String(err)
-    const status = err?.status ?? 0
-
-    if (status === 401 || msg.includes('Incorrect API key') || msg.includes('invalid_api_key')) {
-      return { ...base, status: 'invalid_key', message: 'API key invalida', checkedAt: new Date().toISOString() }
-    }
-    if (status === 429 || msg.includes('quota') || msg.includes('billing') || msg.includes('insufficient_quota') || msg.includes('rate_limit')) {
-      return { ...base, status: 'no_credits', message: 'Sin creditos o cuota agotada', checkedAt: new Date().toISOString() }
-    }
-    return { ...base, status: 'error', message: msg.slice(0, 200), checkedAt: new Date().toISOString() }
-  }
-}
-
-async function checkGoogle(): Promise<ProviderHealth> {
-  const apiKey = process.env.GOOGLE_API_KEY
-  const base: Pick<ProviderHealth, 'provider' | 'label'> = { provider: 'google', label: 'Google (Gemini)' }
-
-  if (!apiKey) {
-    return { ...base, status: 'no_key', message: 'API key no configurada', checkedAt: new Date().toISOString() }
-  }
-
-  try {
-    const client = new GoogleGenAI({ apiKey })
-    const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: 'hi' }] }],
-      config: { maxOutputTokens: 1 },
-    })
-    if (response.candidates?.[0]) {
-      return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
-    }
-    return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
-  } catch (err: any) {
-    const msg = err?.message ?? String(err)
-    const status = err?.status ?? 0
-
-    if (status === 401 || status === 403 || msg.includes('API_KEY_INVALID') || msg.includes('PERMISSION_DENIED')) {
-      return { ...base, status: 'invalid_key', message: 'API key invalida o sin permisos', checkedAt: new Date().toISOString() }
-    }
-    if (status === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota') || msg.includes('billing')) {
-      return { ...base, status: 'no_credits', message: 'Cuota agotada o sin billing habilitado', checkedAt: new Date().toISOString() }
-    }
-    return { ...base, status: 'error', message: msg.slice(0, 200), checkedAt: new Date().toISOString() }
-  }
-}
-
-async function checkDeepSeek(): Promise<ProviderHealth> {
-  const base: Pick<ProviderHealth, 'provider' | 'label'> = { provider: 'deepseek', label: 'DeepSeek (V3)' }
-  // DeepSeek deshabilitado — todo lo maneja Sonnet
-  return { ...base, status: 'no_key', message: 'DeepSeek deshabilitado — usando Sonnet', checkedAt: new Date().toISOString() }
-
-  const apiKey = process.env.DEEPSEEK_API_KEY
-
-  if (!apiKey) {
-    return { ...base, status: 'no_key', message: 'API key no configurada', checkedAt: new Date().toISOString() }
-  }
-
-  try {
-    const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com' })
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    })
-    if (response.choices[0]) {
-      return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
-    }
-    return { ...base, status: 'active', message: 'Funcionando correctamente', checkedAt: new Date().toISOString() }
-  } catch (err: any) {
-    const msg = err?.message ?? String(err)
-    const status = err?.status ?? 0
-
-    if (status === 401 || msg.includes('invalid_api_key') || msg.includes('authentication')) {
-      return { ...base, status: 'invalid_key', message: 'API key invalida', checkedAt: new Date().toISOString() }
-    }
-    if (status === 429 || msg.includes('quota') || msg.includes('billing') || msg.includes('insufficient')) {
-      return { ...base, status: 'no_credits', message: 'Sin creditos o cuota agotada', checkedAt: new Date().toISOString() }
     }
     return { ...base, status: 'error', message: msg.slice(0, 200), checkedAt: new Date().toISOString() }
   }

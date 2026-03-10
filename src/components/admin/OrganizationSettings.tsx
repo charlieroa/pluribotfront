@@ -28,14 +28,14 @@ const OrganizationSettings = () => {
   const [inviteName, setInviteName] = useState('')
   const [inviteRole, setInviteRole] = useState('agent')
   const [inviteSpecialty, setInviteSpecialty] = useState('')
-  const [inviteSpecialtyColor, setInviteSpecialtyColor] = useState('#8b5cf6')
+  const [inviteSpecialtyColor, setInviteSpecialtyColor] = useState('#a78bfa')
   const [inviteSpecialtyKeywords, setInviteSpecialtyKeywords] = useState('')
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [tempPassword, setTempPassword] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
   const [editSpecialty, setEditSpecialty] = useState('')
-  const [editSpecialtyColor, setEditSpecialtyColor] = useState('#8b5cf6')
+  const [editSpecialtyColor, setEditSpecialtyColor] = useState('#a78bfa')
   const [editSpecialtyKeywords, setEditSpecialtyKeywords] = useState('')
   const [inviteAvatarUrl, setInviteAvatarUrl] = useState<string | null>(null)
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(null)
@@ -43,7 +43,7 @@ const OrganizationSettings = () => {
   const [editAvatarUploading, setEditAvatarUploading] = useState(false)
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -138,7 +138,7 @@ const OrganizationSettings = () => {
         setInviteEmail('')
         setInviteName('')
         setInviteSpecialty('')
-        setInviteSpecialtyColor('#8b5cf6')
+        setInviteSpecialtyColor('#a78bfa')
         setInviteSpecialtyKeywords('')
         setInviteAvatarUrl(null)
         setShowInviteForm(false)
@@ -153,7 +153,7 @@ const OrganizationSettings = () => {
   const handleStartEdit = (member: OrgMember) => {
     setEditingMemberId(member.id)
     setEditSpecialty(member.specialty || '')
-    setEditSpecialtyColor(member.specialtyColor || '#8b5cf6')
+    setEditSpecialtyColor(member.specialtyColor || '#a78bfa')
     setEditSpecialtyKeywords('')
     setEditAvatarUrl(member.avatarUrl || null)
   }
@@ -200,8 +200,8 @@ const OrganizationSettings = () => {
 
   const roleColors: Record<string, string> = {
     superadmin: 'bg-red-500/10 text-red-600',
-    org_admin: 'bg-violet-500/10 text-violet-600',
-    agent: 'bg-indigo-500/10 text-indigo-600',
+    org_admin: 'bg-[#a78bfa]/10 text-[#8b5cf6]',
+    agent: 'bg-[#a78bfa]/10 text-[#8b5cf6]',
     user: 'bg-slate-500/10 text-slate-600',
   }
 
@@ -428,7 +428,7 @@ const OrganizationSettings = () => {
                     ) : (
                       <div
                         className={member.specialty ? 'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white' : 'w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary text-xs font-bold'}
-                        style={member.specialty ? { backgroundColor: member.specialtyColor || '#8b5cf6' } : {}}
+                        style={member.specialty ? { backgroundColor: member.specialtyColor || '#a78bfa' } : {}}
                       >
                         {member.name.charAt(0).toUpperCase()}
                       </div>
@@ -442,7 +442,7 @@ const OrganizationSettings = () => {
                         {member.specialty && (
                           <span
                             className="px-1.5 py-0.5 text-[9px] font-bold rounded-full text-white"
-                            style={{ backgroundColor: member.specialtyColor || '#8b5cf6' }}
+                            style={{ backgroundColor: member.specialtyColor || '#a78bfa' }}
                           >
                             {member.specialty}
                           </span>

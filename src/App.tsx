@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { MessageCircle, Pencil, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { MessageCircle, Pencil, PanelLeftClose, PanelLeftOpen, Settings, X } from 'lucide-react'
 import type { AdminTab } from './components/admin/AdminDashboard'
 import { agents } from './data/agents'
 import { quickActions } from './data/quickActions'
@@ -13,51 +13,120 @@ import ChatView from './components/chat/ChatView'
 import TaskTimeline from './components/tasks/TaskTimeline'
 import SettingsView from './components/settings/SettingsView'
 import MarketplaceView from './components/marketplace/MarketplaceView'
-import PortfolioView from './components/portfolio/PortfolioView'
 import WorkspacePanel from './components/workspace/WorkspacePanel'
+import WorkflowEditor from './components/workflow/WorkflowEditor'
 import EditPanel from './components/workspace/EditPanel'
-import OnboardingView from './components/onboarding/OnboardingView'
+import DevSettingsPanel from './components/workspace/DevSettingsPanel'
 import AdminDashboard from './components/admin/AdminDashboard'
+import ProjectView from './components/projects/ProjectView'
+import LandingPage from './components/landing/LandingPage'
+import LandingPageV2 from './components/landing/LandingPageV2'
 import type { SelectedElement } from './components/workspace/VisualEditToolbar'
 
 const App = () => {
-  const { user, updateCreditBalance } = useAuth()
+  const pathname = typeof window !== 'undefined' ? window.location.pathname.toLowerCase() : '/'
+  const showLandingV2 = pathname === '/landingv2'
+  const { user, isLoading, updateCreditBalance } = useAuth()
   const isAuthenticated = !!user
-  const showOnboarding = isAuthenticated && !user.onboardingDone
+  const pendingPromptSent = useRef(false)
 
-  const [activeTab, setActiveTab] = useState('chat')
+  // Core state — chat is always the main view
+  const [showAdmin, setShowAdmin] = useState(false)
   const [adminSubTab, setAdminSubTab] = useState<AdminTab>('users')
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeDeliverable, setActiveDeliverable] = useState<Deliverable | null>(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true) // Start collapsed, will expand if user has history
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [sidePanelTab, setSidePanelTab] = useState<'chat' | 'edit'>('chat')
+  const [sidePanelTab, setSidePanelTab] = useState<'chat' | 'edit' | 'settings'>('chat')
   const [chatPanelVisible, setChatPanelVisible] = useState(true)
 
-  // Visual edit state lifted from WorkspacePanel for EditPanel communication
+  // Drawer/modal overlays
+  const [showMarketplace, setShowMarketplace] = useState(false)
+  const [showTasks, setShowTasks] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+
+  // Visual edit state
   const [editMode, setEditMode] = useState(false)
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null)
+  const [selectedLogo, setSelectedLogo] = useState<{ index: number; src: string; style: string } | null>(null)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
 
+  useEffect(() => {
+    (window as any).__selectedLogoForRefine = selectedLogo
+  }, [selectedLogo])
+
+  // Workflow editor state
+  const [workflowOpen, setWorkflowOpen] = useState(false)
+  const [workflowPrompt, setWorkflowPrompt] = useState('')
 
   const handleDeliverable = (d: Deliverable) => {
     setActiveDeliverable(d)
     setSidebarCollapsed(true)
-    // On desktop show chat; on mobile hide it to show preview
     setChatPanelVisible(window.innerWidth >= 768)
   }
 
-  const chat = useChat({ onDeliverable: handleDeliverable, isAuthenticated, onCreditUpdate: updateCreditBalance })
-  const { specialists } = useSpecialists()
+  const [workflowJustOpened, setWorkflowJustOpened] = useState(false)
+  const handleOpenWorkflow = (prompt: string) => {
+    setWorkflowPrompt(prompt)
+    setWorkflowOpen(true)
+    setSidebarCollapsed(true)
+    setChatPanelVisible(window.innerWidth >= 768)
+    setSidePanelTab('chat')
+    setWorkflowJustOpened(true)
+  }
+
+  const chat = useChat({ onDeliverable: handleDeliverable, onOpenWorkflow: handleOpenWorkflow, isAuthenticated, onCreditUpdate: updateCreditBalance })
+  useSpecialists()
+
+  // Auto-expand sidebar when user has conversation history (only on first load)
+  const sidebarAutoExpanded = useRef(false)
+  useEffect(() => {
+    if (!sidebarAutoExpanded.current && chat.conversations.length > 0 && window.innerWidth >= 768) {
+      sidebarAutoExpanded.current = true
+      setSidebarCollapsed(false)
+    }
+  }, [chat.conversations.length])
+
+  useEffect(() => {
+    if (workflowJustOpened) {
+      chat.addSystemMessage('Places esta listo. ¿Necesitas ayuda creando tu video? Puedo sugerirte escenas, ajustar prompts o guiarte paso a paso.')
+      setWorkflowJustOpened(false)
+    }
+  }, [workflowJustOpened]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const displayDeliverable = activeDeliverable
+  const isDevDeliverable = displayDeliverable?.botType === 'dev'
+  const isImageOnlyDeliverable = (() => {
+    if (!displayDeliverable || displayDeliverable.type !== 'design') return false
+    const imgs = displayDeliverable.content.match(/<img[^>]+src=["'][^"']*\/uploads\/[^"']+\.(?:png|jpg|jpeg|webp)["']/gi)
+    if (!imgs || imgs.length === 0) return false
+    const t = displayDeliverable.title.toLowerCase()
+    return !(t.includes('landing') || t.includes('pagina') || t.includes('página') || t.includes('web') || t.includes('sitio') || t.includes('app'))
+  })()
 
-  // Auto-collapse chat on mobile when a deliverable is active
   useEffect(() => {
     if (displayDeliverable && window.innerWidth < 768) {
       setChatPanelVisible(false)
     }
   }, [displayDeliverable])
 
-  // Fetch disabled providers on mount
+  useEffect(() => {
+    if (isImageOnlyDeliverable && sidePanelTab === 'edit') {
+      setSidePanelTab('chat')
+    }
+  }, [isImageOnlyDeliverable, sidePanelTab])
+
+  useEffect(() => {
+    if (isAuthenticated && !pendingPromptSent.current) {
+      const pending = localStorage.getItem('plury_pending_prompt')
+      if (pending) {
+        localStorage.removeItem('plury_pending_prompt')
+        pendingPromptSent.current = true
+        chat.setInputText(pending)
+      }
+    }
+  }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [disabledProviders, setDisabledProviders] = useState<string[]>([])
   useEffect(() => {
     fetch('/api/providers/available')
@@ -66,34 +135,45 @@ const App = () => {
       .catch(() => setDisabledProviders([]))
   }, [])
 
-  const handleSetActiveTab = (tab: string) => {
-    setActiveTab(tab)
-    if (tab !== 'chat') setActiveDeliverable(null)
-  }
-
   const handleTaskClick = (deliverable: Deliverable) => {
     setActiveDeliverable(deliverable)
-    setActiveTab('chat')
+    setShowTasks(false)
   }
 
   const handleNewChat = () => {
     chat.resetChat()
     setActiveDeliverable(null)
+    setWorkflowOpen(false)
+    setWorkflowPrompt('')
     setSidebarCollapsed(false)
     setChatPanelVisible(true)
     setEditMode(false)
     setSelectedElement(null)
     setSidePanelTab('chat')
-    setActiveTab('chat')
+    setShowAdmin(false)
+    setActiveProjectId(null)
+  }
+
+  const templatePrompts: Record<string, string> = {
+    landing: 'Crea una landing page profesional con hero, features y precios',
+    ecommerce: 'Crea una tienda online con catálogo, filtros y carrito',
+    portfolio: 'Crea un portfolio profesional con galería y contacto',
+    blog: 'Crea un blog con posts, categorías y newsletter',
+    restaurant: 'Crea un sitio para restaurante con menú interactivo y reservaciones',
+    saas: 'Crea una landing para producto digital SaaS con pricing',
+    crm: 'Crea un CRM con gestión de clientes, pipeline y tabla',
+    booking: 'Crea un sistema de reservas con calendario',
+    kanban: 'Crea un board de tareas tipo Kanban con filtros y prioridades',
+  }
+
+  const handleLoadTemplate = (templateId: string) => {
+    const prompt = templatePrompts[templateId] || `Crea un proyecto tipo ${templateId}`
+    chat.setInputText(prompt)
   }
 
   const handleUseBot = (prompt: string) => {
     chat.setInputText(prompt)
-    setActiveTab('chat')
-  }
-
-  const handleOnboardingComplete = () => {
-    setActiveTab('chat')
+    setShowMarketplace(false)
   }
 
   const handleLoadConversation = (convId: string) => {
@@ -101,7 +181,8 @@ const App = () => {
     setActiveDeliverable(null)
     setSidebarCollapsed(false)
     setChatPanelVisible(true)
-    setActiveTab('chat')
+    setShowAdmin(false)
+    setActiveProjectId(null)
   }
 
   const chatViewProps = {
@@ -116,7 +197,20 @@ const App = () => {
     chatEndRef: chat.chatEndRef,
     onApprove: chat.handleApprove,
     onReject: chat.handleReject,
-    onOpenDeliverable: setActiveDeliverable,
+    onOpenDeliverable: (d: Deliverable, clickedImageUrl?: string) => {
+      setActiveDeliverable(d)
+      setSelectedImageUrl(clickedImageUrl ?? null)
+      setSidebarCollapsed(true)
+      setChatPanelVisible(true)
+      const imgs = d.type === 'design' ? d.content.match(/<img[^>]+src=["'][^"']*\/uploads\/[^"']+\.(?:png|jpg|jpeg|webp)["']/gi) : null
+      const tLower = d.title.toLowerCase()
+      const isImgOnly = imgs && imgs.length > 0 && !(tLower.includes('landing') || tLower.includes('pagina') || tLower.includes('página') || tLower.includes('web') || tLower.includes('sitio') || tLower.includes('app'))
+      if (isImgOnly) {
+        setSidePanelTab('chat')
+      } else if (d.type === 'design' || d.type === 'copy') {
+        setSidePanelTab('edit')
+      }
+    },
     pendingApproval: chat.pendingApproval,
     streamingText: chat.streamingText,
     streamingAgent: chat.streamingAgent,
@@ -130,29 +224,64 @@ const App = () => {
     isRefineMode: chat.isRefineMode,
     isRefining: chat.isRefining,
     refiningAgentName: chat.refiningAgentName,
-    onOpenMarketplace: () => setActiveTab('marketplace'),
-    inactiveBotPrompt: chat.inactiveBotPrompt,
-    onActivateBot: chat.handleActivateBot,
-    onDismissInactiveBot: chat.handleDismissInactiveBot,
+    onOpenMarketplace: () => setShowMarketplace(true),
     assignedHumanAgent: chat.assignedHumanAgent,
     onRequestHuman: chat.requestHumanAssistance,
     humanRequested: chat.humanRequested,
     creditsExhausted: chat.creditsExhausted,
-    onUpgrade: () => setActiveTab('settings'),
+    onUpgrade: () => setShowSettings(true),
     disabledProviders,
     onAbort: chat.handleAbort,
     activeAgents: chat.activeAgents,
+    onLoadTemplate: handleLoadTemplate,
+    conversations: chat.conversations,
+    onLoadConversation: handleLoadConversation,
+    kanbanTasks: chat.kanbanTasks,
+    activeDeliverable,
+    quickReplies: chat.quickReplies,
+    onQuickReply: (value: string) => {
+      chat.setInputText(value)
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent('plury:focus-input'))
+      })
+    },
+    projectSuggest: chat.projectSuggest,
+    onCreateProject: chat.createProject,
+    onAddToProject: chat.addConversationToProject,
+    onDismissProjectSuggest: chat.dismissProjectSuggest,
+    projects: chat.projects,
+  }
+
+  // Landing page for unauthenticated visitors
+  if (!isAuthenticated && !isLoading) {
+    if (showLandingV2) {
+      return <LandingPageV2 />
+    }
+    return <LandingPage />
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-page font-['Plus_Jakarta_Sans']">
+        <div className="flex flex-col items-center gap-4 animate-[fadeSlideIn_0.3s_ease-out]">
+          <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] flex items-center justify-center shadow-lg shadow-[#a78bfa]/20">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-sm font-semibold text-ink">Cargando tu espacio de trabajo...</p>
+            <div className="w-48 h-1 bg-primary/10 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-[#a78bfa] to-[#a78bfa] rounded-full animate-[loadBar_1.5s_ease-in-out_infinite]" />
+            </div>
+            <style>{`@keyframes loadBar { 0% { width: 0%; } 50% { width: 70%; } 100% { width: 100%; } }`}</style>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <>
-      {showOnboarding && (
-        <OnboardingView
-          onComplete={handleOnboardingComplete}
-          onOpenMarketplace={() => { handleOnboardingComplete(); setActiveTab('marketplace') }}
-        />
-      )}
-
       <div className="flex h-screen bg-page text-ink font-['Plus_Jakarta_Sans'] overflow-hidden">
         {/* Mobile sidebar overlay */}
         {mobileMenuOpen && (
@@ -161,41 +290,64 @@ const App = () => {
           </div>
         )}
 
-        {/* Sidebar - hidden on mobile unless menu open */}
-        <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden'} md:relative md:flex md:flex-shrink-0 h-full`}>
+        {/* Sidebar */}
+        <div className={`${isDevDeliverable ? 'hidden' : ''} ${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-50' : 'hidden'} md:relative md:flex md:flex-shrink-0 h-full`}>
           <Sidebar
-            activeTab={activeTab}
-            setActiveTab={(tab) => { handleSetActiveTab(tab); setMobileMenuOpen(false) }}
-            agents={agents}
             onNewChat={() => { handleNewChat(); setMobileMenuOpen(false) }}
-            activeAgents={chat.activeAgents}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
             conversations={chat.conversations}
             currentConversationId={chat.conversationId}
             onLoadConversation={(id) => { handleLoadConversation(id); setMobileMenuOpen(false) }}
             onDeleteConversation={chat.deleteConversation}
-            assignedHumanAgent={chat.assignedHumanAgent}
-            specialists={specialists}
-            adminSubTab={adminSubTab}
-            onAdminSubTabChange={setAdminSubTab}
+            projects={chat.projects}
+            onOpenProject={(id) => { setActiveProjectId(id); setShowAdmin(false); setMobileMenuOpen(false) }}
+            onOpenMarketplace={() => setShowMarketplace(true)}
+            onOpenTasks={() => setShowTasks(true)}
+            activeAgents={chat.activeAgents}
           />
         </div>
 
         <main className="flex-1 flex flex-col relative overflow-hidden bg-surface min-w-0">
-          <Header isCoordinating={chat.isCoordinating} activeTab={activeTab} onMobileMenuToggle={() => setMobileMenuOpen(prev => !prev)} setActiveTab={handleSetActiveTab} />
+          <Header
+            isCoordinating={chat.isCoordinating}
+            completionFlash={chat.completionFlash}
+            onMobileMenuToggle={() => setMobileMenuOpen(prev => !prev)}
+            onNewChat={handleNewChat}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenAdmin={() => setShowAdmin(true)}
+          />
 
           <div className="flex-1 flex overflow-hidden relative">
-            {displayDeliverable ? (
+            {showAdmin ? (
+              /* Admin — full view with back button */
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-edge bg-surface">
+                  <button
+                    onClick={() => setShowAdmin(false)}
+                    className="p-1.5 text-ink-faint hover:text-ink rounded-lg hover:bg-subtle transition-all"
+                  >
+                    <X size={16} />
+                  </button>
+                  <span className="text-sm font-bold text-ink">Panel Admin</span>
+                </div>
+                <AdminDashboard activeTab={adminSubTab} onTabChange={setAdminSubTab} />
+              </div>
+            ) : activeProjectId ? (
+              <ProjectView
+                projectId={activeProjectId}
+                onBack={() => setActiveProjectId(null)}
+                onOpenDeliverable={(d) => { setActiveDeliverable(d); setSidePanelTab('chat') }}
+                onLoadConversation={(id) => { setActiveProjectId(null); chat.loadConversation(id) }}
+              />
+            ) : (displayDeliverable || workflowOpen) ? (
               <>
-                {/* Chat side panel — collapsible, overlay on mobile */}
+                {/* Chat side panel */}
                 {chatPanelVisible && (
                   <div className={`
-                    ${/* Mobile: absolute overlay */''}
                     absolute inset-0 z-30 md:relative md:inset-auto md:z-auto
-                    w-full md:w-[320px] flex-shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden
+                    w-full ${isDevDeliverable ? 'md:w-[340px] md:min-w-[340px]' : 'md:w-[320px]'} flex-shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden
                   `}>
-                    {/* Tab switcher + collapse button */}
                     <div className="flex border-b border-edge flex-shrink-0">
                       <button
                         onClick={() => setSidePanelTab('chat')}
@@ -207,16 +359,29 @@ const App = () => {
                       >
                         <MessageCircle size={13} /> Chat
                       </button>
-                      <button
-                        onClick={() => setSidePanelTab('edit')}
-                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
-                          sidePanelTab === 'edit'
-                            ? 'text-ink border-b-2 border-blue-500 bg-surface'
-                            : 'text-ink-faint hover:text-ink bg-subtle/30'
-                        }`}
-                      >
-                        <Pencil size={13} /> Edición
-                      </button>
+                      {isDevDeliverable ? (
+                        <button
+                          onClick={() => setSidePanelTab('settings')}
+                          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
+                            sidePanelTab === 'settings'
+                              ? 'text-ink border-b-2 border-amber-500 bg-surface'
+                              : 'text-ink-faint hover:text-ink bg-subtle/30'
+                          }`}
+                        >
+                          <Settings size={13} /> Ajustes
+                        </button>
+                      ) : !isImageOnlyDeliverable ? (
+                        <button
+                          onClick={() => setSidePanelTab('edit')}
+                          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
+                            sidePanelTab === 'edit'
+                              ? 'text-ink border-b-2 border-blue-500 bg-surface'
+                              : 'text-ink-faint hover:text-ink bg-subtle/30'
+                          }`}
+                        >
+                          <Pencil size={13} /> Edicion
+                        </button>
+                      ) : null}
                       <button
                         onClick={() => setChatPanelVisible(false)}
                         className="px-2 py-2.5 text-ink-faint hover:text-ink transition-colors"
@@ -226,22 +391,26 @@ const App = () => {
                       </button>
                     </div>
 
-                    {/* Tab content */}
-                    {sidePanelTab === 'chat' ? (
+                    {sidePanelTab === 'chat' || isImageOnlyDeliverable ? (
                       <ChatView {...chatViewProps} />
+                    ) : sidePanelTab === 'settings' && isDevDeliverable ? (
+                      <DevSettingsPanel
+                        deliverable={displayDeliverable!}
+                        iframeRef={null}
+                        conversationId={chat.conversationId ?? undefined}
+                      />
                     ) : (
                       <EditPanel
                         editMode={editMode}
                         onToggleEditMode={setEditMode}
                         selectedElement={selectedElement}
                         deliverable={displayDeliverable!}
+                        selectedLogo={selectedLogo}
                         onSendMessage={(text) => {
                           chat.setInputText(text)
                           setSidePanelTab('chat')
                         }}
-                        onEditText={() => {
-                          // Handled by double-click in iframe
-                        }}
+                        onEditText={() => {}}
                         onChangeImage={() => {
                           window.dispatchEvent(new CustomEvent('open-unsplash-modal'))
                         }}
@@ -256,7 +425,6 @@ const App = () => {
                   </div>
                 )}
 
-                {/* Floating button to reopen chat when collapsed */}
                 {!chatPanelVisible && (
                   <button
                     onClick={() => setChatPanelVisible(true)}
@@ -267,36 +435,95 @@ const App = () => {
                   </button>
                 )}
 
-                {/* Canvas — always visible */}
-                <div className="flex-1 flex min-w-0">
-                  <WorkspacePanel
-                    deliverable={displayDeliverable!}
-                    onClose={() => { setActiveDeliverable(null); setChatPanelVisible(true) }}
-                    editMode={editMode}
-                    onEditModeChange={setEditMode}
-                    onElementSelected={setSelectedElement}
-                    onSwitchToEditTab={() => setSidePanelTab('edit')}
-                    conversationId={chat.conversationId ?? undefined}
-                    onSelectVersion={(d) => setActiveDeliverable(d as Deliverable)}
-                  />
+                <div className="flex-1 flex min-w-0 bg-page">
+                  {workflowOpen ? (
+                    <WorkflowEditor
+                      initialPrompt={workflowPrompt}
+                      onClose={() => { setWorkflowOpen(false); setWorkflowPrompt(''); setChatPanelVisible(true) }}
+                    />
+                  ) : displayDeliverable ? (
+                    <WorkspacePanel
+                      deliverable={displayDeliverable}
+                      onClose={() => { setActiveDeliverable(null); setSelectedImageUrl(null); setChatPanelVisible(true); setSelectedLogo(null) }}
+                      editMode={editMode}
+                      onEditModeChange={setEditMode}
+                      onElementSelected={setSelectedElement}
+                      onSwitchToEditTab={() => setSidePanelTab('edit')}
+                      conversationId={chat.conversationId ?? undefined}
+                      onSelectVersion={(d) => { setActiveDeliverable(d as Deliverable); setSelectedLogo(null) }}
+                      onLogoSelected={setSelectedLogo}
+                      selectedImageUrl={selectedImageUrl}
+                      isGenerating={!!(chat.isRefining || (chat.streamingAgent && ['web', 'dev'].includes(chat.streamingAgent) && chat.streamingText))}
+                      generatingAgent={chat.refiningAgentName || (chat.streamingAgent && ['web', 'dev'].includes(chat.streamingAgent) ? chat.streamingAgent === 'dev' ? 'Code' : 'Pixel' : null)}
+                    />
+                  ) : null}
                 </div>
               </>
-            ) : activeTab === 'chat' ? (
-              <ChatView {...chatViewProps} />
-            ) : activeTab === 'marketplace' ? (
-              <MarketplaceView onUseBot={handleUseBot} />
-            ) : activeTab === 'portfolio' ? (
-              <PortfolioView onContactBot={handleUseBot} />
-            ) : activeTab === 'tasks' ? (
-              <TaskTimeline tasks={chat.kanbanTasks} agents={agents} onTaskClick={handleTaskClick} onFinalizeTask={chat.finalizeTask} />
-            ) : activeTab === 'admin' ? (
-              <AdminDashboard activeTab={adminSubTab} onTabChange={setAdminSubTab} />
             ) : (
-              <SettingsView />
+              /* Default: Full-page chat */
+              <ChatView {...chatViewProps} />
             )}
           </div>
         </main>
       </div>
+
+      {/* ─── Drawer Overlays ─── */}
+
+      {/* Marketplace Drawer */}
+      {showMarketplace && (
+        <div className="fixed inset-0 z-[60] flex">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowMarketplace(false)} />
+          <div className="relative ml-auto w-full max-w-2xl bg-surface shadow-2xl flex flex-col animate-[slideInRight_0.2s_ease-out]">
+            <style>{`@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
+              <h2 className="text-lg font-bold text-ink">Agentes</h2>
+              <button onClick={() => setShowMarketplace(false)} className="p-1.5 text-ink-faint hover:text-ink rounded-lg hover:bg-subtle transition-all">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <MarketplaceView onUseBot={handleUseBot} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tasks Drawer */}
+      {showTasks && (
+        <div className="fixed inset-0 z-[60] flex">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowTasks(false)} />
+          <div className="relative ml-auto w-full max-w-4xl bg-surface shadow-2xl flex flex-col animate-[slideInRight_0.2s_ease-out]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
+              <h2 className="text-lg font-bold text-ink">Tareas</h2>
+              <button onClick={() => setShowTasks(false)} className="p-1.5 text-ink-faint hover:text-ink rounded-lg hover:bg-subtle transition-all">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <TaskTimeline tasks={chat.kanbanTasks} agents={agents} onTaskClick={handleTaskClick} onFinalizeTask={chat.finalizeTask} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-surface rounded-2xl shadow-2xl flex flex-col animate-[fadeSlideIn_0.2s_ease-out] mx-4">
+            <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-edge rounded-t-2xl">
+              <h2 className="text-lg font-bold text-ink">Ajustes</h2>
+              <button onClick={() => setShowSettings(false)} className="p-1.5 text-ink-faint hover:text-ink rounded-lg hover:bg-subtle transition-all">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto rounded-b-2xl">
+              <SettingsView />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

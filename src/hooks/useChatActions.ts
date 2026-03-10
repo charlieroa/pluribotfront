@@ -4,8 +4,26 @@ import type { StepApproval } from './usePlanFlow'
 
 const API_BASE = '/api'
 
+function playCancelChime() {
+  try {
+    const ctx = new AudioContext()
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = 440
+    gain.gain.setValueAtTime(0.12, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(now)
+    osc.stop(now + 0.3)
+    setTimeout(() => ctx.close(), 500)
+  } catch { /* Audio not supported */ }
+}
+
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('pluribots_token')
+  const token = localStorage.getItem('plury_token')
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -26,7 +44,9 @@ interface ChatActionsDeps {
   setIsRefining: React.Dispatch<React.SetStateAction<boolean>>
   setRefiningAgentName: React.Dispatch<React.SetStateAction<string | null>>
   setPendingStepApproval: React.Dispatch<React.SetStateAction<StepApproval | null>>
+  setPendingStepApprovals: React.Dispatch<React.SetStateAction<StepApproval[]>>
   pendingStepApproval: StepApproval | null
+  pendingStepApprovals: StepApproval[]
   isCoordinating: boolean
   pendingApproval: string | null
   connectSSE: (convId: string) => Promise<void>
@@ -50,15 +70,15 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
     conversationId, setConversationId, setMessages, setShowWelcome,
     setActiveAgents, setIsCoordinating, setCoordinationAgents,
     setStreamingAgent, setStreamingText, setThinkingSteps,
-    setIsRefining, setRefiningAgentName, setPendingStepApproval,
-    pendingStepApproval, isCoordinating, pendingApproval,
+    setIsRefining, setRefiningAgentName, setPendingStepApproval, setPendingStepApprovals,
+    pendingStepApproval, pendingStepApprovals, isCoordinating, pendingApproval,
     connectSSE, closeSSE, fetchConversations,
   } = deps
 
   const [inputText, setInputText] = useState('')
   const [selectedModel, setSelectedModel] = useState<string>('auto')
 
-  const isRefineMode = !!(pendingStepApproval && ['web', 'video'].includes(pendingStepApproval.agentId))
+  const isRefineMode = !!(pendingStepApproval && ['web', 'video', 'dev'].includes(pendingStepApproval.agentId))
 
   const handleAbort = useCallback(async () => {
     if (!conversationId) return
@@ -71,6 +91,7 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
     } catch (err) {
       console.error('[Chat] Abort error:', err)
     }
+    playCancelChime()
     setIsCoordinating(false)
     setCoordinationAgents([])
     setStreamingAgent(null)
@@ -89,14 +110,40 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
       const tempId = `temp-${Date.now()}`
       setMessages(prev => [...prev, { id: tempId, sender: 'Tu', text: msgText, type: 'user' }])
       setInputText('')
+
+      // If multiple projects, try to match the user's message to the right one
+      let targetApproval = pendingStepApproval
+      if (pendingStepApprovals.length > 1) {
+        const lower = msgText.toLowerCase()
+        const match = pendingStepApprovals.find(a =>
+          (a.instanceId && lower.includes(a.instanceId.replace('dev-', 'proyecto ')))
+          || (a.summary && a.summary.toLowerCase().split(' ').some(w => w.length > 4 && lower.includes(w)))
+        )
+        if (match) targetApproval = match
+      }
+
       setIsRefining(true)
-      setRefiningAgentName(pendingStepApproval.agentName)
-      setPendingStepApproval(null)
+      setRefiningAgentName(targetApproval.agentName)
+      // Remove the refined approval from the list, keep others
+      setPendingStepApprovals(prev => prev.filter(a => a.instanceId !== targetApproval.instanceId))
+      // Set the next available approval as active, or null
+      setPendingStepApproval(() => {
+        const remaining = pendingStepApprovals.filter(a => a.instanceId !== targetApproval.instanceId)
+        return remaining.length > 0 ? remaining[remaining.length - 1] : null
+      })
       try {
+        // Include selected logo info if available
+        const logoInfo = (window as any).__selectedLogoForRefine
+        const refineBody: Record<string, unknown> = { conversationId, text: msgText, instanceId: targetApproval.instanceId }
+        if (logoInfo) {
+          refineBody.selectedLogoIndex = logoInfo.index
+          refineBody.selectedLogoSrc = logoInfo.src
+        }
+
         const res = await fetch(`${API_BASE}/chat/refine-step`, {
           method: 'POST',
           headers: getAuthHeaders(),
-          body: JSON.stringify({ conversationId, text: msgText, instanceId: pendingStepApproval.instanceId }),
+          body: JSON.stringify(refineBody),
         })
         if (res.ok) {
           const data = await res.json()

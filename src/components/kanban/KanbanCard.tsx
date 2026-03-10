@@ -39,7 +39,7 @@ const KanbanCard = ({ task, agents, onTaskClick }: KanbanCardProps) => {
           task.status === 'doing'
             ? 'bg-emerald-500/10 text-emerald-500'
             : task.status === 'done'
-              ? 'bg-indigo-500/10 text-indigo-500'
+              ? 'bg-[#a78bfa]/10 text-[#a78bfa]'
               : 'bg-subtle text-ink-faint'
         }`}>
           <Clock size={10} />

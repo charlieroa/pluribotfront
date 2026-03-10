@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Bot, Users, CheckCircle, ArrowRight, Clock, Shield, Check, Palette, Code2, Image } from 'lucide-react'
+import { Bot, Users, CheckCircle, ArrowRight, Clock, Shield, Check, Code2, Image } from 'lucide-react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
@@ -98,10 +98,10 @@ const SeniorSection = ({ onRegister }: SeniorSectionProps) => {
                   <div className="p-4 sm:p-5 space-y-3">
                     {/* User message */}
                     <div className="flex items-start gap-2 justify-end">
-                      <div className="bg-[#7c3aed]/20 border border-[#7c3aed]/20 rounded-2xl rounded-tr-sm px-3 py-2 text-[11.5px] text-zinc-200 leading-[1.55] max-w-[82%]">
+                      <div className="bg-[#a78bfa]/20 border border-[#a78bfa]/20 rounded-2xl rounded-tr-sm px-3 py-2 text-[11.5px] text-zinc-200 leading-[1.55] max-w-[82%]">
                         E-commerce con carrito, Stripe y login Google
                       </div>
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-violet-500 flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0">T</div>
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#a78bfa] to-[#a78bfa] flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0">T</div>
                     </div>
 
                     {/* Bot — completed tasks */}
@@ -239,8 +239,8 @@ const SeniorSection = ({ onRegister }: SeniorSectionProps) => {
                   { name: 'Pro', price: '$349', sla: '24h', tasks: '2 tareas', popular: true },
                   { name: 'Dedicado', price: '$799', sla: '24h', tasks: '5 tareas' },
                 ].map((tier, i) => (
-                  <div key={i} className={`relative rounded-xl p-3.5 text-center ${tier.popular ? 'bg-purple-500/[0.08] border border-purple-500/20' : 'bg-white/[0.03] border border-white/[0.06]'}`}>
-                    {tier.popular && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full uppercase">Popular</span>}
+                  <div key={i} className={`relative rounded-xl p-3.5 text-center ${tier.popular ? 'bg-[#a78bfa]/[0.08] border border-[#a78bfa]/20' : 'bg-white/[0.03] border border-white/[0.06]'}`}>
+                    {tier.popular && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] font-bold text-[#a78bfa] bg-[#a78bfa]/20 px-2 py-0.5 rounded-full uppercase">Popular</span>}
                     <p className="text-[12px] font-semibold text-white">{tier.name}</p>
                     <p className="text-[20px] font-bold text-white tracking-[-0.02em]">{tier.price}<span className="text-[10px] text-zinc-500 font-normal">/mes</span></p>
                     <div className="flex items-center justify-center gap-1.5 mt-1">
@@ -253,7 +253,7 @@ const SeniorSection = ({ onRegister }: SeniorSectionProps) => {
 
               <button
                 onClick={onRegister}
-                className="senior-anim inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold text-white bg-[#7c3aed] rounded-full hover:bg-[#6d28d9] transition-all shadow-[0_0_20px_rgba(124,58,237,0.3)]"
+                className="senior-anim inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold text-white bg-[#8b5cf6] rounded-full hover:bg-[#7c3aed] transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)]"
               >
                 Activar Senior <ArrowRight size={15} />
               </button>

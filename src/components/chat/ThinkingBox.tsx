@@ -1,6 +1,4 @@
-import { Brain } from 'lucide-react'
 import type { ThinkingStep } from '../../hooks/useChat'
-import BotAvatar3D from '../avatars/BotAvatar3D'
 
 interface ThinkingBoxProps {
   steps: ThinkingStep[]
@@ -10,11 +8,22 @@ const agentColors: Record<string, string> = {
   seo: '#3b82f6',
   brand: '#ec4899',
   web: '#a855f7',
-  social: '#f97316',
+  content: '#f97316',
   ads: '#10b981',
   dev: '#f59e0b',
   video: '#ef4444',
-  base: '#6366f1',
+  base: '#a78bfa',
+}
+
+const agentInitials: Record<string, string> = {
+  seo: 'L',
+  brand: 'B',
+  web: 'P',
+  content: 'C',
+  ads: 'M',
+  dev: 'D',
+  video: 'R',
+  base: 'P',
 }
 
 const ThinkingBox = ({ steps }: ThinkingBoxProps) => {
@@ -22,59 +31,26 @@ const ThinkingBox = ({ steps }: ThinkingBoxProps) => {
 
   const currentAgent = steps[steps.length - 1]
   const color = agentColors[currentAgent.agentId] ?? '#6b7280'
+  const initial = agentInitials[currentAgent.agentId] ?? '?'
 
   return (
-    <div className="flex gap-4 max-w-2xl">
-      <BotAvatar3D
-        color={color}
-        seed={currentAgent.agentName}
-        isActive={true}
-        size="sm"
-      />
-      <div className="flex-1 min-w-0">
-        <div
-          className="rounded-2xl rounded-tl-none border shadow-sm overflow-hidden"
-          style={{ borderColor: `${color}30`, background: `${color}08` }}
-        >
-          {/* Header */}
-          <div
-            className="px-4 py-2.5 flex items-center gap-2"
-            style={{ borderBottom: `1px solid ${color}20` }}
-          >
-            <Brain size={14} style={{ color }} className="animate-pulse" />
-            <span className="text-xs font-bold" style={{ color }}>
-              {currentAgent.agentName} esta pensando...
-            </span>
-            <div className="ml-auto flex gap-1">
-              <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: color }} />
-              <div className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:0.15s]" style={{ backgroundColor: color }} />
-              <div className="w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:0.3s]" style={{ backgroundColor: color }} />
-            </div>
-          </div>
-
-          {/* Steps */}
-          <div className="px-4 py-3 space-y-1.5">
-            {steps.map((s, i) => {
-              const isLatest = i === steps.length - 1
-              return (
-                <div
-                  key={s.timestamp}
-                  className={`flex items-center gap-2 transition-opacity duration-300 ${
-                    isLatest ? 'opacity-100' : 'opacity-40'
-                  }`}
-                >
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isLatest ? 'animate-pulse' : ''}`}
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className={`text-[11px] ${isLatest ? 'font-semibold text-ink' : 'text-ink-faint'}`}>
-                    {s.step}
-                  </span>
-                </div>
-              )
-            })}
+    <div className="flex items-start gap-3 max-w-2xl">
+      <div
+        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
+        style={{ backgroundColor: color }}
+      >
+        {initial}
+      </div>
+      <div className="pt-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-ink">{currentAgent.agentName}</span>
+          <div className="flex gap-0.5">
+            <div className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: color }} />
+            <div className="w-1 h-1 rounded-full animate-bounce [animation-delay:0.15s]" style={{ backgroundColor: color }} />
+            <div className="w-1 h-1 rounded-full animate-bounce [animation-delay:0.3s]" style={{ backgroundColor: color }} />
           </div>
         </div>
+        <p className="text-xs text-ink-faint mt-0.5">{currentAgent.step}</p>
       </div>
     </div>
   )

@@ -5,6 +5,8 @@ import { prisma } from '../db/client.js'
 import { optionalAuth } from '../middleware/auth.js'
 import { broadcast } from '../services/sse.js'
 import { getNextVersionInfo } from '../services/deliverable-versioning.js'
+import { getExecutingPlan } from '../services/plan-cache.js'
+import { parseProjectFilesFromText, validateProjectFiles } from '../services/project-files.js'
 import type { ConversationListItem } from '../../../shared/types.js'
 
 const router = Router()
@@ -32,12 +34,20 @@ router.get('/', optionalAuth, async (req, res) => {
   const conversations: any[] = await prisma.conversation.findMany({
     where,
     orderBy: { updatedAt: 'desc' },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      userId: true,
+      projectId: true,
+      updatedAt: true,
       user: { select: { name: true } },
       messages: {
         orderBy: { createdAt: 'desc' },
         take: 1,
         select: { text: true },
+      },
+      _count: {
+        select: { deliverables: true },
       },
     },
   })
@@ -47,6 +57,8 @@ router.get('/', optionalAuth, async (req, res) => {
     title: c.userId !== userId ? `[${c.user?.name}] ${c.title}` : c.title,
     updatedAt: c.updatedAt.toISOString(),
     lastMessage: c.messages[0]?.text,
+    deliverableCount: c._count?.deliverables ?? 0,
+    projectId: c.projectId ?? null,
   }))
 
   res.json(items)
@@ -84,11 +96,21 @@ router.get('/:id', optionalAuth, async (req, res) => {
     ).length
   }
 
+  // Check if there's a plan currently executing for this conversation
+  const executingPlan = await getExecutingPlan(id)
+
   res.json({
     id: conversation.id,
     title: conversation.title,
     needsHumanReview: conversation.needsHumanReview,
     assignedAgent: conversation.assignedAgent,
+    isExecuting: !!executingPlan,
+    executingSteps: executingPlan ? executingPlan.steps.map(s => ({
+      agentId: s.agentId,
+      instanceId: s.instanceId,
+      task: s.userDescription || s.task,
+      completed: executingPlan.completedInstances.includes(s.instanceId),
+    })) : undefined,
     messages: conversation.messages.map((m: any) => ({
       id: m.id,
       conversationId: m.conversationId,
@@ -148,7 +170,10 @@ router.delete('/:id', optionalAuth, async (req, res) => {
       return
     }
 
-    // Delete in order: kanban tasks → deliverables → messages → conversation
+    // Delete in order: project data → kanban tasks → deliverables → messages → conversation
+    await prisma.projectData.deleteMany({ where: { conversationId: convId } })
+    await prisma.projectUser.deleteMany({ where: { conversationId: convId } })
+    await prisma.projectSchema.deleteMany({ where: { conversationId: convId } })
     await prisma.kanbanTask.deleteMany({ where: { conversationId: convId } })
     await prisma.deliverable.deleteMany({ where: { conversationId: convId } })
     await prisma.message.deleteMany({ where: { conversationId: convId } })
@@ -295,6 +320,78 @@ router.get('/:id/supabase', optionalAuth, async (req, res) => {
   }
 })
 
+// Test Supabase connection and introspect schema
+router.post('/:id/supabase/test', optionalAuth, async (req, res) => {
+  const convId = req.params.id as string
+  const { url, anonKey } = req.body as { url?: string; anonKey?: string }
+
+  // Use provided values or fall back to conversation's stored values
+  let supabaseUrl = url?.trim()
+  let supabaseAnonKey = anonKey?.trim()
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    try {
+      const conv = await prisma.conversation.findUnique({
+        where: { id: convId },
+        select: { supabaseUrl: true, supabaseAnonKey: true },
+      })
+      if (conv) {
+        supabaseUrl = supabaseUrl || conv.supabaseUrl || undefined
+        supabaseAnonKey = supabaseAnonKey || conv.supabaseAnonKey || undefined
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    res.status(400).json({ error: 'Supabase URL and anon key required' })
+    return
+  }
+
+  try {
+    // Test connection by fetching table list via PostgREST
+    const tablesResp = await fetch(`${supabaseUrl}/rest/v1/`, {
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+      },
+    })
+
+    if (!tablesResp.ok) {
+      res.status(400).json({ error: 'Connection failed. Check URL and key.' })
+      return
+    }
+
+    // Try to get schema info from information_schema via RPC
+    // This may not work if the user hasn't set up the function, so we handle gracefully
+    let tables: { name: string; columns: string[] }[] = []
+    try {
+      const schemaResp = await fetch(`${supabaseUrl}/rest/v1/rpc/get_table_info`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      })
+      if (schemaResp.ok) {
+        tables = await schemaResp.json() as any[]
+      }
+    } catch { /* ignore — function may not exist */ }
+
+    // Save credentials to conversation
+    await prisma.conversation.update({
+      where: { id: convId },
+      data: { supabaseUrl, supabaseAnonKey },
+    })
+
+    res.json({ connected: true, tables })
+  } catch (err) {
+    console.error('[Supabase Test] Error:', err)
+    res.status(500).json({ error: 'Connection test failed' })
+  }
+})
+
 // ─── Version history endpoints ───
 
 // Get version history for a deliverable (metadata only, no content)
@@ -370,6 +467,94 @@ router.get('/:convId/deliverables/:deliverableId', optionalAuth, async (req, res
   } catch (err) {
     console.error('[Conversations] Get deliverable error:', err)
     res.status(500).json({ error: 'Error al obtener deliverable' })
+  }
+})
+
+// Save a multi-file project as a new deliverable version
+router.post('/:convId/deliverables/:deliverableId/save-project', optionalAuth, async (req, res) => {
+  const { convId, deliverableId } = req.params as { convId: string; deliverableId: string }
+  const userId = req.auth?.userId ?? 'anonymous'
+  const { files, title } = req.body as { files?: unknown; title?: string }
+
+  try {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: convId },
+      select: { userId: true },
+    })
+    if (!conversation) {
+      res.status(404).json({ error: 'Conversacion no encontrada' })
+      return
+    }
+    if (conversation.userId !== userId) {
+      res.status(403).json({ error: 'Sin permiso' })
+      return
+    }
+
+    const source = await prisma.deliverable.findUnique({ where: { id: deliverableId } })
+    if (!source || source.conversationId !== convId) {
+      res.status(404).json({ error: 'Deliverable no encontrado' })
+      return
+    }
+    if (source.type !== 'code') {
+      res.status(400).json({ error: 'Solo puedes guardar proyectos de codigo' })
+      return
+    }
+
+    const validated = validateProjectFiles(files)
+    const versionInfo = await getNextVersionInfo(convId, source.instanceId)
+    const newDeliverable = await prisma.deliverable.create({
+      data: {
+        id: uuid(),
+        conversationId: convId,
+        title: title?.trim() || source.title,
+        type: source.type,
+        content: JSON.stringify(validated.files),
+        agent: source.agent,
+        botType: source.botType,
+        instanceId: source.instanceId,
+        version: versionInfo.version,
+        parentId: versionInfo.parentId,
+      },
+    })
+
+    const kanbanTask = await prisma.kanbanTask.findFirst({
+      where: { conversationId: convId, instanceId: source.instanceId },
+    })
+    if (kanbanTask) {
+      await prisma.kanbanTask.update({
+        where: { id: kanbanTask.id },
+        data: { deliverableId: newDeliverable.id, title: newDeliverable.title },
+      })
+    }
+
+    broadcast(convId, {
+      type: 'deliverable',
+      deliverable: {
+        id: newDeliverable.id,
+        title: newDeliverable.title,
+        type: newDeliverable.type as any,
+        content: newDeliverable.content,
+        agent: newDeliverable.agent,
+        botType: newDeliverable.botType,
+        version: newDeliverable.version,
+        versionCount: versionInfo.version,
+      },
+    })
+
+    res.json({
+      id: newDeliverable.id,
+      title: newDeliverable.title,
+      type: newDeliverable.type,
+      content: newDeliverable.content,
+      agent: newDeliverable.agent,
+      botType: newDeliverable.botType,
+      version: newDeliverable.version,
+      versionCount: versionInfo.version,
+      warnings: validated.warnings,
+    })
+  } catch (err) {
+    console.error('[Conversations] Save project error:', err)
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Error al guardar proyecto' })
   }
 })
 
@@ -470,37 +655,25 @@ router.get('/:convId/deliverables/:deliverableId/export-zip', optionalAuth, asyn
       return
     }
 
-    // Parse code JSON to get files
-    let files: Record<string, string> = {}
-    let description = ''
+    let description = deliverable.title
+    let parsedFiles: Array<{ path: string; content: string }>
     try {
-      const fenceMatch = deliverable.content.match(/```(?:json)?\s*([\s\S]*?)```/)
-      const jsonStr = fenceMatch ? fenceMatch[1].trim() : deliverable.content.trim()
-      const parsed = JSON.parse(jsonStr)
-      files = parsed.files || {}
-      description = parsed.description || deliverable.title
+      parsedFiles = parseProjectFilesFromText(deliverable.content).files
     } catch {
-      // Try raw JSON
-      try {
-        const parsed = JSON.parse(deliverable.content.trim())
-        files = parsed.files || {}
-        description = parsed.description || deliverable.title
-      } catch {
-        res.status(400).json({ error: 'No se pudo parsear el proyecto' })
-        return
-      }
+      res.status(400).json({ error: 'No se pudo parsear el proyecto' })
+      return
     }
 
     const zip = new JSZip()
 
     // Add source files
-    for (const [path, content] of Object.entries(files)) {
-      zip.file(path, content)
+    for (const file of parsedFiles) {
+      zip.file(file.path, file.content)
     }
 
     // Add package.json
     zip.file('package.json', JSON.stringify({
-      name: 'pluribots-project',
+      name: 'plury-project',
       private: true,
       version: '1.0.0',
       description,
@@ -527,7 +700,7 @@ router.get('/:convId/deliverables/:deliverableId/export-zip', optionalAuth, asyn
     }, null, 2))
 
     // Add README
-    zip.file('README.md', `# ${description}\n\nProyecto generado por Pluribots.\n\n## Setup\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n`)
+    zip.file('README.md', `# ${description}\n\nProyecto generado por Plury.\n\n## Setup\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n`)
 
     const buffer = await zip.generateAsync({ type: 'nodebuffer' })
     const safeName = deliverable.title.replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 50)

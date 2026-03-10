@@ -57,6 +57,7 @@ export const plans: Plan[] = [
     features: [
       'Todo en Agency +',
       '10,000 creditos/mes',
+      'API con 500 req/hora',
       'Senior Dedicado incluido',
       'Account manager',
       'SLA 99.9%',

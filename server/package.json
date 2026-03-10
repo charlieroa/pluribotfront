@@ -1,5 +1,5 @@
 {
-  "name": "pluribots-server",
+  "name": "plury-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@google/genai": "^1.41.0",
+    "@fal-ai/client": "^1.9.4",
+    "@imgly/background-removal-node": "^1.4.5",
     "@prisma/client": "^6.3.0",
     "@types/multer": "^2.0.0",
     "bcryptjs": "^2.4.3",
@@ -27,7 +28,6 @@
     "jsonwebtoken": "^9.0.2",
     "jszip": "^3.10.1",
     "multer": "^2.0.2",
-    "openai": "^4.82.0",
     "sharp": "^0.34.5",
     "typescript": "^5.7.3",
     "uuid": "^11.0.5",

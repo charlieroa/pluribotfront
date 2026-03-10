@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plury API Docs</title>
+  <meta name="description" content="Documentación de la API de Plury. Genera landing pages, apps web, logos, campañas y más con agentes de IA.">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface-2: #1a1a25;
+      --border: #2a2a3a;
+      --text: #e4e4ed;
+      --text-dim: #8888a0;
+      --accent: #7c5cfc;
+      --accent-light: #a78bfa;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --orange: #fb923c;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layout */
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    .sidebar-logo {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-logo h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-logo span {
+      font-size: 12px;
+      color: var(--text-dim);
+      display: block;
+      margin-top: 2px;
+    }
+
+    .sidebar nav a {
+      display: block;
+      padding: 8px 24px;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+
+    .sidebar nav a:hover,
+    .sidebar nav a.active {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .sidebar nav .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      padding: 16px 24px 6px;
+      pointer-events: none;
+    }
+
+    /* Main */
+    .main {
+      flex: 1;
+      margin-left: 260px;
+      padding: 48px 64px;
+      max-width: 900px;
+    }
+
+    /* Hero */
+    .hero {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .hero p {
+      font-size: 16px;
+      color: var(--text-dim);
+      max-width: 600px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    .badge-green { background: rgba(52,211,153,.15); color: var(--green); }
+    .badge-yellow { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .badge-blue { background: rgba(96,165,250,.15); color: var(--blue); }
+    .badge-purple { background: rgba(124,92,252,.15); color: var(--accent-light); }
+
+    /* Sections */
+    .section {
+      margin-bottom: 48px;
+    }
+
+    .section h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      padding-top: 16px;
+    }
+
+    .section h3 {
+      font-size: 17px;
+      font-weight: 600;
+      margin: 24px 0 12px;
+      color: var(--accent-light);
+    }
+
+    .section p {
+      margin-bottom: 12px;
+      color: var(--text-dim);
+    }
+
+    /* Code blocks */
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 12px 0 20px;
+      position: relative;
+    }
+
+    pre .comment { color: #6b7280; }
+    pre .string { color: var(--green); }
+    pre .keyword { color: var(--accent-light); }
+    pre .number { color: var(--orange); }
+    pre .key { color: var(--blue); }
+
+    code {
+      font-family: var(--mono);
+      font-size: 13px;
+      background: var(--surface-2);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+    }
+
+    /* Endpoint cards */
+    .endpoint {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 16px 0 24px;
+      overflow: hidden;
+    }
+
+    .endpoint-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+
+    .method {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 4px;
+      min-width: 54px;
+      text-align: center;
+    }
+
+    .method-get { background: rgba(52,211,153,.15); color: var(--green); }
+    .method-post { background: rgba(96,165,250,.15); color: var(--blue); }
+    .method-put { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .method-delete { background: rgba(248,113,113,.15); color: var(--red); }
+    .method-patch { background: rgba(251,191,36,.15); color: var(--yellow); }
+
+    .endpoint-path {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .endpoint-body {
+      padding: 20px;
+    }
+
+    .endpoint-body p {
+      margin-bottom: 12px;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      color: var(--text-dim);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+
+    td:first-child {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .required {
+      color: var(--red);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .optional {
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .15s;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab.active {
+      color: var(--accent-light);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Alerts */
+    .alert {
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin: 12px 0 20px;
+      border: 1px solid;
+    }
+
+    .alert-info {
+      background: rgba(96,165,250,.08);
+      border-color: rgba(96,165,250,.2);
+      color: var(--blue);
+    }
+
+    .alert-warning {
+      background: rgba(251,191,36,.08);
+      border-color: rgba(251,191,36,.2);
+      color: var(--yellow);
+    }
+
+    .alert-tip {
+      background: rgba(52,211,153,.08);
+      border-color: rgba(52,211,153,.2);
+      color: var(--green);
+    }
+
+    /* Agent cards */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .agent-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .agent-card h4 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .agent-card .agent-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent-light);
+    }
+
+    .agent-card p {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    /* Status codes */
+    .status-list {
+      list-style: none;
+      margin: 8px 0 16px;
+    }
+
+    .status-list li {
+      padding: 4px 0;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .status-list code {
+      font-weight: 600;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 24px 20px; }
+      .agent-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Copy button */
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <h1>Plury API</h1>
+        <span>v1.0 &middot; REST API</span>
+      </div>
+      <nav>
+        <div class="section-title">Inicio</div>
+        <a href="#overview">Descripcion general</a>
+        <a href="#auth">Autenticacion</a>
+        <a href="#rate-limits">Rate limits</a>
+        <a href="#errors">Errores</a>
+        <a href="#credits">Creditos</a>
+
+        <div class="section-title">Endpoints</div>
+        <a href="#generate">POST /generate</a>
+        <a href="#get-generation">GET /generations/:id</a>
+        <a href="#list-generations">GET /generations</a>
+        <a href="#usage">GET /usage</a>
+        <a href="#agents">GET /agents</a>
+        <a href="#docs-endpoint">GET /docs</a>
+
+        <div class="section-title">Agentes</div>
+        <a href="#agents-detail">Agentes disponibles</a>
+
+        <div class="section-title">Project API</div>
+        <a href="#project-api">Descripcion</a>
+        <a href="#project-auth">Autenticacion</a>
+        <a href="#project-crud">CRUD de datos</a>
+        <a href="#project-upload">Subida de archivos</a>
+        <a href="#project-schema">Schema</a>
+        <a href="#project-advanced">Consultas avanzadas</a>
+
+        <div class="section-title">Recursos</div>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#examples">Ejemplos</a>
+      </nav>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+
+      <!-- Hero -->
+      <div class="hero" id="overview">
+        <h1>Plury API</h1>
+        <p>
+          Genera landing pages, apps web, logos, campanas de ads, auditorias SEO y mas usando agentes de IA especializados, todo via API REST.
+        </p>
+        <div style="margin-top: 16px;">
+          <span class="badge badge-green">Base URL: https://plury.co/api/v1</span>
+          <span class="badge badge-purple">REST + JSON</span>
+        </div>
+      </div>
+
+      <!-- Auth -->
+      <div class="section" id="auth">
+        <h2>Autenticacion</h2>
+        <p>Todas las llamadas autenticadas requieren una API key. Puedes enviarla de dos formas:</p>
+
+        <pre><code><span class="comment"># Opcion 1: Header X-API-Key</span>
+curl https://plury.co/api/v1/usage \
+  -H <span class="string">"X-API-Key: pk_live_tu_clave_aqui"</span>
+
+<span class="comment"># Opcion 2: Authorization Bearer</span>
+curl https://plury.co/api/v1/usage \
+  -H <span class="string">"Authorization: Bearer pk_live_tu_clave_aqui"</span></code></pre>
+
+        <h3>Obtener tu API key</h3>
+        <p>
+          Ve a <strong>Configuracion &gt; API Keys</strong> en tu cuenta de Plury para crear una clave.
+          La clave solo se muestra una vez al crearla. Maximo 5 claves activas por cuenta.
+        </p>
+
+        <div class="alert alert-warning">
+          Las API keys requieren plan <strong>Agency</strong> ($149/mes) o <strong>Enterprise</strong>. Los planes Starter y Pro no tienen acceso a la API.
+        </div>
+      </div>
+
+      <!-- Rate Limits -->
+      <div class="section" id="rate-limits">
+        <h2>Rate Limits</h2>
+        <p>Los limites se aplican por API key, por ventana de 1 hora:</p>
+
+        <table>
+          <thead><tr><th>Plan</th><th>Limite/hora</th></tr></thead>
+          <tbody>
+            <tr><td>Agency</td><td>100 requests/hora</td></tr>
+            <tr><td>Enterprise</td><td>500 requests/hora</td></tr>
+          </tbody>
+        </table>
+
+        <p>Headers de respuesta incluidos en cada request:</p>
+        <table>
+          <thead><tr><th>Header</th><th>Descripcion</th></tr></thead>
+          <tbody>
+            <tr><td>X-RateLimit-Limit</td><td>Limite total de la ventana</td></tr>
+            <tr><td>X-RateLimit-Remaining</td><td>Requests restantes</td></tr>
+            <tr><td>Retry-After</td><td>Segundos para esperar (solo en 429)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Errors -->
+      <div class="section" id="errors">
+        <h2>Errores</h2>
+        <p>Todas las respuestas de error tienen el formato:</p>
+        <pre><code>{
+  <span class="key">"error"</span>: <span class="string">"Descripcion del error"</span>
+}</code></pre>
+
+        <ul class="status-list">
+          <li><code>400</code> &mdash; Request invalido (parametros faltantes o incorrectos)</li>
+          <li><code>401</code> &mdash; API key faltante o invalida</li>
+          <li><code>402</code> &mdash; Creditos insuficientes</li>
+          <li><code>403</code> &mdash; Plan no soporta acceso API</li>
+          <li><code>404</code> &mdash; Recurso no encontrado</li>
+          <li><code>429</code> &mdash; Rate limit excedido</li>
+          <li><code>500</code> &mdash; Error interno del servidor</li>
+        </ul>
+      </div>
+
+      <!-- Credits -->
+      <div class="section" id="credits">
+        <h2>Creditos</h2>
+        <p>Cada generacion consume creditos de tu plan. El costo depende del agente y modelo usado:</p>
+        <table>
+          <thead><tr><th>Recurso</th><th>Costo aprox.</th></tr></thead>
+          <tbody>
+            <tr><td>Claude Sonnet (texto)</td><td>~3 creditos / 1K tokens output</td></tr>
+            <tr><td>Claude Haiku (texto)</td><td>~1 credito / 1K tokens output</td></tr>
+            <tr><td>Generacion de imagen (Imagen 4)</td><td>10 creditos / imagen</td></tr>
+            <tr><td>Generacion de video (Veo 3)</td><td>50 creditos / video</td></tr>
+          </tbody>
+        </table>
+        <p>Usa el endpoint <code>GET /usage</code> para monitorear tu balance en tiempo real.</p>
+      </div>
+
+      <!-- POST /generate -->
+      <div class="section" id="generate">
+        <h2>Endpoints</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span class="endpoint-path">/generate</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Inicia una generacion asincrona. Retorna un ID para consultar el resultado.</p>
+
+            <h3>Body (JSON)</h3>
+            <table>
+              <thead><tr><th>Campo</th><th>Tipo</th><th></th><th>Descripcion</th></tr></thead>
+              <tbody>
+                <tr><td>prompt</td><td>string</td><td><span class="required">requerido</span></td><td>Lo que quieres generar (min. 3 caracteres)</td></tr>
+                <tr><td>agent</td><td>string</td><td><span class="optional">opcional</span></td><td>Agente a usar: <code>dev</code>, <code>web</code>, <code>seo</code>, <code>content</code>, <code>ads</code>. Default: <code>dev</code></td></tr>
+                <tr><td>model</td><td>string</td><td><span class="optional">opcional</span></td><td>Override del modelo LLM</td></tr>
+                <tr><td>webhook_url</td><td>string</td><td><span class="optional">opcional</span></td><td>URL para recibir el resultado via POST (proximamente)</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Ejemplo</h3>
+            <div class="tabs">
+              <div class="tab active" onclick="switchTab(this, 'gen-curl')">cURL</div>
+              <div class="tab" onclick="switchTab(this, 'gen-js')">JavaScript</div>
+              <div class="tab" onclick="switchTab(this, 'gen-py')">Python</div>
+            </div>
+
+            <div class="tab-content active" id="gen-curl">
+              <pre><code>curl -X POST https://plury.co/api/v1/generate \
+  -H <span class="string">"X-API-Key: pk_live_tu_clave"</span> \
+  -H <span class="string">"Content-Type: application/json"</span> \
+  -d <span class="string">'{
+    "prompt": "Landing page para una pizzeria con pedidos online",
+    "agent": "dev"
+  }'</span></code></pre>
+            </div>
+
+            <div class="tab-content" id="gen-js">
+              <pre><code><span class="keyword">const</span> res = <span class="keyword">await</span> fetch(<span class="string">'https://plury.co/api/v1/generate'</span>, {
+  method: <span class="string">'POST'</span>,
+  headers: {
+    <span class="string">'X-API-Key'</span>: <span class="string">'pk_live_tu_clave'</span>,
+    <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span>,
+  },
+  body: JSON.stringify({
+    prompt: <span class="string">'Landing page para una pizzeria con pedidos online'</span>,
+    agent: <span class="string">'dev'</span>,
+  }),
+})
+
+<span class="keyword">const</span> { id, poll_url } = <span class="keyword">await</span> res.json()
+console.log(<span class="string">`Generacion iniciada: ${id}`</span>)</code></pre>
+            </div>
+
+            <div class="tab-content" id="gen-py">
+              <pre><code><span class="keyword">import</span> requests
+
+res = requests.post(
+    <span class="string">"https://plury.co/api/v1/generate"</span>,
+    headers={<span class="string">"X-API-Key"</span>: <span class="string">"pk_live_tu_clave"</span>},
+    json={
+        <span class="string">"prompt"</span>: <span class="string">"Landing page para una pizzeria con pedidos online"</span>,
+        <span class="string">"agent"</span>: <span class="string">"dev"</span>,
+    },
+)
+
+data = res.json()
+print(f<span class="string">"Generacion iniciada: {data['id']}"</span>)</code></pre>
+            </div>
+
+            <h3>Respuesta (202)</h3>
+            <pre><code>{
+  <span class="key">"id"</span>: <span class="string">"clx9abc123..."</span>,
+  <span class="key">"status"</span>: <span class="string">"processing"</span>,
+  <span class="key">"prompt"</span>: <span class="string">"Landing page para una pizzeria..."</span>,
+  <span class="key">"agent"</span>: <span class="string">"dev"</span>,
+  <span class="key">"poll_url"</span>: <span class="string">"/api/v1/generations/clx9abc123..."</span>,
+  <span class="key">"message"</span>: <span class="string">"Generation started. Poll the status endpoint or use webhook."</span>
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- GET /generations/:id -->
+      <div class="section" id="get-generation">
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span class="endpoint-path">/generations/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Consulta el estado y resultados de una generacion. Haz polling cada 3-5 segundos hasta que <code>status</code> sea <code>"completed"</code>.</p>
+
+            <h3>Ejemplo</h3>
+            <pre><code>curl https://plury.co/api/v1/generations/clx9abc123 \
+  -H <span class="string">"X-API-Key: pk_live_tu_clave"</span></code></pre>
+
+            <h3>Respuesta (200)</h3>
+            <pre><code>{
+  <span class="key">"id"</span>: <span class="string">"clx9abc123..."</span>,
+  <span class="key">"status"</span>: <span class="string">"completed"</span>,
+  <span class="key">"results"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="string">"del_xyz..."</span>,
+      <span class="key">"title"</span>: <span class="string">"Landing Page - Pizzeria"</span>,
+      <span class="key">"type"</span>: <span class="string">"code"</span>,
+      <span class="key">"html"</span>: <span class="string">"&lt;!DOCTYPE html&gt;..."</span>,
+      <span class="key">"agent"</span>: <span class="string">"dev"</span>,
+      <span class="key">"version"</span>: <span class="number">1</span>,
+      <span class="key">"published_url"</span>: <span class="string">"https://plury.co/p/pizzeria-abc"</span>,
+      <span class="key">"created_at"</span>: <span class="string">"2026-03-07T10:30:00.000Z"</span>
+    }
+  ],
+  <span class="key">"tasks"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="string">"task_1"</span>,
+      <span class="key">"title"</span>: <span class="string">"Disenar estructura HTML"</span>,
+      <span class="key">"agent"</span>: <span class="string">"dev"</span>,
+      <span class="key">"status"</span>: <span class="string">"done"</span>
+    }
+  ],
+  <span class="key">"credits_used"</span>: <span class="number">15</span>,
+  <span class="key">"created_at"</span>: <span class="string">"2026-03-07T10:29:00.000Z"</span>
+}</code></pre>
+
+            <div class="alert alert-tip">
+              <strong>Tip:</strong> El campo <code>html</code> contiene el codigo fuente completo listo para servir. El campo <code>published_url</code> es la URL publica si el entregable fue publicado.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GET /generations -->
+      <div class="section" id="list-generations">
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span class="endpoint-path">/generations</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Lista todas tus generaciones con paginacion.</p>
+
+            <h3>Query params</h3>
+            <table>
+              <thead><tr><th>Param</th><th>Tipo</th><th>Default</th><th>Descripcion</th></tr></thead>
+              <tbody>
+                <tr><td>limit</td><td>integer</td><td>20</td><td>Resultados por pagina (max 100)</td></tr>
+                <tr><td>offset</td><td>integer</td><td>0</td><td>Offset para paginacion</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Respuesta (200)</h3>
+            <pre><code>{
+  <span class="key">"data"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="string">"clx9abc123..."</span>,
+      <span class="key">"title"</span>: <span class="string">"Landing page para una pizzeria..."</span>,
+      <span class="key">"status"</span>: <span class="string">"completed"</span>,
+      <span class="key">"deliverable_count"</span>: <span class="number">1</span>,
+      <span class="key">"created_at"</span>: <span class="string">"2026-03-07T10:29:00.000Z"</span>,
+      <span class="key">"updated_at"</span>: <span class="string">"2026-03-07T10:31:00.000Z"</span>
+    }
+  ],
+  <span class="key">"total"</span>: <span class="number">42</span>,
+  <span class="key">"limit"</span>: <span class="number">20</span>,
+  <span class="key">"offset"</span>: <span class="number">0</span>
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- GET /usage -->
+      <div class="section" id="usage">
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span class="endpoint-path">/usage</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Consulta tu balance de creditos y desglose de uso.</p>
+
+            <h3>Respuesta (200)</h3>
+            <pre><code>{
+  <span class="key">"balance"</span>: <span class="number">4250</span>,
+  <span class="key">"plan"</span>: <span class="string">"agency"</span>,
+  <span class="key">"monthly_credits"</span>: <span class="number">5000</span>,
+  <span class="key">"consumed_this_cycle"</span>: <span class="number">750</span>,
+  <span class="key">"cycle_start"</span>: <span class="string">"2026-03-01T00:00:00.000Z"</span>,
+  <span class="key">"by_agent"</span>: { <span class="string">"dev"</span>: <span class="number">500</span>, <span class="string">"seo"</span>: <span class="number">250</span> },
+  <span class="key">"by_model"</span>: { <span class="string">"claude-sonnet"</span>: <span class="number">600</span>, <span class="string">"claude-haiku"</span>: <span class="number">150</span> }
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- GET /agents -->
+      <div class="section" id="agents">
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span class="endpoint-path">/agents</span>
+            <span class="badge badge-green">publico</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Lista los agentes de IA disponibles con sus capacidades. No requiere autenticacion.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- GET /docs -->
+      <div class="section" id="docs-endpoint">
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span class="endpoint-path">/docs</span>
+            <span class="badge badge-green">publico</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Retorna la especificacion OpenAPI 3.0 en formato JSON. Util para generar SDKs o importar en Postman.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agents Detail -->
+      <div class="section" id="agents-detail">
+        <h2>Agentes disponibles</h2>
+        <p>Cada agente esta especializado en un tipo de entregable. Usa el parametro <code>agent</code> en <code>POST /generate</code>.</p>
+
+        <div class="agent-grid">
+          <div class="agent-card">
+            <h4>Code (Logic)</h4>
+            <div class="agent-id">agent: "dev"</div>
+            <p>Desarrollador full-stack. Genera apps web completas, landing pages, dashboards, e-commerce y formularios como SPAs con React.</p>
+          </div>
+          <div class="agent-card">
+            <h4>Pixel (Nova)</h4>
+            <div class="agent-id">agent: "web"</div>
+            <p>Disenador visual. Crea logos, branding, posts para redes sociales y banners con generacion de imagenes IA.</p>
+          </div>
+          <div class="agent-card">
+            <h4>Lupa</h4>
+            <div class="agent-id">agent: "seo"</div>
+            <p>Estratega SEO. Keyword research, analisis de competencia, auditorias tecnicas y planes de posicionamiento.</p>
+          </div>
+          <div class="agent-card">
+            <h4>Pluma</h4>
+            <div class="agent-id">agent: "content"</div>
+            <p>Escritor de contenido. Blog posts, secuencias de email, calendarios de redes sociales y copywriting.</p>
+          </div>
+          <div class="agent-card">
+            <h4>Metric</h4>
+            <div class="agent-id">agent: "ads"</div>
+            <p>Publicista digital. Planificacion de campanas, copywriting de ads, gestion de Meta Ads y segmentacion de audiencias.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== PROJECT API ==================== -->
+
+      <div class="section" id="project-api">
+        <h2>Project API</h2>
+        <p>
+          Cada app generada por Plury tiene acceso a un backend completo a traves de <code>window.__PROJECT_API</code>.
+          Este objeto se inyecta automaticamente en las paginas publicadas y provee autenticacion, base de datos,
+          subida de archivos y roles de usuario &mdash; sin configuracion.
+        </p>
+
+        <div class="alert alert-info">
+          <strong>Nota:</strong> La Project API esta disenada para usarse dentro de las apps generadas por Plury.
+          No es una API REST externa &mdash; se accede via el SDK JavaScript inyectado en cada pagina publicada.
+        </div>
+
+        <h3>Referencia rapida</h3>
+        <pre><code><span class="keyword">const</span> api = window.__PROJECT_API
+
+<span class="comment">// Auth</span>
+<span class="keyword">await</span> api.register({ email, password, displayName })
+<span class="keyword">await</span> api.login({ email, password })
+api.logout()
+api.getUser()             <span class="comment">// usuario actual o null</span>
+
+<span class="comment">// CRUD</span>
+<span class="keyword">await</span> api.from(<span class="string">'products'</span>).select()
+<span class="keyword">await</span> api.from(<span class="string">'products'</span>).insert({ name, price })
+<span class="keyword">await</span> api.from(<span class="string">'products'</span>).update(id, { price: <span class="number">29.99</span> })
+<span class="keyword">await</span> api.from(<span class="string">'products'</span>).delete(id)
+
+<span class="comment">// Consultas avanzadas</span>
+<span class="keyword">await</span> api.from(<span class="string">'orders'</span>).select(<span class="keyword">null</span>, { mine: <span class="keyword">true</span> })        <span class="comment">// solo mis filas</span>
+<span class="keyword">await</span> api.from(<span class="string">'orders'</span>).select(<span class="keyword">null</span>, { expand: <span class="string">'products'</span> }) <span class="comment">// join automatico</span>
+<span class="keyword">await</span> api.from(<span class="string">'products'</span>).count({ category: <span class="string">'pizza'</span> })
+<span class="keyword">await</span> api.from(<span class="string">'orders'</span>).aggregate(<span class="string">'total'</span>, <span class="string">'sum'</span>)
+
+<span class="comment">// Archivos</span>
+<span class="keyword">await</span> api.uploadFile(file)  <span class="comment">// retorna { url }</span>
+
+<span class="comment">// Admin</span>
+<span class="keyword">await</span> api.listUsers()
+<span class="keyword">await</span> api.setUserRole(userId, <span class="string">'editor'</span>)</code></pre>
+      </div>
+
+      <!-- Project Auth -->
+      <div class="section" id="project-auth">
+        <h2>Project API: Autenticacion</h2>
+        <p>Cada proyecto tiene su propio sistema de usuarios aislado. El primer usuario registrado es automaticamente <strong>admin</strong>.</p>
+
+        <h3>Registro</h3>
+        <pre><code><span class="keyword">const</span> { token, user } = <span class="keyword">await</span> api.register({
+  email: <span class="string">'maria@ejemplo.com'</span>,
+  password: <span class="string">'secreto123'</span>,
+  displayName: <span class="string">'Maria Lopez'</span>,
+})
+<span class="comment">// user.role sera 'admin' si es el primer usuario, 'user' para los demas</span></code></pre>
+
+        <h3>Login</h3>
+        <pre><code><span class="keyword">const</span> { token, user } = <span class="keyword">await</span> api.login({
+  email: <span class="string">'maria@ejemplo.com'</span>,
+  password: <span class="string">'secreto123'</span>,
+})</code></pre>
+
+        <h3>Usuario actual</h3>
+        <pre><code><span class="keyword">const</span> user = api.getUser()
+<span class="comment">// { id, email, displayName, role } o null si no esta logueado</span></code></pre>
+
+        <h3>Logout</h3>
+        <pre><code>api.logout() <span class="comment">// limpia token y datos locales</span></code></pre>
+
+        <h3>Roles disponibles</h3>
+        <table>
+          <thead><tr><th>Rol</th><th>Descripcion</th></tr></thead>
+          <tbody>
+            <tr><td>admin</td><td>Acceso completo. Puede listar usuarios y cambiar roles.</td></tr>
+            <tr><td>user</td><td>Puede leer/escribir datos. Rol por defecto.</td></tr>
+            <tr><td>editor</td><td>Puede leer/escribir datos (mismo nivel que user).</td></tr>
+            <tr><td>viewer</td><td>Solo lectura (depende de implementacion en el frontend).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Project CRUD -->
+      <div class="section" id="project-crud">
+        <h2>Project API: CRUD de datos</h2>
+        <p>
+          La Project API usa un modelo schemaless: puedes crear tablas y columnas al vuelo sin migraciones.
+          Cada proyecto soporta hasta <strong>10,000 filas</strong> en total.
+        </p>
+
+        <h3>Leer datos</h3>
+        <pre><code><span class="comment">// Todas las filas</span>
+<span class="keyword">const</span> products = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).select()
+
+<span class="comment">// Con filtros</span>
+<span class="keyword">const</span> pizzas = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).select({ category: <span class="string">'pizza'</span> })
+
+<span class="comment">// Fila individual</span>
+<span class="keyword">const</span> product = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).select({ id: <span class="string">'abc123'</span> })</code></pre>
+
+        <h3>Crear datos</h3>
+        <pre><code><span class="keyword">const</span> newProduct = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).insert({
+  name: <span class="string">'Pizza Margherita'</span>,
+  price: <span class="number">12.99</span>,
+  category: <span class="string">'pizza'</span>,
+  available: <span class="keyword">true</span>,
+})
+<span class="comment">// retorna { id, name, price, category, available, user_id, _createdAt }</span></code></pre>
+
+        <div class="alert alert-tip">
+          <strong>Tip:</strong> El campo <code>user_id</code> se agrega automaticamente si el usuario esta autenticado. Esto permite usar <code>mine: true</code> para filtrar por usuario.
+        </div>
+
+        <h3>Actualizar datos</h3>
+        <pre><code><span class="keyword">const</span> updated = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).update(<span class="string">'abc123'</span>, {
+  price: <span class="number">14.99</span>,
+  available: <span class="keyword">false</span>,
+})
+<span class="comment">// merge: los campos no enviados se mantienen</span></code></pre>
+
+        <h3>Eliminar datos</h3>
+        <pre><code><span class="keyword">await</span> api.from(<span class="string">'products'</span>).delete(<span class="string">'abc123'</span>)
+<span class="comment">// retorna { deleted: true }</span></code></pre>
+      </div>
+
+      <!-- Project Upload -->
+      <div class="section" id="project-upload">
+        <h2>Project API: Subida de archivos</h2>
+        <p>Sube imagenes, PDFs y otros archivos (max 10 MB). Formatos permitidos: jpg, png, gif, webp, svg, pdf, doc, docx, xls, xlsx, csv, txt, mp4, mp3.</p>
+
+        <pre><code><span class="keyword">const</span> input = document.querySelector(<span class="string">'input[type="file"]'</span>)
+<span class="keyword">const</span> file = input.files[<span class="number">0</span>]
+
+<span class="keyword">const</span> { url } = <span class="keyword">await</span> api.uploadFile(file)
+<span class="comment">// url: "https://plury.co/uploads/projects/1709847123-a1b2c3d4.jpg"</span>
+
+<span class="comment">// Guardar la URL en una fila</span>
+<span class="keyword">await</span> api.from(<span class="string">'products'</span>).update(productId, { image: url })</code></pre>
+      </div>
+
+      <!-- Project Schema -->
+      <div class="section" id="project-schema">
+        <h2>Project API: Schema</h2>
+        <p>Consulta o define la estructura de tablas. Esto es informativo &mdash; la base de datos es schemaless, pero el schema ayuda a los agentes de IA a generar codigo correcto.</p>
+
+        <h3>Ver schema</h3>
+        <pre><code><span class="comment">// GET /api/project/:projectId/schema</span>
+<span class="comment">// Retorna:</span>
+[
+  {
+    <span class="key">"tableName"</span>: <span class="string">"products"</span>,
+    <span class="key">"columns"</span>: [
+      { <span class="key">"name"</span>: <span class="string">"name"</span>, <span class="key">"type"</span>: <span class="string">"string"</span> },
+      { <span class="key">"name"</span>: <span class="string">"price"</span>, <span class="key">"type"</span>: <span class="string">"number"</span> },
+      { <span class="key">"name"</span>: <span class="string">"category"</span>, <span class="key">"type"</span>: <span class="string">"string"</span> }
+    ]
+  }
+]</code></pre>
+      </div>
+
+      <!-- Project Advanced -->
+      <div class="section" id="project-advanced">
+        <h2>Project API: Consultas avanzadas</h2>
+
+        <h3>Row-level security (mis datos)</h3>
+        <pre><code><span class="comment">// Solo retorna filas donde user_id === usuario actual</span>
+<span class="keyword">const</span> myOrders = <span class="keyword">await</span> api.from(<span class="string">'orders'</span>).select(<span class="keyword">null</span>, { mine: <span class="keyword">true</span> })</code></pre>
+
+        <h3>Relaciones (expand / join)</h3>
+        <pre><code><span class="comment">// Expande la relacion: carga la categoria de cada producto</span>
+<span class="keyword">const</span> products = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).select(<span class="keyword">null</span>, {
+  expand: <span class="string">'categories'</span>
+})
+<span class="comment">// Cada producto tendra un campo _category con los datos de la categoria</span>
+<span class="comment">// La FK se deduce automaticamente: category_id -> categories.id</span></code></pre>
+
+        <h3>Count</h3>
+        <pre><code><span class="keyword">const</span> { count } = <span class="keyword">await</span> api.from(<span class="string">'orders'</span>).count({ status: <span class="string">'completed'</span> })
+<span class="comment">// { count: 47 }</span></code></pre>
+
+        <h3>Agregaciones</h3>
+        <pre><code><span class="comment">// Suma</span>
+<span class="keyword">const</span> { value } = <span class="keyword">await</span> api.from(<span class="string">'orders'</span>).aggregate(<span class="string">'total'</span>, <span class="string">'sum'</span>)
+
+<span class="comment">// Promedio</span>
+<span class="keyword">const</span> { value } = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).aggregate(<span class="string">'price'</span>, <span class="string">'avg'</span>)
+
+<span class="comment">// Operaciones disponibles: sum, avg, min, max</span></code></pre>
+
+        <h3>Paginacion y orden</h3>
+        <pre><code><span class="comment">// Via REST directo (usado internamente por el SDK):</span>
+<span class="comment">// GET /api/project/:id/data/products?_sort=price&_order=asc&_limit=10&_offset=20</span>
+
+<span class="comment">// Via SDK:</span>
+<span class="keyword">const</span> page = <span class="keyword">await</span> api.from(<span class="string">'products'</span>).select(<span class="keyword">null</span>, {
+  sort: <span class="string">'price'</span>,
+  order: <span class="string">'asc'</span>,
+  limit: <span class="number">10</span>,
+  offset: <span class="number">20</span>,
+})</code></pre>
+
+        <h3>Admin: gestionar usuarios</h3>
+        <pre><code><span class="comment">// Solo accesible para usuarios con rol 'admin'</span>
+
+<span class="comment">// Listar todos los usuarios del proyecto</span>
+<span class="keyword">const</span> users = <span class="keyword">await</span> api.listUsers()
+<span class="comment">// [{ id, email, displayName, role, createdAt }]</span>
+
+<span class="comment">// Cambiar rol de un usuario</span>
+<span class="keyword">await</span> api.setUserRole(userId, <span class="string">'editor'</span>)
+<span class="comment">// Roles validos: admin, user, editor, viewer</span></code></pre>
+      </div>
+
+      <!-- Quickstart -->
+      <div class="section" id="quickstart">
+        <h2>Quickstart</h2>
+        <p>Genera tu primera landing page en 3 pasos:</p>
+
+        <h3>1. Obtener API key</h3>
+        <p>Ve a <a href="https://plury.co" style="color:var(--accent-light)">plury.co</a> &rarr; Configuracion &rarr; API Keys &rarr; Crear clave.</p>
+
+        <h3>2. Iniciar generacion</h3>
+        <pre><code>curl -X POST https://plury.co/api/v1/generate \
+  -H <span class="string">"X-API-Key: pk_live_tu_clave"</span> \
+  -H <span class="string">"Content-Type: application/json"</span> \
+  -d <span class="string">'{"prompt": "Landing page para un gimnasio con horarios y precios"}'</span></code></pre>
+
+        <h3>3. Consultar resultado</h3>
+        <pre><code><span class="comment"># Espera 10-30 segundos y consulta:</span>
+curl https://plury.co/api/v1/generations/TU_ID \
+  -H <span class="string">"X-API-Key: pk_live_tu_clave"</span>
+
+<span class="comment"># Cuando status sea "completed", el campo results[0].html</span>
+<span class="comment"># contiene el codigo HTML completo listo para usar.</span></code></pre>
+      </div>
+
+      <!-- Examples -->
+      <div class="section" id="examples">
+        <h2>Ejemplos completos</h2>
+
+        <h3>Generar y esperar resultado (JavaScript)</h3>
+        <pre><code><span class="keyword">const</span> API_KEY = <span class="string">'pk_live_tu_clave'</span>
+<span class="keyword">const</span> BASE = <span class="string">'https://plury.co/api/v1'</span>
+
+<span class="keyword">async function</span> <span class="key">generate</span>(prompt, agent = <span class="string">'dev'</span>) {
+  <span class="comment">// 1. Iniciar generacion</span>
+  <span class="keyword">const</span> res = <span class="keyword">await</span> fetch(`${BASE}/generate`, {
+    method: <span class="string">'POST'</span>,
+    headers: {
+      <span class="string">'X-API-Key'</span>: API_KEY,
+      <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span>,
+    },
+    body: JSON.stringify({ prompt, agent }),
+  })
+
+  <span class="keyword">const</span> { id } = <span class="keyword">await</span> res.json()
+  console.log(<span class="string">`Generando... ID: ${id}`</span>)
+
+  <span class="comment">// 2. Poll hasta completar</span>
+  <span class="keyword">while</span> (<span class="keyword">true</span>) {
+    <span class="keyword">await</span> <span class="keyword">new</span> Promise(r => setTimeout(r, <span class="number">5000</span>))
+
+    <span class="keyword">const</span> poll = <span class="keyword">await</span> fetch(`${BASE}/generations/${id}`, {
+      headers: { <span class="string">'X-API-Key'</span>: API_KEY },
+    })
+    <span class="keyword">const</span> data = <span class="keyword">await</span> poll.json()
+
+    <span class="keyword">if</span> (data.status === <span class="string">'completed'</span>) {
+      console.log(<span class="string">`Listo! ${data.results.length} entregable(s)`</span>)
+      console.log(<span class="string">`Creditos usados: ${data.credits_used}`</span>)
+      <span class="keyword">return</span> data
+    }
+
+    console.log(<span class="string">'Procesando...'</span>)
+  }
+}
+
+<span class="comment">// Uso</span>
+<span class="keyword">const</span> result = <span class="keyword">await</span> generate(
+  <span class="string">'Landing page para un restaurante mexicano con menu y reservas'</span>
+)
+console.log(result.results[<span class="number">0</span>].html) <span class="comment">// HTML completo</span></code></pre>
+
+        <h3>Monitorear creditos (Python)</h3>
+        <pre><code><span class="keyword">import</span> requests
+
+API_KEY = <span class="string">"pk_live_tu_clave"</span>
+headers = {<span class="string">"X-API-Key"</span>: API_KEY}
+
+usage = requests.get(
+    <span class="string">"https://plury.co/api/v1/usage"</span>,
+    headers=headers,
+).json()
+
+print(f<span class="string">"Balance: {usage['balance']} creditos"</span>)
+print(f<span class="string">"Plan: {usage['plan']}"</span>)
+print(f<span class="string">"Consumidos este ciclo: {usage['consumed_this_cycle']}"</span>)
+
+<span class="keyword">for</span> agent, credits <span class="keyword">in</span> usage.get(<span class="string">"by_agent"</span>, {}).items():
+    print(f<span class="string">"  {agent}: {credits} creditos"</span>)</code></pre>
+      </div>
+
+      <div style="text-align:center; padding: 48px 0 24px; color: var(--text-dim); font-size: 13px;">
+        <p>&copy; 2026 Plury &mdash; <a href="https://plury.co" style="color:var(--accent-light)">plury.co</a></p>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    // Tab switching
+    function switchTab(el, contentId) {
+      const parent = el.closest('.endpoint-body') || el.closest('.section')
+      parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
+      parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'))
+      el.classList.add('active')
+      document.getElementById(contentId).classList.add('active')
+    }
+
+    // Sidebar active state
+    const links = document.querySelectorAll('.sidebar nav a')
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          links.forEach(l => l.classList.remove('active'))
+          const link = document.querySelector(`.sidebar nav a[href="#${entry.target.id}"]`)
+          if (link) link.classList.add('active')
+        }
+      })
+    }, { rootMargin: '-20% 0px -70% 0px' })
+
+    document.querySelectorAll('.section, .hero').forEach(s => {
+      if (s.id) observer.observe(s)
+    })
+
+    // Copy buttons on code blocks
+    document.querySelectorAll('pre').forEach(pre => {
+      const btn = document.createElement('button')
+      btn.className = 'copy-btn'
+      btn.textContent = 'Copiar'
+      btn.onclick = () => {
+        navigator.clipboard.writeText(pre.textContent.replace('Copiar', '').trim())
+        btn.textContent = 'Copiado!'
+        setTimeout(() => btn.textContent = 'Copiar', 1500)
+      }
+      pre.style.position = 'relative'
+      pre.appendChild(btn)
+    })
+  </script>
+</body>
+</html>

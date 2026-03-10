@@ -3,16 +3,18 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { prisma } from '../db/client.js'
+import { getProjectApiScript } from '../services/html-utils.js'
+import { isCodeProject, buildCodeProjectHtml } from '../services/code-to-html.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DEPLOY_DIR = path.resolve(__dirname, '../../deploys')
-const APP_DOMAIN = process.env.APP_DOMAIN || 'pluribots.com'
+const APP_DOMAIN = process.env.APP_DOMAIN || 'plury.co'
 
 const NOT_FOUND_HTML = `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>No encontrado — Pluribots</title>
+<title>No encontrado — Plury</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8fafc;color:#334155}
@@ -25,11 +27,11 @@ a:hover{text-decoration:underline}
 <body><div class="c">
 <h1>404</h1>
 <p>Este sitio no existe o no ha sido publicado.</p>
-<a href="https://${APP_DOMAIN}">Ir a Pluribots</a>
+<a href="https://${APP_DOMAIN}">Ir a Plury</a>
 </div></body></html>`
 
 /**
- * Subdomain middleware — intercepts requests to {slug}.pluribots.com
+ * Subdomain middleware — intercepts requests to {slug}.plury.co
  * and custom domains, serving the published project HTML.
  * Must be registered BEFORE all routes.
  */
@@ -62,15 +64,15 @@ export function subdomainMiddleware(req: Request, res: Response, next: NextFunct
     isCustomDomain = true
   }
 
-  // Look up the deliverable with its conversation's Supabase credentials
+  // Look up the deliverable with its conversation's credentials
   const lookup = isCustomDomain
     ? prisma.deliverable.findFirst({
         where: { customDomain: host, customDomainStatus: 'active' },
-        include: { conversation: { select: { supabaseUrl: true, supabaseAnonKey: true } } },
+        include: { conversation: { select: { id: true, supabaseUrl: true, supabaseAnonKey: true, projectBackendEnabled: true } } },
       })
     : prisma.deliverable.findUnique({
         where: { publishSlug: subdomain! },
-        include: { conversation: { select: { supabaseUrl: true, supabaseAnonKey: true } } },
+        include: { conversation: { select: { id: true, supabaseUrl: true, supabaseAnonKey: true, projectBackendEnabled: true } } },
       })
 
   lookup
@@ -80,23 +82,31 @@ export function subdomainMiddleware(req: Request, res: Response, next: NextFunct
         return
       }
 
-      // Build Supabase injection script if credentials exist
       const conv = (deliverable as any).conversation
-      const supabaseScript = conv?.supabaseUrl && conv?.supabaseAnonKey
-        ? `<script>window.__SUPABASE_URL__="${conv.supabaseUrl}";window.__SUPABASE_ANON_KEY__="${conv.supabaseAnonKey}";</script>`
-        : ''
 
-      // Inject Supabase credentials into HTML before </head>
-      const injectSupabase = (html: string) =>
-        supabaseScript ? html.replace('</head>', `${supabaseScript}\n</head>`) : html
+      // Build injection scripts
+      const scripts: string[] = []
+
+      // Supabase (legacy)
+      if (conv?.supabaseUrl && conv?.supabaseAnonKey) {
+        scripts.push(`<script>window.__SUPABASE_URL__="${conv.supabaseUrl}";window.__SUPABASE_ANON_KEY__="${conv.supabaseAnonKey}";</script>`)
+      }
+
+      // Project Backend API client
+      if (conv?.projectBackendEnabled && conv?.id) {
+        const prodBaseUrl = process.env.CDN_BASE_URL || `https://${APP_DOMAIN}`
+        scripts.push(getProjectApiScript(prodBaseUrl, conv.id))
+      }
+
+      const injectScripts = (html: string) =>
+        scripts.length > 0 ? html.replace('</head>', `${scripts.join('\n')}\n</head>`) : html
 
       // Try to serve from disk first
       const htmlPath = path.join(DEPLOY_DIR, deliverable.id, 'index.html')
       if (fs.existsSync(htmlPath)) {
-        if (supabaseScript) {
-          // Need to read and inject, can't use sendFile
+        if (scripts.length > 0) {
           const html = fs.readFileSync(htmlPath, 'utf-8')
-          res.type('html').send(injectSupabase(html))
+          res.type('html').send(injectScripts(html))
         } else {
           res.type('html').sendFile(htmlPath)
         }
@@ -105,7 +115,12 @@ export function subdomainMiddleware(req: Request, res: Response, next: NextFunct
 
       // Fallback to DB content
       if (deliverable.content) {
-        res.type('html').send(injectSupabase(deliverable.content))
+        let html = deliverable.content
+        // If content is a multi-file code project (JSON array), build HTML on the fly
+        if (isCodeProject(html)) {
+          html = buildCodeProjectHtml(html)
+        }
+        res.type('html').send(injectScripts(html))
         return
       }
 

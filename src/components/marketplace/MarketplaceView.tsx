@@ -33,7 +33,7 @@ const bots = [
     name: 'Pixel',
     role: 'Diseñador Visual',
     desc: 'Logos, branding, posts para redes, banners, flyers, stories, moodboards y todo lo gráfico con Midjourney. Tu diseñador visual completo.',
-    color: '#a855f7',
+    color: '#a78bfa',
     icon: <Layout size={20} />,
     category: 'diseno',
     capabilities: ['Logos con IA', 'Posts Redes', 'Banners', 'Moodboards'],
@@ -96,7 +96,7 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] flex items-center justify-center">
               <Sparkles size={20} className="text-white" />
             </div>
             <div>
@@ -109,7 +109,7 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
         {/* Activation explainer */}
         {isAuthenticated && (
           <div className="flex items-start gap-3 p-4 mb-6 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
-            <Info size={16} className="text-indigo-500 flex-shrink-0 mt-0.5" />
+            <Info size={16} className="text-[#a78bfa] flex-shrink-0 mt-0.5" />
             <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
               <strong>Cada agente es un miembro de tu equipo digital.</strong> Activalos para que participen automaticamente cuando les pidas crear logos, webs, campanas, videos o codigo.
             </p>

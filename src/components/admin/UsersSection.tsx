@@ -19,14 +19,14 @@ const PLANS = ['starter', 'pro', 'agency', 'enterprise'] as const
 const roleBadge: Record<string, { bg: string; text: string }> = {
   user: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300' },
   agent: { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-700 dark:text-blue-300' },
-  org_admin: { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-700 dark:text-purple-300' },
+  org_admin: { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-700 dark:text-[#a78bfa]' },
   superadmin: { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-700 dark:text-red-300' },
 }
 
 const planBadge: Record<string, { bg: string; text: string }> = {
   starter: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300' },
   pro: { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-700 dark:text-blue-300' },
-  agency: { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-700 dark:text-purple-300' },
+  agency: { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-700 dark:text-[#a78bfa]' },
   enterprise: { bg: 'bg-amber-100 dark:bg-amber-900', text: 'text-amber-700 dark:text-amber-300' },
 }
 
@@ -41,7 +41,7 @@ const UsersSection = () => {
   const [granting, setGranting] = useState(false)
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
   }
 

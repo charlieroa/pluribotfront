@@ -41,7 +41,7 @@ export interface LLMStreamWithToolsCallbacks extends LLMStreamCallbacks {
 }
 
 export interface LLMProviderConfig {
-  provider: 'anthropic' | 'openai' | 'google' | 'deepseek'
+  provider: 'anthropic'
   model: string
   apiKey?: string
   maxTokens?: number

@@ -1,7 +1,7 @@
 // ─── Switching to PostgreSQL ───
 // 1. Change the datasource provider below from "sqlite" to "postgresql"
 // 2. Update DATABASE_URL in your .env:
-//      DATABASE_URL="postgresql://user:password@localhost:5432/pluribots?schema=public"
+//      DATABASE_URL="postgresql://user:password@localhost:5432/plury?schema=public"
 // 3. Run: npm run db:migrate:deploy   (production)
 //    or:  npm run db:migrate           (development — creates migration files)
 //
@@ -30,11 +30,18 @@ model User {
   specialtyKeywords String?        // Palabras clave para auto-asignación, separadas por coma
   avatarUrl         String?        // URL de foto del agente humano
   creditBalance     Int            @default(0)
+  githubToken       String?
+  metaAccessToken    String?
+  metaAdAccountId    String?
+  metaBusinessId     String?
+  metaTokenExpiresAt DateTime?
+  metaUserName       String?
   billingCycleStart DateTime?
   organizationId String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   conversations  Conversation[]
+  projects       Project[]
   usageRecords   UsageRecord[]
   userBots       UserBot[]
   organization   Organization?  @relation(fields: [organizationId], references: [id])
@@ -42,6 +49,7 @@ model User {
   creditLedger   CreditLedger[]
   seniorTasks         SeniorTask[]
   seniorSubscriptions SeniorSubscription[]
+  apiKeys             UserApiKey[]
 }
 
 model Organization {
@@ -64,21 +72,39 @@ model UserBot {
   @@unique([userId, botId])
 }
 
+model Project {
+  id             String         @id @default(uuid())
+  userId         String
+  name           String
+  description    String?
+  status         String         @default("active") // 'active' | 'archived'
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id])
+  conversations  Conversation[]
+}
+
 model Conversation {
   id               String    @id @default(uuid())
   userId           String
+  projectId        String?
   title            String    @default("Nueva conversación")
   needsHumanReview Boolean   @default(false)
   assignedAgentId  String?
   supabaseUrl      String?
   supabaseAnonKey  String?
+  projectBackendEnabled Boolean @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   user             User      @relation(fields: [userId], references: [id])
+  project          Project?  @relation(fields: [projectId], references: [id])
   assignedAgent    User?     @relation("AssignedConversations", fields: [assignedAgentId], references: [id])
   messages         Message[]
   deliverables     Deliverable[]
   kanbanTasks      KanbanTask[]
+  projectSchemas   ProjectSchema[]
+  projectData      ProjectData[]
+  usageRecords     UsageRecord[]
 }
 
 model Message {
@@ -114,6 +140,7 @@ model Deliverable {
   customDomain            String?   @unique
   customDomainStatus      String?   // 'pending_dns' | 'dns_verified' | 'active' | 'error'
   customDomainVerifiedAt  DateTime?
+  thumbnailUrl            String?
   createdAt               DateTime  @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   parent         Deliverable?  @relation("DeliverableVersions", fields: [parentId], references: [id])
@@ -139,14 +166,18 @@ model KanbanTask {
 }
 
 model UsageRecord {
-  id           String   @id @default(uuid())
-  userId       String
-  agentId      String
-  model        String
-  inputTokens  Int
-  outputTokens Int
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id])
+  id                       String        @id @default(uuid())
+  userId                   String
+  agentId                  String
+  model                    String
+  inputTokens              Int
+  outputTokens             Int
+  cacheCreationInputTokens Int           @default(0)
+  cacheReadInputTokens     Int           @default(0)
+  conversationId           String?
+  createdAt                DateTime      @default(now())
+  user                     User          @relation(fields: [userId], references: [id])
+  conversation             Conversation? @relation(fields: [conversationId], references: [id])
 }
 
 model ApiKey {
@@ -242,6 +273,72 @@ model ExecutingPlan {
   imageUrl            String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model ProjectSchema {
+  id             String   @id @default(uuid())
+  conversationId String
+  tableName      String
+  columnsJson    String   // JSON: Array<{ name, type, required, default }>
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([conversationId, tableName])
+}
+
+model ProjectData {
+  id             String   @id @default(uuid())
+  conversationId String
+  tableName      String
+  dataJson       String   // JSON object — the row
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId, tableName])
+}
+
+model ProjectUser {
+  id             String   @id @default(uuid())
+  conversationId String
+  email          String
+  passwordHash   String
+  displayName    String?
+  role           String   @default("user") // 'admin' | 'user' | 'editor' | 'viewer'
+  createdAt      DateTime @default(now())
+
+  @@unique([conversationId, email])
+  @@index([conversationId])
+}
+
+model UserApiKey {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String   @default("Default")
+  keyHash     String   @unique        // SHA-256 hash of the actual key
+  keyPrefix   String                  // first 8 chars for display: "pk_live_ab12..."
+  scopes      String   @default("*")  // comma-separated: "*" | "generate" | "usage" | "agents"
+  rateLimit   Int      @default(100)  // requests per hour
+  lastUsedAt  DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ApiUsageLog {
+  id          String   @id @default(uuid())
+  apiKeyId    String
+  endpoint    String
+  method      String
+  statusCode  Int
+  creditsUsed Int      @default(0)
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([apiKeyId, createdAt])
 }
 
 model SeniorSubscription {

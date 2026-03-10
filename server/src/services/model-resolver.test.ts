@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveModelConfig, FALLBACK_MODELS } from './model-resolver.js'
+import { resolveModelConfig } from './model-resolver.js'
 
 describe('resolveModelConfig', () => {
   it('resolves a known model ID to a provider config', () => {
@@ -9,18 +9,18 @@ describe('resolveModelConfig', () => {
     expect(result!.model).toContain('claude-sonnet')
   })
 
-  it('resolves gpt-4o correctly', () => {
-    const result = resolveModelConfig('gpt-4o')
+  it('resolves claude-opus correctly', () => {
+    const result = resolveModelConfig('claude-opus')
     expect(result).not.toBeNull()
-    expect(result!.provider).toBe('openai')
-    expect(result!.model).toBe('gpt-4o')
+    expect(result!.provider).toBe('anthropic')
+    expect(result!.model).toContain('claude-opus')
   })
 
-  it('resolves gemini-2.5-pro correctly', () => {
-    const result = resolveModelConfig('gemini-2.5-pro')
+  it('resolves claude-haiku correctly', () => {
+    const result = resolveModelConfig('claude-haiku')
     expect(result).not.toBeNull()
-    expect(result!.provider).toBe('google')
-    expect(result!.model).toBe('gemini-2.5-pro')
+    expect(result!.provider).toBe('anthropic')
+    expect(result!.model).toContain('claude-haiku')
   })
 
   it('returns null for an unknown model ID', () => {
@@ -28,37 +28,17 @@ describe('resolveModelConfig', () => {
     expect(result).toBeNull()
   })
 
+  it('returns null for removed providers', () => {
+    expect(resolveModelConfig('gpt-4o')).toBeNull()
+    expect(resolveModelConfig('gemini-2.5-pro')).toBeNull()
+  })
+
   it('carries over maxTokens and temperature from agent defaults', () => {
     const defaults = { provider: 'anthropic' as const, model: 'default', maxTokens: 4096, temperature: 0.7 }
-    const result = resolveModelConfig('gpt-4o', defaults)
+    const result = resolveModelConfig('claude-sonnet', defaults)
     expect(result).not.toBeNull()
     expect(result!.maxTokens).toBe(4096)
     expect(result!.temperature).toBe(0.7)
-    expect(result!.provider).toBe('openai')
-  })
-})
-
-describe('FALLBACK_MODELS', () => {
-  it('has fallbacks for anthropic', () => {
-    expect(FALLBACK_MODELS['anthropic']).toBeDefined()
-    expect(FALLBACK_MODELS['anthropic'].length).toBeGreaterThan(0)
-  })
-
-  it('has fallbacks for openai', () => {
-    expect(FALLBACK_MODELS['openai']).toBeDefined()
-    expect(FALLBACK_MODELS['openai'].length).toBeGreaterThan(0)
-  })
-
-  it('has fallbacks for google', () => {
-    expect(FALLBACK_MODELS['google']).toBeDefined()
-    expect(FALLBACK_MODELS['google'].length).toBeGreaterThan(0)
-  })
-
-  it('fallback providers differ from the primary', () => {
-    for (const [primary, fallbacks] of Object.entries(FALLBACK_MODELS)) {
-      for (const fb of fallbacks) {
-        expect(fb.provider).not.toBe(primary)
-      }
-    }
+    expect(result!.provider).toBe('anthropic')
   })
 })

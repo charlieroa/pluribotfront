@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ArrowRight, Zap, Users } from 'lucide-react'
+import { ArrowRight, Zap, Users, Globe, Palette } from 'lucide-react'
 import gsap from 'gsap'
 
 interface HeroSectionProps {
@@ -29,7 +29,7 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
   const [inputValue, setInputValue] = useState('')
   const [placeholder, setPlaceholder] = useState('')
   const sectionRef = useRef<HTMLElement>(null)
-  const floatRef = useRef<HTMLDivElement>(null)
+  const floatsRef = useRef<HTMLDivElement>(null)
   const typingRef = useRef({ idx: 0, charIdx: 0, deleting: false })
 
   const tick = useCallback(() => {
@@ -75,15 +75,22 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
       opacity: 1, y: 0, duration: 0.8, stagger: 0.1, ease: 'power3.out', delay: 0.1,
     })
 
-    // Floating card — entrance + continuous float
-    if (floatRef.current) {
-      gsap.fromTo(floatRef.current,
-        { opacity: 0, x: 40, y: 15, scale: 0.85 },
-        { opacity: 1, x: 0, y: 0, scale: 1, duration: 1, ease: 'back.out(1.5)', delay: 1 }
+    // Floating cards — staggered entrance + continuous float
+    if (floatsRef.current) {
+      const cards = floatsRef.current.querySelectorAll('.hero-float')
+      gsap.fromTo(cards,
+        { opacity: 0, y: 25, scale: 0.8 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.8, stagger: 0.25, ease: 'back.out(1.7)', delay: 0.8,
+          onComplete: () => {
+            cards.forEach((card, i) => {
+              gsap.to(card, {
+                y: 'random(-12, 12)', x: 'random(-6, 6)', rotation: 'random(-3, 3)',
+                duration: 'random(3, 5)', repeat: -1, yoyo: true, ease: 'sine.inOut', delay: i * 0.5,
+              })
+            })
+          }
+        }
       )
-      gsap.to(floatRef.current, {
-        y: -10, x: 3, duration: 3.5, repeat: -1, yoyo: true, ease: 'sine.inOut', delay: 2,
-      })
     }
   }, [])
 
@@ -96,40 +103,67 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
   return (
     <section ref={sectionRef} id="hero" className="relative pt-20 pb-12 md:pt-32 md:pb-20 px-4 overflow-hidden">
       {/* Background effects */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-[radial-gradient(ellipse_at_center,rgba(124,58,237,0.15)_0%,transparent_70%)] pointer-events-none" />
-      <div className="absolute top-[20%] left-[10%] w-[400px] h-[400px] bg-purple-600/[0.07] rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-[30%] right-[10%] w-[350px] h-[350px] bg-violet-500/[0.05] rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.15)_0%,transparent_70%)] pointer-events-none" />
+      <div className="absolute top-[20%] left-[10%] w-[400px] h-[400px] bg-[#8b5cf6]/[0.07] rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[30%] right-[10%] w-[350px] h-[350px] bg-[#a78bfa]/[0.05] rounded-full blur-[100px] pointer-events-none" />
 
       <div className="relative z-10 max-w-[850px] mx-auto text-center">
         {/* Badge */}
-        <div className="hero-anim inline-flex items-center gap-2 px-4 py-1.5 mb-7 rounded-full border border-purple-500/20 bg-purple-500/[0.08] text-[12.5px] font-medium text-purple-300">
-          <Zap size={13} className="text-purple-400" />
+        <div className="hero-anim inline-flex items-center gap-2 px-4 py-1.5 mb-7 rounded-full border border-[#a78bfa]/20 bg-[#a78bfa]/[0.08] text-[12.5px] font-medium text-[#a78bfa]">
+          <Zap size={13} className="text-[#43f1f2]" />
           Agentes de IA trabajando para ti
         </div>
 
-        {/* Headline — with floating card embedded */}
-        <div className="hero-anim relative inline-block">
+        {/* Headline — with floating cards */}
+        <div ref={floatsRef} className="hero-anim relative inline-block">
           <h1 className="text-[40px] sm:text-[56px] md:text-[68px] font-extrabold leading-[1.05] tracking-[-0.04em] text-white mb-6">
             La IA llega al 90%.
             <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a855f7] to-[#6d28d9]">Nosotros hacemos el 100%.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a78bfa] to-[#8b5cf6]">Nosotros hacemos el 100%.</span>
           </h1>
 
-          {/* Floating senior card — positioned inside the headline area */}
+          {/* Floating card 1 — Crea webs (top-left) */}
           <div
-            ref={floatRef}
             style={{ opacity: 0 }}
-            className="absolute -right-6 sm:-right-16 md:-right-24 top-0 sm:-top-2 hidden sm:flex items-center gap-2.5 bg-zinc-800/95 backdrop-blur-md border border-zinc-700/80 px-3.5 py-2.5 rounded-2xl shadow-2xl shadow-black/60 z-30 rotate-[4deg]"
+            className="hero-float absolute -left-4 sm:-left-14 md:-left-24 top-2 sm:top-0 hidden sm:flex items-center gap-2 bg-zinc-800/95 backdrop-blur-md border border-zinc-700/80 px-3 py-2 rounded-xl shadow-2xl shadow-black/60 z-30 -rotate-[3deg]"
           >
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-              <Users size={15} className="text-white" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] flex items-center justify-center flex-shrink-0">
+              <Globe size={14} className="text-white" />
             </div>
             <div>
-              <p className="text-[12px] font-bold text-white flex items-center gap-1.5">
+              <p className="text-[11px] font-bold text-white">Crea webs y apps</p>
+              <p className="text-[9px] text-zinc-400">Deploy en segundos</p>
+            </div>
+          </div>
+
+          {/* Floating card 2 — Videos & logos (bottom-left) */}
+          <div
+            style={{ opacity: 0 }}
+            className="hero-float absolute -left-2 sm:-left-10 md:-left-16 bottom-0 sm:bottom-2 hidden sm:flex items-center gap-2 bg-zinc-800/95 backdrop-blur-md border border-zinc-700/80 px-3 py-2 rounded-xl shadow-2xl shadow-black/60 z-30 rotate-[2deg]"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center flex-shrink-0">
+              <Palette size={14} className="text-white" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-white">Logos y diseno</p>
+              <p className="text-[9px] text-zinc-400">Branding completo</p>
+            </div>
+          </div>
+
+          {/* Floating card 3 — Senior humano (right) */}
+          <div
+            style={{ opacity: 0 }}
+            className="hero-float absolute -right-4 sm:-right-14 md:-right-24 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-2 bg-zinc-800/95 backdrop-blur-md border border-zinc-700/80 px-3 py-2 rounded-xl shadow-2xl shadow-black/60 z-30 rotate-[4deg]"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+              <Users size={14} className="text-white" />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-white flex items-center gap-1.5">
                 ¿La IA no alcanzo?
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               </p>
-              <p className="text-[10px] text-zinc-400">Senior humano en 24h</p>
+              <p className="text-[9px] text-zinc-400">Senior humano en 24h</p>
             </div>
           </div>
         </div>
@@ -142,7 +176,7 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
         {/* Input box */}
         <div className="hero-anim max-w-[600px] mx-auto mb-6">
           <div className="relative group">
-            <div className="absolute -inset-[1px] bg-gradient-to-r from-purple-500/40 via-violet-500/30 to-purple-500/40 rounded-2xl blur-sm opacity-60 group-focus-within:opacity-100 transition-opacity duration-500" />
+            <div className="absolute -inset-[1px] bg-gradient-to-r from-[#a78bfa]/40 via-[#a78bfa]/30 to-[#a78bfa]/40 rounded-2xl blur-sm opacity-60 group-focus-within:opacity-100 transition-opacity duration-500" />
             <div className="relative bg-[#111113] border border-white/[0.1] rounded-2xl shadow-2xl">
               <div className="flex items-center">
                 <input
@@ -151,11 +185,11 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
                   onChange={e => setInputValue(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                   placeholder={inputValue ? '' : placeholder || '¿Que quieres crear hoy?'}
-                  className="flex-1 bg-transparent text-[15px] text-white placeholder:text-zinc-500 px-5 py-4 focus:outline-none"
+                  className="flex-1 bg-transparent text-[15px] text-white placeholder:text-zinc-300 px-5 py-4 focus:outline-none"
                 />
                 <button
                   onClick={handleSubmit}
-                  className="m-2 px-5 py-2.5 rounded-xl bg-[#7c3aed] text-white text-[13.5px] font-semibold hover:bg-[#6d28d9] transition-all flex items-center gap-1.5 shadow-[0_0_20px_rgba(124,58,237,0.3)]"
+                  className="m-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6] text-white text-[13.5px] font-semibold hover:bg-[#7c3aed] transition-all flex items-center gap-1.5 shadow-[0_0_20px_rgba(139,92,246,0.3)]"
                 >
                   Crear <ArrowRight size={14} />
                 </button>
@@ -170,7 +204,7 @@ const HeroSection = ({ onPromptClick }: HeroSectionProps) => {
             <button
               key={i}
               onClick={() => onPromptClick(s)}
-              className="px-3.5 py-[6px] text-[12px] text-zinc-500 bg-white/[0.03] border border-white/[0.07] rounded-full hover:border-purple-500/30 hover:text-zinc-300 hover:bg-purple-500/[0.05] transition-all"
+              className="px-3.5 py-[6px] text-[12px] text-zinc-500 bg-white/[0.03] border border-white/[0.07] rounded-full hover:border-[#a78bfa]/30 hover:text-zinc-300 hover:bg-[#a78bfa]/[0.05] transition-all"
             >
               {s}
             </button>

@@ -10,10 +10,17 @@ export interface Agent {
 }
 
 export interface MessageAttachment {
-  type: 'code' | 'preview' | 'task'
+  type: 'code' | 'preview' | 'task' | 'image_grid'
   title: string
   content: string
   deliverable?: Deliverable
+  images?: string[]
+}
+
+export interface QuickReply {
+  label: string
+  value: string
+  icon?: string
 }
 
 export interface Message {
@@ -32,6 +39,7 @@ export interface Message {
   inputTokens?: number
   outputTokens?: number
   creditsCost?: number
+  quickReplies?: QuickReply[]
 }
 
 export interface Deliverable {

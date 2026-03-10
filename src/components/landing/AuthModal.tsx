@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -9,20 +9,46 @@ interface AuthModalProps {
 }
 
 const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps) => {
-  const { login, register, error } = useAuth()
+  const { login, register, error, user } = useAuth()
   const [isRegister, setIsRegister] = useState(defaultMode === 'register')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const [lastDefault, setLastDefault] = useState(defaultMode)
-  if (defaultMode !== lastDefault) {
-    setLastDefault(defaultMode)
-    setIsRegister(defaultMode === 'register')
-  }
+  useEffect(() => {
+    if (isOpen) {
+      setIsRegister(defaultMode === 'register')
+      setEmail('')
+      setPassword('')
+      setName('')
+      setLoading(false)
+    }
+  }, [defaultMode, isOpen])
+
+  useEffect(() => {
+    if (user && isOpen) {
+      onClose()
+    }
+  }, [user, isOpen, onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, onClose])
 
   if (!isOpen) return null
+
+  const toggleMode = () => {
+    setIsRegister(prev => !prev)
+    setEmail('')
+    setPassword('')
+    setName('')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +59,6 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps
       } else {
         await login(email, password)
       }
-      onClose()
     } catch {
       // error set in context
     } finally {
@@ -54,7 +79,7 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps
         </button>
 
         <div className="text-center mb-7">
-          <div className="w-10 h-10 bg-gradient-to-br from-[#7c3aed] via-[#a855f7] to-[#c084fc] rounded-xl flex items-center justify-center text-white font-bold text-sm mx-auto mb-3">P</div>
+          <img src="/logo-light.png" alt="Plury" className="h-10 mx-auto mb-3" />
           <h2 className="text-[20px] font-bold text-white">
             {isRegister ? 'Crea tu cuenta gratis' : 'Bienvenido de vuelta'}
           </h2>
@@ -73,7 +98,7 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps
                 onChange={e => setName(e.target.value)}
                 placeholder="Tu nombre"
                 required
-                className="w-full px-3.5 py-2.5 text-[13.5px] bg-white/[0.04] border border-white/[0.08] rounded-xl outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white placeholder:text-zinc-600 transition-all"
+                className="w-full px-3.5 py-2.5 text-[13.5px] bg-white/[0.06] border border-white/[0.1] rounded-xl outline-none focus:border-[#a78bfa]/50 focus:ring-2 focus:ring-[#a78bfa]/10 text-white placeholder:text-zinc-400 transition-all"
               />
             </div>
           )}
@@ -86,7 +111,7 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps
               onChange={e => setEmail(e.target.value)}
               placeholder="tu@email.com"
               required
-              className="w-full px-3.5 py-2.5 text-[13.5px] bg-white/[0.04] border border-white/[0.08] rounded-xl outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white placeholder:text-zinc-600 transition-all"
+              className="w-full px-3.5 py-2.5 text-[13.5px] bg-white/[0.06] border border-white/[0.1] rounded-xl outline-none focus:border-[#a78bfa]/50 focus:ring-2 focus:ring-[#a78bfa]/10 text-white placeholder:text-zinc-400 transition-all"
             />
           </div>
 
@@ -99,7 +124,7 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps
               placeholder="••••••••"
               required
               minLength={6}
-              className="w-full px-3.5 py-2.5 text-[13.5px] bg-white/[0.04] border border-white/[0.08] rounded-xl outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white placeholder:text-zinc-600 transition-all"
+              className="w-full px-3.5 py-2.5 text-[13.5px] bg-white/[0.06] border border-white/[0.1] rounded-xl outline-none focus:border-[#a78bfa]/50 focus:ring-2 focus:ring-[#a78bfa]/10 text-white placeholder:text-zinc-400 transition-all"
             />
           </div>
 
@@ -118,8 +143,8 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'register' }: AuthModalProps
 
         <div className="mt-5 text-center">
           <button
-            onClick={() => setIsRegister(!isRegister)}
-            className="text-[12.5px] text-purple-400 font-medium hover:underline"
+            onClick={toggleMode}
+            className="text-[12.5px] text-[#a78bfa] font-medium hover:underline"
           >
             {isRegister ? 'Ya tengo cuenta' : 'Crear cuenta nueva'}
           </button>

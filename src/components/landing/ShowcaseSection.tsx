@@ -14,7 +14,7 @@ interface ShowcaseApp {
 }
 
 const botTypeGradient: Record<string, string> = {
-  web: 'from-purple-500/20 to-violet-500/5',
+  web: 'from-[#a78bfa]/20 to-[#a78bfa]/5',
   dev: 'from-amber-500/20 to-orange-500/5',
   seo: 'from-blue-500/20 to-cyan-500/5',
   ads: 'from-emerald-500/20 to-green-500/5',
@@ -25,9 +25,9 @@ const fallbackApps: ShowcaseApp[] = [
   { name: 'CRM Inmobiliario', author: '@carlos_dev', tags: ['SaaS', 'Dashboard'], color: 'from-blue-500/20 to-cyan-500/5' },
   { name: 'Tienda Organica', author: '@sara_design', tags: ['E-commerce', 'Food'], color: 'from-emerald-500/20 to-green-500/5' },
   { name: 'Portfolio Fotografo', author: '@luisphoto', tags: ['Portfolio', 'Minimal'], color: 'from-pink-500/20 to-rose-500/5' },
-  { name: 'App de Reservas', author: '@maria_ux', tags: ['Booking', 'App'], color: 'from-purple-500/20 to-indigo-500/5' },
+  { name: 'App de Reservas', author: '@maria_ux', tags: ['Booking', 'App'], color: 'from-[#a78bfa]/20 to-[#a78bfa]/5' },
   { name: 'Dashboard Finanzas', author: '@fintech_bro', tags: ['Finanzas', 'Charts'], color: 'from-amber-500/20 to-yellow-500/5' },
-  { name: 'Landing Startup', author: '@pablo_mk', tags: ['Landing', 'SaaS'], color: 'from-violet-500/20 to-purple-500/5' },
+  { name: 'Landing Startup', author: '@pablo_mk', tags: ['Landing', 'SaaS'], color: 'from-[#a78bfa]/20 to-[#a78bfa]/5' },
   { name: 'Blog de Cocina', author: '@chef_ana', tags: ['Blog', 'Food'], color: 'from-orange-500/20 to-red-500/5' },
   { name: 'Gym Tracker', author: '@fit_dev', tags: ['Health', 'Mobile'], color: 'from-cyan-500/20 to-teal-500/5' },
 ]
@@ -46,7 +46,7 @@ const ShowcaseSection = () => {
           name: d.title,
           author: `@${(d.authorName || 'anon').toLowerCase().replace(/\s+/g, '_')}`,
           tags: d.tags || ['Proyecto'],
-          color: botTypeGradient[d.botType] || 'from-purple-500/20 to-violet-500/5',
+          color: botTypeGradient[d.botType] || 'from-[#a78bfa]/20 to-[#a78bfa]/5',
           url: d.publishSlug ? `https://${d.publishSlug}.${APP_DOMAIN}` : undefined,
         }))
         if (real.length >= 4) setApps(real.slice(0, 8))
@@ -72,7 +72,7 @@ const ShowcaseSection = () => {
     <section ref={sectionRef} id="comunidad" className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
         <div className="show-anim text-center mb-14">
-          <p className="text-[12px] text-purple-400 uppercase tracking-[0.15em] font-semibold mb-3">Comunidad</p>
+          <p className="text-[12px] text-[#43f1f2] uppercase tracking-[0.15em] font-semibold mb-3">Comunidad</p>
           <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.025em] text-white mb-3">Hecho con Plury</h2>
           <p className="text-[16px] text-zinc-400 max-w-lg mx-auto">Proyectos reales creados por nuestra comunidad.</p>
         </div>
@@ -87,7 +87,7 @@ const ShowcaseSection = () => {
                 {...linkProps}
                 className="show-anim group cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden hover:border-white/[0.12] hover:-translate-y-1 transition-all"
               >
-                <div className={`h-[100px] bg-gradient-to-br ${app.color} p-3 flex items-end justify-between`}>
+                <div className="h-[100px] bg-gradient-to-br from-black/60 to-black/30 p-3 flex items-end justify-between">
                   <div className="flex gap-1.5">
                     {app.tags.map(tag => (
                       <span key={tag} className="text-[10px] bg-black/40 text-white/80 px-2 py-0.5 rounded-full backdrop-blur-md font-medium">{tag}</span>

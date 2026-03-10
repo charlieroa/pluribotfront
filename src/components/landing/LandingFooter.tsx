@@ -29,8 +29,7 @@ const LandingFooter = () => {
           {/* Brand column */}
           <div className="col-span-2 sm:col-span-3 lg:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 bg-gradient-to-br from-[#7c3aed] via-[#a855f7] to-[#c084fc] rounded-lg flex items-center justify-center text-white font-bold text-[10px]">P</div>
-              <span className="text-[15px] font-bold text-white">Plury</span>
+              <img src="/logo-light.png" alt="Plury" className="h-14" />
             </div>
             <p className="text-[12.5px] text-zinc-600 leading-[1.6] max-w-[200px]">
               Tu equipo creativo con IA. De la idea al producto en minutos.

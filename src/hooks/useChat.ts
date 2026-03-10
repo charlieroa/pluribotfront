@@ -16,26 +16,41 @@ export interface ConversationItem {
   title: string
   updatedAt: string
   lastMessage?: string
+  deliverableCount?: number
+  projectId?: string | null
+}
+
+export interface ProjectItem {
+  id: string
+  name: string
+  description?: string | null
+  status: string
+  conversationCount: number
+  deliverables: { id: string; title: string; type: string; botType: string; createdAt: string }[]
+  updatedAt: string
+  createdAt: string
 }
 
 interface UseChatOptions {
   onDeliverable?: (d: Deliverable) => void
+  onOpenWorkflow?: (prompt: string) => void
   isAuthenticated?: boolean
   onCreditUpdate?: (balance: number) => void
 }
 
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('pluribots_token')
+  const token = localStorage.getItem('plury_token')
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 }
 
-export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate }: UseChatOptions = {}) {
+export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false, onCreditUpdate }: UseChatOptions = {}) {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>(isAuthenticated ? initialTasks : [])
   const [conversations, setConversations] = useState<ConversationItem[]>([])
+  const [projects, setProjects] = useState<ProjectItem[]>([])
   const [assignedHumanAgent, setAssignedHumanAgent] = useState<{ name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null>(null)
   const [humanRequested, setHumanRequested] = useState(false)
 
@@ -59,6 +74,11 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
             if (existing) return prev.map(t => t.id === (data.task as KanbanTask).id ? data.task as KanbanTask : t)
             return [...prev, data.task as KanbanTask]
           })
+        }
+        return
+      case 'open_workflow':
+        if (onOpenWorkflow && data.prompt) {
+          onOpenWorkflow(data.prompt as string)
         }
         return
       case 'human_agent_joined':
@@ -92,7 +112,7 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
   const fetchConversations = useCallback(async () => {
     if (!isAuthenticated) { setConversations([]); return }
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch(`${API_BASE}/conversations`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
@@ -102,6 +122,21 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     }
   }, [isAuthenticated])
   useEffect(() => { fetchConversations() }, [fetchConversations])
+
+  // Fetch projects
+  const fetchProjects = useCallback(async () => {
+    if (!isAuthenticated) { setProjects([]); return }
+    try {
+      const token = localStorage.getItem('plury_token')
+      const res = await fetch(`${API_BASE}/projects`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (res.ok) setProjects(await res.json())
+    } catch (err) {
+      console.error('[Chat] Fetch projects error:', err)
+    }
+  }, [isAuthenticated])
+  useEffect(() => { fetchProjects() }, [fetchProjects])
 
   // Chat actions
   const actions = useChatActions({
@@ -113,7 +148,9 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     setIsRefining: planFlow.setIsRefining,
     setRefiningAgentName: planFlow.setRefiningAgentName,
     setPendingStepApproval: planFlow.setPendingStepApproval,
+    setPendingStepApprovals: planFlow.setPendingStepApprovals,
     pendingStepApproval: planFlow.pendingStepApproval,
+    pendingStepApprovals: planFlow.pendingStepApprovals,
     isCoordinating, pendingApproval: planFlow.pendingApproval,
     connectSSE, closeSSE, fetchConversations,
   })
@@ -144,8 +181,11 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
       setAssignedHumanAgent(null)
       setHumanRequested(false)
       planFlow.setCreditsExhausted(false)
+      planFlow.setQuickReplies([])
+      planFlow.setProjectSuggest(null)
       setKanbanTasks([])
       setConversations([])
+      setProjects([])
     }
   }, [isAuthenticated])
 
@@ -170,7 +210,10 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     setAssignedHumanAgent(null)
     setHumanRequested(false)
     planFlow.setCreditsExhausted(false)
+    planFlow.setQuickReplies([])
+    planFlow.setProjectSuggest(null)
     fetchConversations()
+    fetchProjects()
   }
 
   const loadConversation = async (convId: string) => {
@@ -210,6 +253,34 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
       setMessages(loadedMessages)
       if (data.kanbanTasks) setKanbanTasks(data.kanbanTasks)
 
+      // Auto-restore last deliverable from done kanban tasks
+      if (data.kanbanTasks && onDeliverable) {
+        const doneTasks = (data.kanbanTasks as KanbanTask[]).filter(t => t.status === 'done' && t.deliverable)
+        if (doneTasks.length > 0) {
+          const lastDone = doneTasks[doneTasks.length - 1]
+          if (lastDone.deliverable) onDeliverable(lastDone.deliverable)
+        }
+      }
+
+      // Restore coordination state if a plan is still executing
+      if (data.isExecuting && data.executingSteps) {
+        const agentNames: Record<string, string> = { seo: 'Lupa', web: 'Pixel', content: 'Pluma', ads: 'Metric', video: 'Reel', dev: 'Code', base: 'Pluria' }
+        const steps = data.executingSteps as Array<{ agentId: string; instanceId: string; task: string; completed: boolean }>
+        setIsCoordinating(true)
+        planFlow.setActiveAgents(steps.map(s => ({
+          agentId: s.agentId,
+          agentName: agentNames[s.agentId] || s.agentId,
+          instanceId: s.instanceId,
+          task: s.task,
+          status: s.completed ? 'done' as const : 'waiting' as const,
+        })))
+        planFlow.setCoordinationAgents(steps.map(s => ({
+          agentId: s.agentId,
+          agentName: agentNames[s.agentId] || s.agentId,
+          task: s.task,
+        })))
+      }
+
       await connectSSE(convId)
     } catch (err) {
       console.error('[Chat] Load conversation error:', err)
@@ -241,10 +312,51 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     }
   }
 
+  const createProject = async (name: string, convId?: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/projects`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) return null
+      const project = await res.json()
+      if (convId) {
+        await fetch(`${API_BASE}/projects/${project.id}/conversations`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ conversationId: convId }),
+        })
+      }
+      await fetchProjects()
+      await fetchConversations()
+      planFlow.setProjectSuggest(null)
+      return project.id
+    } catch (err) {
+      console.error('[Chat] Create project error:', err)
+      return null
+    }
+  }
+
+  const addConversationToProject = async (projectId: string, convId: string) => {
+    try {
+      await fetch(`${API_BASE}/projects/${projectId}/conversations`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ conversationId: convId }),
+      })
+      await fetchProjects()
+      await fetchConversations()
+      planFlow.setProjectSuggest(null)
+    } catch (err) {
+      console.error('[Chat] Add to project error:', err)
+    }
+  }
+
   const requestHumanAssistance = async () => {
     if (!conversationId) return
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       await fetch(`${API_BASE}/chat/${conversationId}/request-human`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -298,9 +410,25 @@ export function useChat({ onDeliverable, isAuthenticated = false, onCreditUpdate
     requestHumanAssistance,
     humanRequested,
     creditsExhausted: planFlow.creditsExhausted,
+    completionFlash: planFlow.completionFlash,
     isRefining: planFlow.isRefining,
     refiningAgentName: planFlow.refiningAgentName,
     sendRefineMessage: actions.sendRefineMessage,
     handleAbort: actions.handleAbort,
+    quickReplies: planFlow.quickReplies,
+    projectSuggest: planFlow.projectSuggest,
+    dismissProjectSuggest: () => planFlow.setProjectSuggest(null),
+    projects,
+    createProject,
+    addConversationToProject,
+    addSystemMessage: (text: string) => {
+      setMessages(prev => [...prev, {
+        id: `sys-${Date.now()}`,
+        sender: 'Places',
+        text,
+        type: 'agent' as const,
+        botType: 'video',
+      }])
+    },
   }
 }

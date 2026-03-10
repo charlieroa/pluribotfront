@@ -1,62 +1,36 @@
 import { useState } from 'react'
-import { Moon, Sun, Plus, Clock, CheckCircle2, Loader2, Store, LogIn, UserPlus, PanelLeftClose, PanelLeftOpen, MessageSquare, Bot, Settings, Trash2, Shield, UserCircle, Zap, Users, Building2, CreditCard, Wifi, Star } from 'lucide-react'
-import BotAvatar3D from '../avatars/BotAvatar3D'
-import { useTheme } from '../../contexts/ThemeContext'
+import { Plus, PanelLeftClose, PanelLeftOpen, MessageSquare, Trash2, FolderOpen, Package, Store, LayoutList } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import AuthModal from '../auth/AuthModal'
-import type { Agent } from '../../types'
-import type { ActiveAgent, ConversationItem } from '../../hooks/useChat'
-import type { Specialist } from '../../hooks/useSpecialists'
-import type { AdminTab } from '../admin/AdminDashboard'
+import type { ActiveAgent, ConversationItem, ProjectItem } from '../../hooks/useChat'
 
 interface SidebarProps {
-  activeTab: string
-  setActiveTab: (tab: string) => void
-  agents: Agent[]
   onNewChat: () => void
-  activeAgents?: ActiveAgent[]
   collapsed: boolean
   onToggleCollapse: () => void
   conversations?: ConversationItem[]
   currentConversationId?: string | null
   onLoadConversation?: (id: string) => void
   onDeleteConversation?: (id: string) => void
-  assignedHumanAgent?: { name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null
-  specialists?: Specialist[]
-  adminSubTab?: AdminTab
-  onAdminSubTabChange?: (tab: AdminTab) => void
+  projects?: ProjectItem[]
+  onOpenProject?: (id: string) => void
+  onOpenMarketplace?: () => void
+  onOpenTasks?: () => void
+  activeAgents?: ActiveAgent[]
 }
 
-type SidebarSection = 'chats' | 'bots'
-
-const adminTabs: { id: AdminTab; label: string; icon: typeof Users }[] = [
-  { id: 'users', label: 'Usuarios', icon: Users },
-  { id: 'agencies', label: 'Agencias', icon: Building2 },
-  { id: 'bots', label: 'Bots', icon: Bot },
-  { id: 'credits', label: 'Creditos', icon: CreditCard },
-  { id: 'apis', label: 'APIs', icon: Wifi },
-  { id: 'senior', label: 'Senior', icon: Star },
-]
-
-const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = [], collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, assignedHumanAgent, specialists = [], adminSubTab = 'users', onAdminSubTabChange }: SidebarProps) => {
-  const { isDark, toggle } = useTheme()
-  const { user, activeBots } = useAuth()
-  const [hoveredAgent, setHoveredAgent] = useState<string | null>(null)
+const Sidebar = ({ onNewChat, collapsed, onToggleCollapse, conversations = [], currentConversationId, onLoadConversation, onDeleteConversation, projects = [], onOpenProject, onOpenMarketplace, onOpenTasks }: SidebarProps) => {
+  const { user } = useAuth()
   const [showAuthModal, setShowAuthModal] = useState(false)
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
-  const [sidebarSection, setSidebarSection] = useState<SidebarSection>('bots')
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
+    if (currentConversationId && conversations.length > 0) {
+      const conv = conversations.find(c => c.id === currentConversationId)
+      if (conv?.projectId) return new Set([conv.projectId])
+    }
+    return new Set()
+  })
 
-  const activeByAgentId = new Map<string, ActiveAgent[]>()
-  for (const a of activeAgents) {
-    const list = activeByAgentId.get(a.agentId) || []
-    list.push(a)
-    activeByAgentId.set(a.agentId, list)
-  }
-  const hasActiveAgents = activeAgents.length > 0
   const isAuthenticated = !!user
-
-  const openLogin = () => { setAuthMode('login'); setShowAuthModal(true) }
-  const openRegister = () => { setAuthMode('register'); setShowAuthModal(true) }
 
   const formatTimeAgo = (dateStr: string) => {
     const diff = Date.now() - new Date(dateStr).getTime()
@@ -69,152 +43,60 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
     return `${days}d`
   }
 
-  // ─── Collapsed sidebar ───
+  // Collapsed sidebar
   if (collapsed) {
     return (
-      <>
-        <aside className="w-16 bg-surface border-r border-edge flex flex-col items-center py-4 gap-2">
-          {/* Logo */}
-          <button onClick={onToggleCollapse} className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20 mb-2 hover:opacity-80 transition-opacity">
-            <Bot size={18} className="text-white" />
-          </button>
+      <aside className="w-16 bg-surface border-r border-edge flex flex-col items-center py-4 gap-2">
+        <button onClick={onToggleCollapse} className="mb-2 hover:opacity-80 transition-opacity">
+          <img src="/logo-light.png" alt="Plury" className="h-16 hidden dark:block" />
+          <img src="/logo-dark.png" alt="Plury" className="h-16 dark:hidden" />
+        </button>
 
-          {/* New Chat */}
-          <button
-            onClick={() => { onNewChat(); setActiveTab('chat') }}
-            className="w-9 h-9 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg flex items-center justify-center transition-all"
-            title="Nuevo Chat"
-          >
-            <Plus size={18} />
-          </button>
+        <button
+          onClick={onNewChat}
+          className="w-9 h-9 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg flex items-center justify-center transition-all"
+          title="Nuevo Proyecto"
+        >
+          <Plus size={18} />
+        </button>
 
-          {/* Nav icons */}
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${activeTab === 'chat' ? 'bg-primary text-primary-fg' : 'text-ink-faint hover:text-ink hover:bg-subtle'}`}
-            title="Chat"
-          >
-            <MessageSquare size={18} />
-          </button>
-          {user && ['superadmin', 'org_admin', 'agent'].includes(user.role || '') && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${activeTab === 'admin' ? 'bg-violet-600 text-white' : 'text-violet-500 hover:text-violet-600 hover:bg-violet-500/10'}`}
-              title="Admin"
-            >
-              <Shield size={18} />
-            </button>
-          )}
+        <div className="flex-1" />
 
-          {/* Separator */}
-          <div className="w-6 h-px bg-edge my-1" />
+        <button
+          onClick={onOpenMarketplace}
+          className="w-9 h-9 text-ink-faint hover:text-ink hover:bg-subtle rounded-lg flex items-center justify-center transition-all"
+          title="Agentes"
+        >
+          <Store size={16} />
+        </button>
+        <button
+          onClick={onOpenTasks}
+          className="w-9 h-9 text-ink-faint hover:text-ink hover:bg-subtle rounded-lg flex items-center justify-center transition-all"
+          title="Tareas"
+        >
+          <LayoutList size={16} />
+        </button>
 
-          {activeTab === 'admin' ? (
-            /* Admin sub-tab icons (collapsed) */
-            <>
-              {adminTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => onAdminSubTabChange?.(tab.id)}
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-                    adminSubTab === tab.id
-                      ? 'bg-violet-600 text-white'
-                      : 'text-violet-400 hover:text-violet-500 hover:bg-violet-500/10'
-                  }`}
-                  title={tab.label}
-                >
-                  <tab.icon size={16} />
-                </button>
-              ))}
-            </>
-          ) : (
-            /* Active bot avatars */
-            <>
-              {agents.slice(0, 5).map(agent => {
-                const instances = activeByAgentId.get(agent.id) || []
-                const isWorking = instances.some(i => i.status === 'working')
-                const isBotActive = isAuthenticated ? activeBots.includes(agent.id) : false
-                if (!isAuthenticated && !isWorking) return null
-                if (isAuthenticated && !isBotActive && !isWorking) return null
-                return (
-                  <div key={agent.id} className="relative" title={agent.name}>
-                    <BotAvatar3D seed={agent.name} color={agent.color} isActive={isWorking} size="sm" />
-                    {isWorking && (
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full flex items-center justify-center">
-                        <Loader2 size={8} className="text-white animate-spin" />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-
-              {/* Specialist avatars (collapsed) */}
-              {specialists.slice(0, 3).map(spec => (
-                spec.avatarUrl ? (
-                  <img
-                    key={spec.id}
-                    src={spec.avatarUrl}
-                    alt={spec.name}
-                    className="w-9 h-9 rounded-lg object-cover"
-                    title={`${spec.name} — ${spec.specialty}`}
-                  />
-                ) : (
-                  <div
-                    key={spec.id}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center text-white"
-                    style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
-                    title={`${spec.name} — ${spec.specialty}`}
-                  >
-                    <UserCircle size={16} />
-                  </div>
-                )
-              ))}
-            </>
-          )}
-
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Expand button */}
-          <button
-            onClick={onToggleCollapse}
-            className="w-9 h-9 text-ink-faint hover:text-ink hover:bg-subtle rounded-lg flex items-center justify-center transition-all"
-            title="Expandir sidebar"
-          >
-            <PanelLeftOpen size={18} />
-          </button>
-
-          {/* Theme */}
-          <button onClick={toggle} className="w-9 h-9 text-ink-faint hover:text-primary rounded-lg flex items-center justify-center transition-all">
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-
-          {/* Settings */}
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${activeTab === 'settings' ? 'text-primary' : 'text-ink-faint hover:text-ink hover:bg-subtle'}`}
-            title="Configuración"
-          >
-            <Settings size={16} />
-          </button>
-        </aside>
-
-        <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} defaultMode={authMode} />
-      </>
+        <button
+          onClick={onToggleCollapse}
+          className="w-9 h-9 text-ink-faint hover:text-ink hover:bg-subtle rounded-lg flex items-center justify-center transition-all"
+          title="Expandir sidebar"
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+      </aside>
     )
   }
 
-  // ─── Expanded sidebar ───
+  // Expanded sidebar
   return (
     <>
       <aside className="w-80 bg-surface border-r border-edge flex flex-col">
         {/* Logo + Collapse */}
-        <div className="p-4 pb-3 border-b border-edge-soft flex items-center justify-between">
+        <div className="px-4 pt-2 pb-1 border-b border-edge-soft flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
-              <Bot size={16} className="text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-ink">Pluribots</span>
+            <img src="/logo-light.png" alt="Plury" className="h-16 hidden dark:block" />
+            <img src="/logo-dark.png" alt="Plury" className="h-16 dark:hidden" />
           </div>
           <button
             onClick={onToggleCollapse}
@@ -225,400 +107,198 @@ const Sidebar = ({ activeTab, setActiveTab, agents, onNewChat, activeAgents = []
           </button>
         </div>
 
-        {/* New Chat + Section Tabs (hidden in admin mode) */}
-        {activeTab !== 'admin' && (
-          <div className="px-4 pt-3 pb-2">
-            <button
-              onClick={() => { onNewChat(); setActiveTab('chat') }}
-              className="w-full flex items-center justify-center gap-2 p-2.5 bg-primary text-primary-fg rounded-xl font-semibold text-sm mb-3 hover:opacity-90 transition-all"
-            >
-              <Plus size={18} /> Nuevo Chat
-            </button>
+        {/* New Project button */}
+        <div className="px-4 pt-2 pb-2">
+          <button
+            onClick={onNewChat}
+            className="w-full flex items-center justify-center gap-2 p-2.5 bg-primary text-primary-fg rounded-xl font-semibold text-sm mb-1 hover:opacity-90 transition-all"
+          >
+            <Plus size={18} /> Nuevo Proyecto
+          </button>
+        </div>
 
-            <div className="flex gap-1 bg-subtle rounded-lg p-0.5">
-              <button
-                onClick={() => setSidebarSection('bots')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
-                  sidebarSection === 'bots' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'
-                }`}
-              >
-                <Bot size={13} />
-                Bots
-                {hasActiveAgents && (
-                  <span className="w-4 h-4 text-[9px] font-bold bg-primary text-primary-fg rounded-full flex items-center justify-center">
-                    {activeAgents.filter(a => a.status === 'working').length || activeAgents.length}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setSidebarSection('chats')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-md transition-all ${
-                  sidebarSection === 'chats' ? 'bg-surface text-ink shadow-sm' : 'text-ink-faint hover:text-ink'
-                }`}
-              >
-                <MessageSquare size={13} />
-                Chats
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Scrollable content area */}
+        {/* Scrollable conversations */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {activeTab === 'admin' ? (
-            // ─── Admin navigation ───
-            <div className="px-4 py-2">
-              <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wide mb-2 px-1">Panel Admin</p>
-              <div className="space-y-0.5">
-                {adminTabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => onAdminSubTabChange?.(tab.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
-                      adminSubTab === tab.id
-                        ? 'bg-violet-600/10 text-violet-600 border-l-4 border-violet-600'
-                        : 'text-ink-faint hover:text-ink hover:bg-subtle border-l-4 border-transparent'
-                    }`}
-                  >
-                    <tab.icon size={16} className={adminSubTab === tab.id ? 'text-violet-600' : ''} />
-                    <span className="text-sm font-semibold">{tab.label}</span>
-                  </button>
-                ))}
+          <div className="px-4 py-2">
+            {!isAuthenticated ? (
+              <div className="text-center py-8">
+                <FolderOpen size={32} className="mx-auto text-ink-faint/30 mb-3" />
+                <p className="text-xs text-ink-faint mb-1">Registrate para guardar tus proyectos</p>
+                <button onClick={() => setShowAuthModal(true)} className="text-xs font-semibold text-primary hover:underline">
+                  Crear cuenta
+                </button>
               </div>
-            </div>
-          ) : sidebarSection === 'chats' ? (
-            // ─── Chats section ───
-            <div className="px-4 py-2">
-              {!isAuthenticated ? (
-                <div className="text-center py-8">
-                  <MessageSquare size={32} className="mx-auto text-ink-faint/30 mb-3" />
-                  <p className="text-xs text-ink-faint mb-1">Regístrate para guardar tus chats</p>
-                  <button onClick={openRegister} className="text-xs font-semibold text-primary hover:underline">
-                    Crear cuenta
-                  </button>
-                </div>
-              ) : conversations.length === 0 ? (
-                <div className="text-center py-8">
-                  <MessageSquare size={32} className="mx-auto text-ink-faint/30 mb-3" />
-                  <p className="text-xs text-ink-faint">No hay conversaciones aun</p>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {conversations.map(conv => (
-                    <div
-                      key={conv.id}
-                      className={`relative w-full text-left p-3 rounded-xl transition-all group ${
-                        currentConversationId === conv.id
-                          ? 'bg-primary/10 border border-primary/20'
-                          : 'hover:bg-subtle border border-transparent'
-                      }`}
-                    >
-                      <button
-                        onClick={() => onLoadConversation?.(conv.id)}
-                        className="w-full text-left"
-                      >
-                        <div className="flex items-start justify-between gap-2 pr-6">
-                          <p className={`text-sm font-semibold truncate ${
-                            currentConversationId === conv.id ? 'text-primary' : 'text-ink group-hover:text-ink'
-                          }`}>
-                            {conv.title}
-                          </p>
-                          <span className="text-[10px] text-ink-faint flex-shrink-0">
-                            {formatTimeAgo(conv.updatedAt)}
-                          </span>
-                        </div>
-                        {conv.lastMessage && (
-                          <p className="text-[11px] text-ink-faint truncate mt-0.5 pr-6">
-                            {conv.lastMessage.slice(0, 60)}
-                          </p>
-                        )}
-                      </button>
-                      {/* Delete button */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onDeleteConversation?.(conv.id) }}
-                        className="absolute top-3 right-2 p-1 text-ink-faint/0 group-hover:text-ink-faint hover:!text-red-500 rounded transition-all"
-                        title="Eliminar chat"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            // ─── Bots section ───
-            <div className="px-4 py-2">
+            ) : conversations.length === 0 && projects.length === 0 ? (
+              <div className="text-center py-8">
+                <FolderOpen size={32} className="mx-auto text-ink-faint/30 mb-3" />
+                <p className="text-xs text-ink-faint">No hay proyectos aun</p>
+              </div>
+            ) : (
               <div className="space-y-1">
-                {agents.map(agent => {
-                  const instances = activeByAgentId.get(agent.id) || []
-                  const instanceCount = instances.length
-                  const hasWorkingInstance = instances.some(i => i.status === 'working')
-                  const hasDoneInstance = instances.some(i => i.status === 'done')
-                  const hasWaitingInstance = instances.some(i => i.status === 'waiting')
-                  const isParticipating = instanceCount > 0
-                  const isBotActive = isAuthenticated ? activeBots.includes(agent.id) : false
-                  const isBotOff = !isAuthenticated || !isBotActive
-                  const primaryStatus = hasWorkingInstance ? 'working' : hasDoneInstance ? 'done' : hasWaitingInstance ? 'waiting' : null
+                {/* Grouped projects */}
+                {projects.map(project => {
+                  const projectConvs = conversations.filter(c => c.projectId === project.id)
+                  const isExpanded = expandedProjects.has(project.id)
+                  const hasActiveConv = projectConvs.some(c => c.id === currentConversationId)
 
                   return (
-                    <div
-                      key={agent.id}
-                      className={`relative w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
-                        isBotOff
-                          ? 'opacity-40 border-l-4 border-transparent'
-                          : hasWorkingInstance
-                            ? 'bg-primary-soft border-l-4 border-primary'
-                            : hasDoneInstance
-                              ? 'bg-emerald-500/5 border-l-4 border-emerald-500'
-                              : hasWaitingInstance
-                                ? 'bg-amber-500/5 border-l-4 border-amber-400'
-                                : hasActiveAgents && !isParticipating
-                                  ? 'opacity-40 border-l-4 border-transparent'
-                                  : 'hover:bg-surface-alt border-l-4 border-transparent'
-                      }`}
-                      onMouseEnter={() => setHoveredAgent(agent.id)}
-                      onMouseLeave={() => setHoveredAgent(null)}
-                    >
-                      <div className="relative">
-                        <BotAvatar3D seed={agent.name} color={agent.color} isActive={!isBotOff && (hasWorkingInstance || hasDoneInstance)} size="md" />
-                        {!isBotOff && primaryStatus === 'working' && (
-                          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-                            <Loader2 size={10} className="text-white animate-spin" />
-                          </div>
-                        )}
-                        {!isBotOff && primaryStatus === 'done' && (
-                          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                            <CheckCircle2 size={10} className="text-white" />
-                          </div>
-                        )}
-                        {!isBotOff && primaryStatus === 'waiting' && (
-                          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-amber-400 rounded-full flex items-center justify-center">
-                            <Clock size={10} className="text-white" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-bold text-ink truncate">{agent.name}</p>
-                          {instanceCount > 1 && (
-                            <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
-                              x{instanceCount}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-ink-faint truncate">
-                          {isBotOff ? 'Inactivo' : agent.role}
+                    <div key={project.id}>
+                      <button
+                        onClick={() => {
+                          if (onOpenProject) {
+                            onOpenProject(project.id)
+                          } else {
+                            setExpandedProjects(prev => {
+                              const next = new Set(prev)
+                              next.has(project.id) ? next.delete(project.id) : next.add(project.id)
+                              return next
+                            })
+                          }
+                        }}
+                        className={`w-full flex items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
+                          hasActiveConv ? 'bg-primary/5' : 'hover:bg-subtle'
+                        }`}
+                      >
+                        <FolderOpen size={14} className={`flex-shrink-0 transition-colors ${hasActiveConv ? 'text-primary' : 'text-ink-faint'}`} />
+                        <p className={`text-xs font-bold truncate flex-1 ${hasActiveConv ? 'text-primary' : 'text-ink'}`}>
+                          {project.name}
                         </p>
-                      </div>
+                        <span className="text-[9px] text-ink-faint bg-subtle px-1.5 py-0.5 rounded-full font-semibold">
+                          {projectConvs.length}
+                        </span>
+                        <svg
+                          className={`w-3 h-3 text-ink-faint transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
 
-                      {/* Tooltip */}
-                      {hoveredAgent === agent.id && instances.length > 0 && (
-                        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 bg-slate-900 text-white text-[11px] px-3 py-2 rounded-lg shadow-xl max-w-[260px] pointer-events-none">
-                          {instances.map((inst, i) => (
-                            <div key={inst.instanceId} className={i > 0 ? 'mt-1.5 pt-1.5 border-t border-slate-700' : ''}>
-                              <p className="font-bold mb-0.5 text-slate-400">
-                                {inst.instanceId} — {inst.status === 'working' ? 'Trabajando' : inst.status === 'done' ? 'Listo' : 'Pendiente'}
-                              </p>
-                              <p className="text-slate-300 leading-relaxed">{inst.task}</p>
+                      {isExpanded && projectConvs.length > 0 && (
+                        <div className="ml-4 border-l border-edge pl-2 space-y-0.5 mt-0.5">
+                          {projectConvs.map(conv => (
+                            <div
+                              key={conv.id}
+                              className={`relative w-full text-left p-2 rounded-lg transition-all group ${
+                                currentConversationId === conv.id
+                                  ? 'bg-primary/10 border border-primary/20'
+                                  : 'hover:bg-subtle border border-transparent'
+                              }`}
+                            >
+                              <button onClick={() => onLoadConversation?.(conv.id)} className="w-full text-left">
+                                <div className="flex items-center gap-1.5 pr-5">
+                                  <MessageSquare size={11} className="text-ink-faint flex-shrink-0" />
+                                  <p className={`text-[11px] font-semibold truncate ${
+                                    currentConversationId === conv.id ? 'text-primary' : 'text-ink'
+                                  }`}>
+                                    {conv.title}
+                                  </p>
+                                  {(conv.deliverableCount ?? 0) > 0 && (
+                                    <span className="flex items-center gap-0.5 px-1 py-0.5 bg-primary-soft text-primary rounded-full flex-shrink-0">
+                                      <Package size={7} />
+                                      <span className="text-[8px] font-bold">{conv.deliverableCount}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteConversation?.(conv.id) }}
+                                className="absolute top-2 right-1 p-0.5 text-ink-faint/0 group-hover:text-ink-faint hover:!text-red-500 rounded transition-all"
+                              >
+                                <Trash2 size={11} />
+                              </button>
                             </div>
                           ))}
-                          <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900" />
                         </div>
                       )}
                     </div>
                   )
                 })}
-              </div>
 
-              {/* Specialists */}
-              {specialists.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wide mb-1.5 px-1">Especialistas</p>
-                  <div className="space-y-1">
-                    {specialists.map(spec => (
-                      <div
-                        key={spec.id}
-                        className="flex items-center gap-3 p-3 rounded-xl border-l-4"
-                        style={{ borderColor: spec.specialtyColor || '#8b5cf6', backgroundColor: `${spec.specialtyColor || '#8b5cf6'}08` }}
-                      >
-                        {spec.avatarUrl ? (
-                          <img src={spec.avatarUrl} alt={spec.name} className="w-10 h-10 rounded-xl flex-shrink-0 object-cover" />
-                        ) : (
-                          <div
-                            className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
-                            style={{ backgroundColor: spec.specialtyColor || '#8b5cf6' }}
-                          >
-                            <UserCircle size={18} />
-                          </div>
-                        )}
-                        <div className="flex-1 overflow-hidden">
-                          <p className="text-sm font-bold text-ink truncate">{spec.name}</p>
-                          <p className="text-xs truncate" style={{ color: spec.specialtyColor || '#8b5cf6' }}>
-                            {spec.specialty} — Disponible
-                          </p>
+                {/* Ungrouped conversations */}
+                {(() => {
+                  const projectIds = new Set(projects.map(p => p.id))
+                  const ungrouped = conversations.filter(c => !c.projectId || !projectIds.has(c.projectId))
+                  if (ungrouped.length === 0) return null
+
+                  return (
+                    <>
+                      {projects.length > 0 && (
+                        <div className="pt-2 pb-1">
+                          <p className="text-[9px] font-bold text-ink-faint uppercase tracking-wider px-1">Chats sueltos</p>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Assigned human agent */}
-              {assignedHumanAgent && (() => {
-                const agentColor = assignedHumanAgent.specialtyColor || '#8b5cf6'
-                return (
-                  <div className="mt-2 w-full flex items-center gap-3 p-3 rounded-xl border-l-4" style={{ borderColor: agentColor, backgroundColor: `${agentColor}08` }}>
-                    {assignedHumanAgent.avatarUrl ? (
-                      <img src={assignedHumanAgent.avatarUrl} alt={assignedHumanAgent.name} className="w-10 h-10 rounded-xl flex-shrink-0 object-cover" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: agentColor }}>
-                        <Shield size={18} />
-                      </div>
-                    )}
-                    <div className="flex-1 overflow-hidden">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-bold text-ink truncate">{assignedHumanAgent.name}</p>
-                      </div>
-                      <p className="text-xs truncate" style={{ color: agentColor }}>{assignedHumanAgent.specialty || assignedHumanAgent.role} — En linea</p>
-                    </div>
-                    <div className="w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0" style={{ backgroundColor: agentColor }} />
-                  </div>
-                )
-              })()}
-
-              {/* Marketplace link */}
-              <button
-                onClick={() => setActiveTab('marketplace')}
-                className="w-full flex items-center justify-center gap-1.5 mt-3 py-2 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/5 hover:bg-primary/10 rounded-lg transition-all"
-              >
-                <Store size={14} />
-                Ver Marketplace
-              </button>
-            </div>
-          )}
+                      )}
+                      {ungrouped.map(conv => (
+                        <div
+                          key={conv.id}
+                          className={`relative w-full text-left p-3 rounded-xl transition-all group ${
+                            currentConversationId === conv.id
+                              ? 'bg-primary/10 border border-primary/20'
+                              : 'hover:bg-subtle border border-transparent'
+                          }`}
+                        >
+                          <button onClick={() => onLoadConversation?.(conv.id)} className="w-full text-left">
+                            <div className="flex items-start justify-between gap-2 pr-6">
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                <p className={`text-sm font-semibold truncate ${
+                                  currentConversationId === conv.id ? 'text-primary' : 'text-ink group-hover:text-ink'
+                                }`}>
+                                  {conv.title}
+                                </p>
+                                {(conv.deliverableCount ?? 0) > 0 && (
+                                  <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-primary-soft text-primary rounded-full flex-shrink-0">
+                                    <Package size={9} />
+                                    <span className="text-[9px] font-bold">{conv.deliverableCount}</span>
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-ink-faint flex-shrink-0">
+                                {formatTimeAgo(conv.updatedAt)}
+                              </span>
+                            </div>
+                            {conv.lastMessage && (
+                              <p className="text-[11px] text-ink-faint truncate mt-0.5 pr-6">
+                                {conv.lastMessage.slice(0, 60)}
+                              </p>
+                            )}
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDeleteConversation?.(conv.id) }}
+                            className="absolute top-3 right-2 p-1 text-ink-faint/0 group-hover:text-ink-faint hover:!text-red-500 rounded transition-all"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Bottom nav icons */}
-        <div className="px-4 py-2 border-t border-edge-soft flex items-center gap-1">
+        {/* Bottom — 2 icon buttons */}
+        <div className="px-4 py-3 border-t border-edge-soft flex items-center gap-2">
           <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${
-              activeTab === 'chat' ? 'text-primary bg-primary/10' : 'text-ink-faint hover:text-ink hover:bg-subtle'
-            }`}
+            onClick={onOpenMarketplace}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold rounded-lg text-ink-faint hover:text-ink hover:bg-subtle transition-all"
           >
-            <MessageSquare size={13} />
-            Chat
+            <Store size={14} />
+            Agentes
           </button>
           <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${
-              activeTab === 'settings' ? 'text-primary bg-primary/10' : 'text-ink-faint hover:text-ink hover:bg-subtle'
-            }`}
+            onClick={onOpenTasks}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold rounded-lg text-ink-faint hover:text-ink hover:bg-subtle transition-all"
           >
-            <Settings size={13} />
-            Ajustes
+            <LayoutList size={14} />
+            Tareas
           </button>
-        </div>
-
-        {/* User Profile / Auth Section */}
-        <div className="p-4 border-t border-edge-soft">
-          {user ? (
-            <div className="bg-subtle rounded-2xl p-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-fg text-xs font-bold">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-                <button onClick={() => setActiveTab('settings')} className="flex-1 overflow-hidden text-left hover:opacity-80 transition-opacity">
-                  <p className="text-xs font-bold text-ink truncate">{user.name}</p>
-                  <p className="text-[10px] text-ink-faint truncate">{user.email}</p>
-                </button>
-                <button onClick={toggle} className="p-1.5 text-ink-faint hover:text-primary transition-colors">
-                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
-                </button>
-              </div>
-              {/* Credit balance indicator */}
-              {user.creditBalance != null && (() => {
-                const planCredits: Record<string, number> = { starter: 50, pro: 500, agency: 2500, enterprise: 10000 }
-                const max = planCredits[user.planId] ?? 100
-                const balance = Math.max(0, user.creditBalance)
-                const pct = Math.min((balance / max) * 100, 100)
-                const isLow = pct < 20
-                return (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between text-[10px] mb-0.5">
-                      <span className="flex items-center gap-0.5 text-ink-faint font-medium">
-                        <Zap size={9} className={isLow ? 'text-red-500' : 'text-amber-500'} />
-                        Creditos
-                      </span>
-                      <span className={`font-bold ${isLow ? 'text-red-500' : 'text-ink-light'}`}>
-                        {balance} / {max}
-                      </span>
-                    </div>
-                    <div className="w-full bg-inset h-1.5 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${isLow ? 'bg-red-500' : pct < 50 ? 'bg-amber-500' : 'bg-primary'}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })()}
-              {/* Admin access / back to user view */}
-              {['superadmin', 'org_admin', 'agent'].includes(user.role || '') && (
-                activeTab === 'admin' ? (
-                  <button
-                    onClick={() => setActiveTab('chat')}
-                    className="w-full flex items-center justify-center gap-1.5 mt-2 py-1.5 text-[11px] font-bold rounded-lg transition-all text-primary bg-primary/10 hover:bg-primary/20"
-                  >
-                    <MessageSquare size={12} />
-                    Ver como usuario
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setActiveTab('admin')}
-                    className="w-full flex items-center justify-center gap-1.5 mt-2 py-1.5 text-[11px] font-bold rounded-lg transition-all text-violet-500 bg-violet-500/10 hover:bg-violet-500/20"
-                  >
-                    <Shield size={12} />
-                    Panel Admin
-                  </button>
-                )
-              )}
-            </div>
-          ) : (
-            <div className="bg-subtle rounded-2xl p-3">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 bg-slate-300 rounded-lg flex items-center justify-center text-slate-500 text-xs font-bold">?</div>
-                <div className="flex-1">
-                  <p className="text-xs font-bold text-ink">Invitado</p>
-                  <p className="text-[10px] text-ink-faint">Regístrate para activar bots</p>
-                </div>
-                <button onClick={toggle} className="p-1.5 text-ink-faint hover:text-primary transition-colors">
-                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={openLogin}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold text-ink-light hover:text-ink bg-surface rounded-lg border border-edge hover:border-primary/30 transition-all"
-                >
-                  <LogIn size={12} />
-                  Iniciar sesión
-                </button>
-                <button
-                  onClick={openRegister}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all"
-                >
-                  <UserPlus size={12} />
-                  Regístrate
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </aside>
 
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} defaultMode={authMode} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} defaultMode="register" />
     </>
   )
 }

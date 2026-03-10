@@ -1,8 +1,8 @@
-# Pluribots
+# Plury
 
-> Pluribots es una plataforma SaaS de agentes de inteligencia artificial especializados que crean activos digitales para negocios: logos, landing pages, campañas de publicidad, videos, auditorías SEO y más. Los usuarios describen lo que necesitan en lenguaje natural y los agentes lo ejecutan de forma autónoma con plan de ejecución aprobable.
+> Plury es una plataforma SaaS de agentes de inteligencia artificial especializados que crean activos digitales para negocios: logos, landing pages, campañas de publicidad, videos, auditorías SEO y más. Los usuarios describen lo que necesitan en lenguaje natural y los agentes lo ejecutan de forma autónoma con plan de ejecución aprobable.
 
-Pluribots es un producto dirigido a emprendedores, dueños de negocio, marketers y agencias de Latinoamérica que necesitan producir activos de marketing digital sin equipo técnico.
+Plury es un producto dirigido a emprendedores, dueños de negocio, marketers y agencias de Latinoamérica que necesitan producir activos de marketing digital sin equipo técnico.
 
 La plataforma cuenta con 7 agentes especializados de IA:
 - **Lupa** — Estratega SEO: auditorías, keywords, backlinks, posicionamiento en Google
@@ -32,14 +32,14 @@ Stack tecnológico:
 
 ## Producto
 
-- [Página principal](https://pluribots.com): Aplicación principal de Pluribots
-- [Marketplace de agentes](https://pluribots.com/#marketplace): Descubre y activa los 7 agentes especializados
+- [Página principal](https://plury.co): Aplicación principal de Plury
+- [Marketplace de agentes](https://plury.co/#marketplace): Descubre y activa los 7 agentes especializados
 
 ## Planes y precios
 
-- [Plan Starter](https://pluribots.com/#settings): Gratis — 100 créditos/mes, 2 agentes
-- [Plan Pro](https://pluribots.com/#settings): $49/mes — 1,000 créditos/mes, 7 agentes, modelos premium
-- [Plan Agency](https://pluribots.com/#settings): $149/mes — 5,000 créditos/mes, agentes ilimitados, White Label, equipo
+- [Plan Starter](https://plury.co/#settings): Gratis — 100 créditos/mes, 2 agentes
+- [Plan Pro](https://plury.co/#settings): $49/mes — 1,000 créditos/mes, 7 agentes, modelos premium
+- [Plan Agency](https://plury.co/#settings): $149/mes — 5,000 créditos/mes, agentes ilimitados, White Label, equipo
 
 ## Casos de uso
 
@@ -51,7 +51,13 @@ Stack tecnológico:
 - Diseñar posts y stories para redes sociales
 - Construir una página web funcional con código
 
+## API
+
+- [Documentación API](https://plury.co/docs.html): Documentación completa de la API REST v1 y Project API
+- [OpenAPI spec](https://plury.co/api/v1/docs): Especificación OpenAPI 3.0 en JSON
+- [Agentes disponibles](https://plury.co/api/v1/agents): Lista de agentes de IA con capacidades
+
 ## Optional
 
-- [Términos de servicio](https://pluribots.com/terms): Términos y condiciones de uso
-- [Política de privacidad](https://pluribots.com/privacy): Política de privacidad y datos
+- [Términos de servicio](https://plury.co/terms): Términos y condiciones de uso
+- [Política de privacidad](https://plury.co/privacy): Política de privacidad y datos

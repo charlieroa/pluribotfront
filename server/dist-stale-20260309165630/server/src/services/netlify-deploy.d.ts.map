@@ -1,0 +1,1 @@
+{"version":3,"file":"netlify-deploy.d.ts","sourceRoot":"","sources":["../../../../src/services/netlify-deploy.ts"],"names":[],"mappings":"AAEA,MAAM,WAAW,mBAAmB;IAClC,GAAG,EAAE,MAAM,CAAA;IACX,MAAM,EAAE,MAAM,CAAA;IACd,QAAQ,EAAE,MAAM,CAAA;IAChB,QAAQ,EAAE,MAAM,CAAA;CACjB;AAED,wBAAsB,eAAe,CACnC,WAAW,EAAE,MAAM,EACnB,cAAc,CAAC,EAAE,MAAM,GACtB,OAAO,CAAC,mBAAmB,CAAC,CAyD9B"}

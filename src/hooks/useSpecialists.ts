@@ -15,7 +15,7 @@ export function useSpecialists() {
   const fetchSpecialists = useCallback(async () => {
     setLoading(true)
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch('/api/organization/specialists', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })

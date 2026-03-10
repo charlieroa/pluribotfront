@@ -28,7 +28,7 @@ const botSuggestions: Record<Profession, string[]> = {
 
 const allBots = [
   { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorías SEO, keywords y posicionamiento' },
-  { id: 'web', name: 'Pixel', role: 'Diseñador Visual', color: '#a855f7', desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual' },
+  { id: 'web', name: 'Pixel', role: 'Diseñador Visual', color: '#a78bfa', desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual' },
   { id: 'ads', name: 'Metric', role: 'Especialista en Publicidad', color: '#10b981', desc: 'Campañas Meta Ads y Google Ads' },
   { id: 'video', name: 'Reel', role: 'Creador de video', color: '#ef4444', desc: 'Reels y videos con IA generativa' },
 ]
@@ -70,7 +70,7 @@ const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) 
       <div className="w-full max-w-2xl mx-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/30">
+          <div className="w-14 h-14 bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-[#a78bfa]/30">
             <Bot size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-ink mb-1">

@@ -24,6 +24,13 @@ import seniorRouter from './routes/senior.js'
 import deployRouter from './routes/deploy.js'
 import portfolioRouter from './routes/portfolio.js'
 import domainsRouter from './routes/domains.js'
+import githubRouter from './routes/github.js'
+import metaRouter from './routes/meta.js'
+import projectDataRouter from './routes/project-data.js'
+import workflowRouter from './routes/workflow.js'
+import projectsRouter from './routes/projects.js'
+import apiKeysRouter from './routes/api-keys.js'
+import v1Router from './routes/v1.js'
 import { errorHandler } from './middleware/errors.js'
 import { getDeployDir } from './services/deploy.js'
 import { subdomainMiddleware } from './middleware/subdomain.js'
@@ -45,10 +52,10 @@ app.use(cors({
     // Allow requests with no origin (server-to-server, curl, mobile apps)
     if (!origin) return callback(null, true)
     if (allowedOrigins.includes(origin)) return callback(null, true)
-    // Allow any *.pluribots.com subdomain
+    // Allow any *.plury.co subdomain
     try {
       const url = new URL(origin)
-      if (url.hostname.endsWith('.pluribots.com')) return callback(null, true)
+      if (url.hostname.endsWith('.plury.co')) return callback(null, true)
     } catch { /* ignore parse errors */ }
     callback(new Error(`Origin ${origin} not allowed by CORS`))
   },
@@ -66,6 +73,7 @@ app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')))
 app.use('/api/auth', authRouter)
 app.use('/api/chat', chatRouter)
 app.use('/api/conversations', conversationsRouter)
+app.use('/api/projects', projectsRouter)
 app.use('/api/usage', usageRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/upload', uploadRouter)
@@ -76,6 +84,12 @@ app.use('/api/senior', seniorRouter)
 app.use('/api/deploy', deployRouter)
 app.use('/api/domains', domainsRouter)
 app.use('/api/portfolio', portfolioRouter)
+app.use('/api/github', githubRouter)
+app.use('/api/meta', metaRouter)
+app.use('/api/project', projectDataRouter)
+app.use('/api/workflow', workflowRouter)
+app.use('/api/api-keys', apiKeysRouter)
+app.use('/api/v1', v1Router)
 
 // Serve deployed projects as static files
 app.use('/deploys', express.static(getDeployDir()))
@@ -117,5 +131,5 @@ app.get('/api/bots/available', async (_req, res) => {
 app.use(errorHandler)
 
 app.listen(PORT, () => {
-  console.log(`[Pluribots] Server running on http://localhost:${PORT}`)
+  console.log(`[Plury] Server running on http://localhost:${PORT}`)
 })

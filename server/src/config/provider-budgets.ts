@@ -14,22 +14,24 @@ export interface ProviderBudget {
   setAt: string        // ISO date
 }
 
-export type BudgetProvider = 'anthropic' | 'openai' | 'google' | 'midjourney' | 'deepseek'
+export type BudgetProvider = 'anthropic' | 'midjourney'
 
 type BudgetsMap = Record<BudgetProvider, ProviderBudget | null>
 
 const EMPTY_BUDGETS: BudgetsMap = {
   anthropic: null,
-  openai: null,
-  google: null,
   midjourney: null,
-  deepseek: null,
 }
 
 function readBudgets(): BudgetsMap {
   if (!existsSync(BUDGETS_FILE)) return { ...EMPTY_BUDGETS }
   try {
-    return { ...EMPTY_BUDGETS, ...JSON.parse(readFileSync(BUDGETS_FILE, 'utf-8')) }
+    const raw = JSON.parse(readFileSync(BUDGETS_FILE, 'utf-8'))
+    // Only pick valid keys
+    return {
+      anthropic: raw.anthropic ?? null,
+      midjourney: raw.midjourney ?? null,
+    }
   } catch {
     return { ...EMPTY_BUDGETS }
   }

@@ -598,9 +598,6 @@ router.get('/costs', superadminAuth, async (_req, res) => {
     // 2. Calculate real USD cost per model and aggregate by provider
     const byProvider: Record<string, { cost: number; tokens: { input: number; output: number } }> = {
       anthropic: { cost: 0, tokens: { input: 0, output: 0 } },
-      openai: { cost: 0, tokens: { input: 0, output: 0 } },
-      google: { cost: 0, tokens: { input: 0, output: 0 } },
-      deepseek: { cost: 0, tokens: { input: 0, output: 0 } },
     }
 
     const byModel: Array<{ model: string; calls: number; cost: number; creditsCharged: number }> = []
@@ -709,14 +706,75 @@ router.get('/costs', superadminAuth, async (_req, res) => {
     const midjourneyCost = midjourneyToolData ? midjourneyToolData.cost : 0
 
     const budgetStatus: Record<string, { budget: number; used: number; remaining: number; alert: boolean; setAt: string } | null> = {}
-    for (const provider of ['anthropic', 'openai', 'google', 'deepseek'] as const) {
-      const providerCost = byProvider[provider]?.cost ?? 0
-      const result = calculateRemaining(budgets[provider], providerCost)
-      budgetStatus[provider] = result ? { ...result, budget: budgets[provider]!.budget, setAt: budgets[provider]!.setAt } : null
-    }
+    const anthropicCost = byProvider['anthropic']?.cost ?? 0
+    const anthropicResult = calculateRemaining(budgets.anthropic, anthropicCost)
+    budgetStatus['anthropic'] = anthropicResult ? { ...anthropicResult, budget: budgets.anthropic!.budget, setAt: budgets.anthropic!.setAt } : null
     // Midjourney budget
     const mjResult = calculateRemaining(budgets.midjourney, midjourneyCost)
     budgetStatus['midjourney'] = mjResult ? { ...mjResult, budget: budgets.midjourney!.budget, setAt: budgets.midjourney!.setAt } : null
+
+    // 8. Cache stats from UsageRecord
+    const cacheAgg = await prisma.usageRecord.aggregate({
+      _sum: {
+        inputTokens: true,
+        cacheCreationInputTokens: true,
+        cacheReadInputTokens: true,
+      },
+    })
+    const totalInputTokens = cacheAgg._sum.inputTokens ?? 0
+    const totalCacheCreationTokens = cacheAgg._sum.cacheCreationInputTokens ?? 0
+    const totalCacheReadTokens = cacheAgg._sum.cacheReadInputTokens ?? 0
+    const totalCacheableInput = totalInputTokens + totalCacheReadTokens + totalCacheCreationTokens
+    const cacheHitRate = totalCacheableInput > 0
+      ? Math.round((totalCacheReadTokens / totalCacheableInput) * 1000) / 10
+      : 0
+    // Savings: cache reads cost 0.1x vs 1x normal input
+    const avgInputCostPerToken = 3.0 / 1_000_000 // ~Sonnet rate
+    const estimatedSavings = Math.round((totalCacheReadTokens * avgInputCostPerToken * 0.9) * 100) / 100
+
+    const cacheStats = {
+      totalCacheCreationTokens,
+      totalCacheReadTokens,
+      totalInputTokens,
+      cacheHitRate,
+      estimatedSavings,
+    }
+
+    // 9. Top 20 conversations by cost
+    const convUsage = await prisma.usageRecord.groupBy({
+      by: ['conversationId'],
+      where: { conversationId: { not: null } },
+      _sum: { inputTokens: true, outputTokens: true },
+      _count: { id: true },
+      orderBy: { _sum: { outputTokens: 'desc' } },
+      take: 20,
+    })
+
+    const convIds = convUsage.map(c => c.conversationId!).filter(Boolean)
+    const convTitles = convIds.length > 0
+      ? await prisma.conversation.findMany({
+          where: { id: { in: convIds } },
+          select: { id: true, title: true },
+        })
+      : []
+    const titleMap = new Map(convTitles.map(c => [c.id, c.title]))
+
+    const topConversations = convUsage
+      .filter(c => c.conversationId)
+      .map(c => {
+        const input = c._sum.inputTokens ?? 0
+        const output = c._sum.outputTokens ?? 0
+        const cost = calculateRealCost('claude-sonnet-4-5-20250929', input, output)
+        return {
+          conversationId: c.conversationId!,
+          title: titleMap.get(c.conversationId!) ?? 'Sin titulo',
+          totalCost: Math.round(cost * 10000) / 10000,
+          calls: c._count.id,
+          inputTokens: input,
+          outputTokens: output,
+        }
+      })
+      .sort((a, b) => b.totalCost - a.totalCost)
 
     res.json({
       totalApiCost,
@@ -728,6 +786,8 @@ router.get('/costs', superadminAuth, async (_req, res) => {
       byModel,
       toolCosts,
       budgetStatus,
+      cacheStats,
+      topConversations,
     })
   } catch (err) {
     console.error('[Admin] Costs error:', err)
@@ -744,7 +804,7 @@ router.get('/budgets', superadminAuth, async (_req, res) => {
 router.post('/budgets', superadminAuth, async (req, res) => {
   try {
     const { provider, budget } = req.body as { provider: BudgetProvider; budget: number }
-    if (!provider || !['anthropic', 'openai', 'google', 'midjourney', 'deepseek'].includes(provider)) {
+    if (!provider || !['anthropic', 'midjourney'].includes(provider)) {
       res.status(400).json({ error: 'Provider invalido' })
       return
     }
@@ -771,14 +831,8 @@ router.post('/budgets', superadminAuth, async (req, res) => {
       ).length * 0.05
     } else {
       for (const record of usageByModel) {
-        const modelProvider = record.model.startsWith('claude') ? 'anthropic'
-          : record.model.startsWith('gpt') ? 'openai'
-          : record.model.startsWith('gemini') ? 'google'
-          : record.model.startsWith('deepseek') ? 'deepseek' : null
-        if (modelProvider === provider) {
-          const { calculateRealCost: calc } = await import('../config/api-costs.js')
-          currentCost += calc(record.model, record._sum.inputTokens ?? 0, record._sum.outputTokens ?? 0)
-        }
+        const { calculateRealCost: calc } = await import('../config/api-costs.js')
+        currentCost += calc(record.model, record._sum.inputTokens ?? 0, record._sum.outputTokens ?? 0)
       }
     }
 
@@ -792,7 +846,7 @@ router.post('/budgets', superadminAuth, async (req, res) => {
 
 router.delete('/budgets/:provider', superadminAuth, async (req, res) => {
   const provider = req.params.provider as BudgetProvider
-  if (!['anthropic', 'openai', 'google', 'midjourney', 'deepseek'].includes(provider)) {
+  if (!['anthropic', 'midjourney'].includes(provider)) {
     res.status(400).json({ error: 'Provider invalido' })
     return
   }
@@ -986,6 +1040,113 @@ router.post('/provider-status/refresh', authMiddleware, async (_req, res) => {
   } catch (err) {
     console.error('[Admin] Provider refresh error:', err)
     res.status(500).json({ error: 'Error al refrescar estado de proveedores' })
+  }
+})
+
+// ─── Published Sites Management ───
+
+router.get('/published', adminAuth, async (_req, res) => {
+  try {
+    const sites = await prisma.deliverable.findMany({
+      where: { publishSlug: { not: null } },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        agent: true,
+        botType: true,
+        publishSlug: true,
+        publishedAt: true,
+        isPublic: true,
+        thumbnailUrl: true,
+        customDomain: true,
+        customDomainStatus: true,
+        createdAt: true,
+        conversation: {
+          select: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+      orderBy: { publishedAt: 'desc' },
+    })
+
+    const result = sites.map(s => ({
+      id: s.id,
+      title: s.title,
+      type: s.type,
+      agent: s.agent,
+      botType: s.botType,
+      slug: s.publishSlug,
+      url: `https://${s.publishSlug}.plury.co`,
+      publishedAt: s.publishedAt,
+      isPublic: s.isPublic,
+      thumbnailUrl: s.thumbnailUrl,
+      customDomain: s.customDomain,
+      customDomainStatus: s.customDomainStatus,
+      createdAt: s.createdAt,
+      user: s.conversation?.user ?? null,
+    }))
+
+    res.json(result)
+  } catch (err) {
+    console.error('[Admin] Published sites error:', err)
+    res.status(500).json({ error: 'Error al obtener sitios publicados' })
+  }
+})
+
+router.patch('/published/:id', adminAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string
+    const { isPublic } = req.body as { isPublic?: boolean }
+
+    const data: Record<string, unknown> = {}
+    if (typeof isPublic === 'boolean') data.isPublic = isPublic
+
+    const updated = await prisma.deliverable.update({
+      where: { id },
+      data,
+      select: { id: true, isPublic: true },
+    })
+
+    res.json(updated)
+  } catch (err) {
+    console.error('[Admin] Update published site error:', err)
+    res.status(500).json({ error: 'Error al actualizar sitio' })
+  }
+})
+
+router.delete('/published/:id', adminAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string
+
+    // Remove publish data but keep the deliverable
+    await prisma.deliverable.update({
+      where: { id },
+      data: {
+        publishSlug: null,
+        publishedAt: null,
+        isPublic: false,
+      },
+    })
+
+    // Try to remove deploy files from disk
+    try {
+      const fs = await import('fs')
+      const pathMod = await import('path')
+      const { fileURLToPath } = await import('url')
+      const fname = fileURLToPath(import.meta.url)
+      const dname = pathMod.dirname(fname)
+      const deployDir = pathMod.resolve(dname, '../../deploys', id)
+      if (fs.existsSync(deployDir)) {
+        fs.rmSync(deployDir, { recursive: true, force: true })
+      }
+    } catch {}
+
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('[Admin] Delete published site error:', err)
+    res.status(500).json({ error: 'Error al despublicar sitio' })
   }
 })
 

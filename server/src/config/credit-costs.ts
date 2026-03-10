@@ -6,17 +6,9 @@ interface ModelCost {
 }
 
 const modelCosts: Record<string, ModelCost> = {
-  // Anthropic
   'claude-opus-4-6':                { inputPer1K: 3.0,   outputPer1K: 15.0  },
   'claude-sonnet-4-5-20250929':     { inputPer1K: 0.6,   outputPer1K: 3.0   },
   'claude-haiku-4-5-20251001':      { inputPer1K: 0.2,   outputPer1K: 1.0   },
-  // OpenAI
-  'gpt-4.5-preview':               { inputPer1K: 1.5,   outputPer1K: 7.5   },
-  'gpt-4o':                        { inputPer1K: 0.5,   outputPer1K: 2.5   },
-  'gpt-4o-mini':                   { inputPer1K: 0.03,  outputPer1K: 0.12  },
-  // Google
-  'gemini-2.5-pro':                { inputPer1K: 0.25,  outputPer1K: 1.0   },
-  'gemini-2.5-flash':              { inputPer1K: 0.015, outputPer1K: 0.06  },
 }
 
 const toolCosts: Record<string, number> = {
@@ -37,8 +29,8 @@ export function calculateTokenCredits(
 ): number {
   const cost = modelCosts[model]
   if (!cost) {
-    // Fallback: assume mid-range cost
-    return Math.ceil((inputTokens / 1000) * 0.5 + (outputTokens / 1000) * 2.5)
+    // Fallback: assume Sonnet-level cost
+    return Math.ceil((inputTokens / 1000) * 0.6 + (outputTokens / 1000) * 3.0)
   }
   let raw = (inputTokens / 1000) * cost.inputPer1K + (outputTokens / 1000) * cost.outputPer1K
   // Cache creation tokens cost 1.25x input rate

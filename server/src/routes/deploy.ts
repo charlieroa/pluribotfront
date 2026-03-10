@@ -1,12 +1,68 @@
 import { Router } from 'express'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { prisma } from '../db/client.js'
 import { optionalAuth } from '../middleware/auth.js'
 import { deployProject, getDeployStatus, removeDeploy } from '../services/deploy.js'
 import { deployToNetlify } from '../services/netlify-deploy.js'
 import { slugify, isSlugValid, isSlugAvailable, generateUniqueSlug } from '../utils/slugify.js'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 const router = Router()
-const APP_DOMAIN = process.env.APP_DOMAIN || 'pluribots.com'
+const APP_DOMAIN = process.env.APP_DOMAIN || 'plury.co'
+const THUMBNAILS_DIR = path.resolve(__dirname, '../../uploads/thumbnails')
+
+/**
+ * Capture a screenshot of a deployed site using microlink API.
+ * Runs async — does not block the deploy response.
+ */
+async function captureScreenshot(siteUrl: string, deliverableId: string): Promise<void> {
+  try {
+    // Ensure thumbnails directory exists
+    if (!fs.existsSync(THUMBNAILS_DIR)) {
+      fs.mkdirSync(THUMBNAILS_DIR, { recursive: true })
+    }
+
+    // Wait a bit for the site to be accessible
+    await new Promise(r => setTimeout(r, 3000))
+
+    const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(siteUrl)}&screenshot=true&meta=false&viewport.width=1280&viewport.height=800&waitForTimeout=5000`
+    const resp = await fetch(apiUrl)
+    if (!resp.ok) {
+      console.error(`[Screenshot] Microlink API error: ${resp.status}`)
+      return
+    }
+
+    const data = await resp.json() as { status: string; data?: { screenshot?: { url?: string } } }
+    const screenshotUrl = data.data?.screenshot?.url
+    if (!screenshotUrl) {
+      console.error('[Screenshot] No screenshot URL in response')
+      return
+    }
+
+    // Download the image
+    const imgResp = await fetch(screenshotUrl)
+    if (!imgResp.ok) return
+
+    const buffer = Buffer.from(await imgResp.arrayBuffer())
+    const filename = `${deliverableId}.png`
+    const filepath = path.join(THUMBNAILS_DIR, filename)
+    fs.writeFileSync(filepath, buffer)
+
+    // Update DB with thumbnail URL
+    const thumbnailUrl = `/uploads/thumbnails/${filename}`
+    await prisma.deliverable.update({
+      where: { id: deliverableId },
+      data: { thumbnailUrl },
+    })
+
+    console.log(`[Screenshot] Captured for ${siteUrl} → ${thumbnailUrl}`)
+  } catch (err) {
+    console.error('[Screenshot] Error:', err)
+  }
+}
 
 /**
  * GET /api/deploy/check-slug/:slug — Check if a slug is available
@@ -41,7 +97,7 @@ router.post('/suggest-slug', async (req, res) => {
  * Body: { deliverableId: string, slug?: string }
  */
 router.post('/', optionalAuth, async (req, res) => {
-  const { deliverableId, slug: requestedSlug } = req.body as { deliverableId: string; slug?: string }
+  const { deliverableId, slug: requestedSlug, isPublic } = req.body as { deliverableId: string; slug?: string; isPublic?: boolean }
 
   if (!deliverableId) {
     res.status(400).json({ error: 'deliverableId requerido' })
@@ -84,6 +140,18 @@ router.post('/', optionalAuth, async (req, res) => {
       }
     }
 
+    // --- Determine if project should be public ---
+    let shouldBePublic = isPublic === true
+    if (!shouldBePublic) {
+      try {
+        const conv = await prisma.conversation.findUnique({
+          where: { id: deliverable.conversationId },
+          select: { user: { select: { planId: true } } },
+        })
+        if (conv?.user?.planId === 'starter') shouldBePublic = true
+      } catch {}
+    }
+
     // --- Write HTML to disk ---
     const deployId = deliverable.id
     await deployProject(deployId, deliverable.content)
@@ -94,11 +162,17 @@ router.post('/', optionalAuth, async (req, res) => {
       data: {
         publishSlug: finalSlug,
         publishedAt: new Date(),
+        isPublic: shouldBePublic,
       },
     })
 
     const subdomainUrl = `https://${finalSlug}.${APP_DOMAIN}`
     console.log(`[Deploy] Subdomain deployed: ${subdomainUrl}`)
+
+    // Capture screenshot async — don't block the response
+    captureScreenshot(subdomainUrl, deliverableId).catch(err =>
+      console.error('[Deploy] Screenshot capture failed:', err)
+    )
 
     res.json({
       url: subdomainUrl,

@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --page: #f1f5f9;
   --surface: #ffffff;
@@ -11,27 +13,27 @@
   --ink: #0f172a;
   --ink-light: #475569;
   --ink-faint: #94a3b8;
-  --primary-c: #6366f1;
+  --primary-c: #7c3aed;
   --primary-fg-c: #ffffff;
-  --primary-soft-c: #eef2ff;
+  --primary-soft-c: rgba(124,58,237,0.10);
   --avatar-ring-c: #ffffff;
 }
 
 .dark {
-  --page: #030712;
-  --surface: #111827;
-  --surface-alt: #1f2937;
-  --subtle: #1e293b;
-  --inset: #374151;
-  --edge: #1f2937;
-  --edge-soft: #111827;
+  --page: #0a0a0a;
+  --surface: #1e1f20;
+  --surface-alt: #282a2c;
+  --subtle: #2e3032;
+  --inset: #3a3c3e;
+  --edge: rgba(255,255,255,0.08);
+  --edge-soft: rgba(255,255,255,0.04);
   --ink: #f1f5f9;
   --ink-light: #94a3b8;
   --ink-faint: #64748b;
-  --primary-c: #818cf8;
+  --primary-c: #a78bfa;
   --primary-fg-c: #ffffff;
-  --primary-soft-c: #1e1b4b;
-  --avatar-ring-c: #111827;
+  --primary-soft-c: rgba(139,92,246,0.12);
+  --avatar-ring-c: #1e1f20;
 }
 
 @theme {
@@ -75,4 +77,15 @@ html, body, #root {
     background: var(--inset);
     border-radius: 10px;
   }
+}
+
+@utility glow-brand {
+  box-shadow: 0 0 40px rgba(139, 92, 246, 0.15), 0 0 80px rgba(139, 92, 246, 0.08);
+}
+
+@utility text-gradient-brand {
+  background: linear-gradient(135deg, #fafafa 0%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

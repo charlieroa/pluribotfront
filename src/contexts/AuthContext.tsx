@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [activeBots, setActiveBots] = useState<string[]>(ALL_BOT_IDS)
 
   const fetchActiveBots = useCallback(async () => {
-    const currentToken = token || localStorage.getItem('pluribots_token')
+    const currentToken = token || localStorage.getItem('plury_token')
     if (!currentToken) {
       setActiveBots(ALL_BOT_IDS)
       return
@@ -66,8 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Restore session on mount
   useEffect(() => {
-    const savedToken = localStorage.getItem('pluribots_token')
-    const savedUser = localStorage.getItem('pluribots_user')
+    const savedToken = localStorage.getItem('plury_token')
+    const savedUser = localStorage.getItem('plury_user')
     if (savedToken && savedUser) {
       setToken(savedToken)
       setUser(JSON.parse(savedUser))
@@ -99,8 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json()
       setToken(data.token)
       setUser(data.user)
-      localStorage.setItem('pluribots_token', data.token)
-      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+      localStorage.setItem('plury_token', data.token)
+      localStorage.setItem('plury_user', JSON.stringify(data.user))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       setError(msg)
@@ -123,8 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json()
       setToken(data.token)
       setUser(data.user)
-      localStorage.setItem('pluribots_token', data.token)
-      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+      localStorage.setItem('plury_token', data.token)
+      localStorage.setItem('plury_user', JSON.stringify(data.user))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       setError(msg)
@@ -136,8 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setUser(null)
     setActiveBots(ALL_BOT_IDS)
-    localStorage.removeItem('pluribots_token')
-    localStorage.removeItem('pluribots_user')
+    localStorage.removeItem('plury_token')
+    localStorage.removeItem('plury_user')
   }
 
   const updateActiveBots = async (bots: Array<{ botId: string; isActive: boolean }>) => {
@@ -173,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const data = await res.json()
       setUser(data.user)
-      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+      localStorage.setItem('plury_user', JSON.stringify(data.user))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       setError(msg)
@@ -185,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(prev => {
       if (!prev) return prev
       const updated = { ...prev, creditBalance: balance }
-      localStorage.setItem('pluribots_user', JSON.stringify(updated))
+      localStorage.setItem('plury_user', JSON.stringify(updated))
       return updated
     })
   }
@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const data = await res.json()
       setUser(data.user)
-      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+      localStorage.setItem('plury_user', JSON.stringify(data.user))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       setError(msg)
@@ -225,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const data = await res.json()
       setUser(data.user)
-      localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+      localStorage.setItem('plury_user', JSON.stringify(data.user))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       setError(msg)
@@ -245,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await res.json()
         setUser(data.user)
         setActiveBots(data.activeBots)
-        localStorage.setItem('pluribots_user', JSON.stringify(data.user))
+        localStorage.setItem('plury_user', JSON.stringify(data.user))
       }
     } catch {
       // Keep current state on error

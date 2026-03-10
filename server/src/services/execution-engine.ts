@@ -10,11 +10,16 @@ import {
   type ExecutingPlan, type OrchestratorStep,
 } from './plan-cache.js'
 import type { LLMMessage, LLMUsage } from './llm/types.js'
-import { extractDesignContext, validateHtml, extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT } from './html-utils.js'
+import { validateHtml, sanitizeHtml, extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT, LOGO_SELECTION_SCRIPT } from './html-utils.js'
 import { readAndEncodeImage } from './image-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
 import { getNextVersionInfo, getVersionCount } from './deliverable-versioning.js'
+import { parseProjectFilesFromText } from './project-files.js'
+import { validateProjectFiles } from './project-files.js'
+import { buildDevTemplateContext } from './dev-template-system.js'
+import { buildDevDesignPackContext } from './dev-design-packs.js'
+import { buildDevCanonicalExamplesContext } from './dev-canonical-examples.js'
 const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
   seo: 'report',
   brand: 'design',
@@ -22,6 +27,7 @@ const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy'
   social: 'design',
   ads: 'copy',
   video: 'video',
+  dev: 'code',
 }
 
 // Helper: create a 'todo' kanban task for a plan step
@@ -112,6 +118,7 @@ export async function executeCurrentGroup(plan: ExecutingPlan): Promise<void> {
     // All groups done
     await removeExecutingPlan(conversationId)
     broadcast(conversationId, { type: 'coordination_end' })
+    suggestProjectIfNeeded(conversationId).catch(console.error)
     return
   }
 
@@ -154,25 +161,30 @@ export async function executeCurrentGroup(plan: ExecutingPlan): Promise<void> {
 
   if (!nextGroup) {
     // Last group
-    if (lastVisual) {
-      // Visual agent in last group → enter refine mode
-      const agentConfig = getAgentConfig(lastVisual.agentId)
-      broadcast(conversationId, {
-        type: 'step_complete',
-        agentId: lastVisual.agentId,
-        agentName: agentConfig?.name ?? lastVisual.agentId,
-        instanceId: lastVisual.instanceId,
-        summary: 'Propuesta lista. Puedes pedir cambios o finalizar.',
-        stepIndex: completedCount - 1,
-        totalSteps: totalCount,
-        conversationId,
-      })
+    if (visualSteps.length > 0) {
+      // Broadcast step_complete for EACH visual step (supports multiple parallel projects)
+      for (const vs of visualSteps) {
+        const agentConfig = getAgentConfig(vs.agentId)
+        broadcast(conversationId, {
+          type: 'step_complete',
+          agentId: vs.agentId,
+          agentName: agentConfig?.name ?? vs.agentId,
+          instanceId: vs.instanceId,
+          summary: visualSteps.length > 1
+            ? `${vs.userDescription ?? vs.task.slice(0, 60)} — listo. Puedes pedir cambios o finalizar.`
+            : 'Propuesta lista. Puedes pedir cambios o finalizar.',
+          stepIndex: completedCount - 1,
+          totalSteps: totalCount,
+          conversationId,
+        })
+      }
       return
     }
 
     // Non-visual last group → end
     await removeExecutingPlan(conversationId)
     broadcast(conversationId, { type: 'coordination_end' })
+    suggestProjectIfNeeded(conversationId).catch(console.error)
     return
   }
 
@@ -185,21 +197,26 @@ export async function executeCurrentGroup(plan: ExecutingPlan): Promise<void> {
 
   if (lastVisual) {
     // Visual agent in group → pause for refine before continuing
-    const agentConfig = getAgentConfig(lastVisual.agentId)
-    broadcast(conversationId, {
-      type: 'step_complete',
-      agentId: lastVisual.agentId,
-      agentName: agentConfig?.name ?? lastVisual.agentId,
-      instanceId: lastVisual.instanceId,
-      summary: 'Propuesta lista. Puedes pedir cambios o continuar.',
-      nextAgentId: firstNextStep?.agentId,
-      nextAgentName: nextAgentConfig?.name ?? firstNextStep?.agentId,
-      nextInstanceId: firstNextStep?.instanceId,
-      nextTask: firstNextStep?.task,
-      stepIndex: completedCount - 1,
-      totalSteps: totalCount,
-      conversationId,
-    })
+    // Broadcast for each visual step
+    for (const vs of visualSteps) {
+      const agentConfig = getAgentConfig(vs.agentId)
+      broadcast(conversationId, {
+        type: 'step_complete',
+        agentId: vs.agentId,
+        agentName: agentConfig?.name ?? vs.agentId,
+        instanceId: vs.instanceId,
+        summary: visualSteps.length > 1
+          ? `${vs.userDescription ?? vs.task.slice(0, 60)} — listo. Puedes pedir cambios o continuar.`
+          : 'Propuesta lista. Puedes pedir cambios o continuar.',
+        nextAgentId: firstNextStep?.agentId,
+        nextAgentName: nextAgentConfig?.name ?? firstNextStep?.agentId,
+        nextInstanceId: firstNextStep?.instanceId,
+        nextTask: firstNextStep?.task,
+        stepIndex: completedCount - 1,
+        totalSteps: totalCount,
+        conversationId,
+      })
+    }
     return
   }
 
@@ -230,6 +247,42 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     return
   }
 
+  // ─── Video: open workflow editor instead of executing agent ───
+  if (step.agentId === 'video') {
+    // Mark kanban task as done
+    const videoTask = await prisma.kanbanTask.findFirst({
+      where: { conversationId, instanceId: step.instanceId },
+    })
+    if (videoTask) {
+      await prisma.kanbanTask.update({ where: { id: videoTask.id }, data: { status: 'done' } })
+      broadcast(conversationId, {
+        type: 'kanban_update',
+        task: {
+          id: videoTask.id,
+          title: videoTask.title,
+          agent: videoTask.agent,
+          status: 'done',
+          botType: videoTask.botType,
+          instanceId: videoTask.instanceId ?? undefined,
+          deliverableId: videoTask.deliverableId ?? undefined,
+          createdAt: videoTask.createdAt.toISOString(),
+        },
+      })
+    }
+
+    // Send SSE event to open the workflow editor with the prompt
+    broadcast(conversationId, {
+      type: 'open_workflow',
+      prompt: step.task,
+      agentId: step.agentId,
+      instanceId: step.instanceId,
+    })
+
+    // Mark step as completed so pipeline can continue
+    plan.agentOutputs[step.instanceId] = 'Video workflow opened for user'
+    return
+  }
+
   // Check if bot is globally disabled by superadmin
   const globalBotConfig = await prisma.globalBotConfig.findUnique({
     where: { botId: step.agentId },
@@ -252,23 +305,6 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
       fullText: disabledMsg.text,
     })
     return
-  }
-
-  // Check if bot is active for the user (skip for anonymous/non-registered users)
-  if (userId !== 'anonymous') {
-    const userBot = await prisma.userBot.findUnique({
-      where: { userId_botId: { userId, botId: step.agentId } },
-    })
-    if (userBot && !userBot.isActive) {
-      broadcast(conversationId, {
-        type: 'bot_inactive',
-        botId: step.agentId,
-        botName: agentConfig.name,
-        stepTask: step.task,
-        conversationId,
-      })
-      return
-    }
   }
 
   // Update kanban task from 'todo' to 'doing'
@@ -304,13 +340,45 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
 
   // Build context from dependencies (now references instanceIds)
   let contextBlock = ''
+  let devExtensionMode = false
   if (step.dependsOn) {
     for (const depInstanceId of step.dependsOn) {
       const depStep = plan.steps.find(s => s.instanceId === depInstanceId)
       if (depStep && plan.agentOutputs[depInstanceId]) {
         const depAgent = getAgentConfig(depStep.agentId)
-        const depOutput = plan.agentOutputs[depInstanceId]
 
+        // Dev-to-dev dependency: pass the project files for extension mode
+        if (agentConfig.id === 'dev' && depStep.agentId === 'dev') {
+          try {
+            const prevDeliverable = await prisma.deliverable.findFirst({
+              where: { conversationId, instanceId: depInstanceId },
+              orderBy: { createdAt: 'desc' },
+            })
+            if (prevDeliverable) {
+              devExtensionMode = true
+              contextBlock += `\n\n--- MODO EXTENSION: ARCHIVOS DEL PROYECTO EXISTENTE (${depInstanceId}) ---
+Debes tomar estos archivos como base y AGREGAR/MODIFICAR solo lo necesario.
+NO reescribas archivos que no necesiten cambios. Solo incluye en tu respuesta los archivos nuevos o modificados.
+El proyecto ya tiene la estructura de archivos listada abajo funcionando.
+
+ARCHIVOS EXISTENTES:
+${prevDeliverable.content}
+--- FIN ARCHIVOS EXISTENTES ---`
+              broadcast(conversationId, {
+                type: 'agent_thinking',
+                agentId: agentConfig.id,
+                agentName: agentConfig.name,
+                instanceId: step.instanceId,
+                step: `Extendiendo proyecto existente con nuevo modulo...`,
+              })
+              continue
+            }
+          } catch (err) {
+            console.error(`[${agentConfig.name}:${step.instanceId}] Error fetching prev deliverable:`, err)
+          }
+        }
+
+        const depOutput = plan.agentOutputs[depInstanceId]
         contextBlock += `\n\n--- Contexto de ${depAgent?.name ?? depStep.agentId} (${depAgent?.role ?? 'agente'}) [${depInstanceId}] ---\n${depOutput}\n--- Fin contexto ---`
         broadcast(conversationId, {
           type: 'agent_thinking',
@@ -323,7 +391,21 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     }
   }
 
-  const taskPrompt = `${step.task}${contextBlock}`
+  // Backend context disabled for dev agent (multi-file projects use local state)
+  let backendContext = ''
+  const devTemplateContext = agentConfig.id === 'dev'
+    ? buildDevTemplateContext(step.task)
+    : ''
+  const devDesignPackContext = agentConfig.id === 'dev'
+    ? buildDevDesignPackContext(step.task)
+    : ''
+  const devCanonicalExamplesContext = agentConfig.id === 'dev'
+    ? buildDevCanonicalExamplesContext()
+    : ''
+
+  // Append image URL to task so agents can reference it in tool calls (e.g. remove_background)
+  const imageContext = plan.imageUrl ? `\n\n[Imagen adjunta por el usuario: ${plan.imageUrl}]` : ''
+  const taskPrompt = `${step.task}${devTemplateContext}${devDesignPackContext}${devCanonicalExamplesContext}${contextBlock}${backendContext}${imageContext}`
 
   // History limit: enough context for cache hits (cache reads cost 0.1x)
   const historyLimit = 20
@@ -405,7 +487,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
   const agentTools = agentConfig.tools
   if (agentTools.length > 0) {
     const { getToolDefinitions } = await import('./tools/executor.js')
-    const toolDefs = getToolDefinitions(agentTools)
+    const toolDefs = await getToolDefinitions(agentTools, userId)
 
     await provider.streamWithTools(agentConfig.systemPrompt, messages, toolDefs, {
       onToken: (token) => {
@@ -420,8 +502,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         agentFullText = fullText
         agentUsage = usage
         plan.agentOutputs[step.instanceId] = fullText
-        await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens)
-        const creditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
+        await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
+        const creditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
         agentCreditsCost += creditResult.creditsUsed
         broadcast(conversationId, { type: 'credit_update', creditsUsed: creditResult.creditsUsed, balance: creditResult.balance })
       },
@@ -437,7 +519,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
           instanceId: step.instanceId,
           step: `Ejecutando herramienta: ${toolCall.name}...`,
         })
-        return await executeToolCall(toolCall, conversationId, agentConfig, userId)
+        return await executeToolCall(toolCall, conversationId, agentConfig, userId, step.instanceId)
       },
     })
   } else {
@@ -454,8 +536,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         agentFullText = fullText
         agentUsage = usage
         plan.agentOutputs[step.instanceId] = fullText
-        await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens)
-        const creditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
+        await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
+        const creditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
         agentCreditsCost += creditResult.creditsUsed
         broadcast(conversationId, { type: 'credit_update', creditsUsed: creditResult.creditsUsed, balance: creditResult.balance })
       },
@@ -468,52 +550,237 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
 
   // Create deliverable
   console.log(`[${agentConfig.name}:${step.instanceId}] Response length: ${agentFullText.length} chars`)
+
+  // Dev agent always outputs multi-file JSON (React/Vite projects)
+  if (agentConfig.id === 'dev') {
+    console.log(`[${agentConfig.name}:${step.instanceId}] DEV V2 mode — parsing multi-file JSON output`)
+    let projectJson = agentFullText.trim()
+    try {
+      let files = parseProjectFilesFromText(projectJson).files
+
+      // Extension mode: merge new/modified files with the previous deliverable's files
+      if (devExtensionMode && step.dependsOn) {
+        for (const depInstanceId of step.dependsOn) {
+          const depStep = plan.steps.find(s => s.instanceId === depInstanceId)
+          if (depStep?.agentId === 'dev') {
+            const prevDeliverable = await prisma.deliverable.findFirst({
+              where: { conversationId, instanceId: depInstanceId },
+              orderBy: { createdAt: 'desc' },
+            })
+            if (prevDeliverable) {
+              try {
+                const prevFiles = JSON.parse(prevDeliverable.content)
+                if (Array.isArray(prevFiles)) {
+                  const newFilePaths = new Set((files as any[]).map((f: any) => f.path))
+                  const merged = [
+                    ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
+                    ...files,
+                  ]
+                  console.log(`[${agentConfig.name}:${step.instanceId}] Extension mode: merged ${(files as any[]).length} new/modified files with ${prevFiles.length} existing (total: ${merged.length})`)
+                  files = merged
+                }
+              } catch {
+                console.warn(`[${agentConfig.name}:${step.instanceId}] Could not parse previous deliverable for merge`)
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`[${agentConfig.name}:${step.instanceId}] Parsed ${files.length} project files: ${files.map((f: any) => f.path).join(', ')}`)
+      projectJson = JSON.stringify(files)
+    } catch (err) {
+      console.error(`[${agentConfig.name}:${step.instanceId}] Failed to parse multi-file JSON:`, err)
+      // For dev v2, don't fall through to HTML — send error to user
+      broadcast(conversationId, { type: 'error', message: `Error al generar proyecto: ${(err as Error).message}. Intenta de nuevo.` })
+      return
+    }
+
+    if (projectJson.startsWith('[')) {
+      const deliverableType = 'code' as const
+      const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 60)}`
+
+      const versionInfo = await getNextVersionInfo(conversationId, step.instanceId)
+      const deliverableId = uuid()
+      const deliverable = await prisma.deliverable.create({
+        data: {
+          id: deliverableId,
+          conversationId,
+          title: deliverableTitle,
+          type: deliverableType,
+          content: projectJson,
+          agent: agentConfig.name,
+          botType: agentConfig.botType,
+          instanceId: step.instanceId,
+          version: versionInfo.version,
+          parentId: versionInfo.parentId,
+        },
+      })
+
+      broadcast(conversationId, {
+        type: 'deliverable',
+        deliverable: {
+          id: deliverable.id,
+          title: deliverable.title,
+          type: deliverableType,
+          content: deliverable.content,
+          agent: deliverable.agent,
+          botType: deliverable.botType,
+          version: versionInfo.version,
+          versionCount: versionInfo.version,
+        },
+      })
+
+      // Update kanban task
+      const existingKanban = await prisma.kanbanTask.findFirst({
+        where: { conversationId, instanceId: step.instanceId },
+      })
+
+      let kanbanTaskId: string
+      let kanbanCreatedAt: string
+
+      if (existingKanban) {
+        await prisma.kanbanTask.update({
+          where: { id: existingKanban.id },
+          data: { deliverableId, title: deliverableTitle, status: 'done' },
+        })
+        kanbanTaskId = existingKanban.id
+        kanbanCreatedAt = existingKanban.createdAt.toISOString()
+      } else {
+        kanbanTaskId = uuid()
+        const newTask = await prisma.kanbanTask.create({
+          data: {
+            id: kanbanTaskId,
+            conversationId,
+            title: deliverableTitle,
+            agent: agentConfig.name,
+            status: 'done',
+            botType: agentConfig.botType,
+            deliverableId,
+            instanceId: step.instanceId,
+          },
+        })
+        kanbanCreatedAt = newTask.createdAt.toISOString()
+      }
+
+      broadcast(conversationId, {
+        type: 'kanban_update',
+        task: {
+          id: kanbanTaskId,
+          title: deliverableTitle,
+          agent: agentConfig.name,
+          status: 'done' as const,
+          botType: agentConfig.botType,
+          deliverableId,
+          instanceId: step.instanceId,
+          createdAt: kanbanCreatedAt,
+          deliverable: {
+            id: deliverable.id,
+            title: deliverable.title,
+            type: deliverableType,
+            content: deliverable.content,
+            agent: deliverable.agent,
+            botType: deliverable.botType,
+          },
+        },
+      })
+
+      const agentMsg = await prisma.message.create({
+        data: {
+          id: uuid(),
+          conversationId,
+          sender: agentConfig.name,
+          text: `Proyecto generado con ${JSON.parse(projectJson).length} archivos. Ver en el canvas.`,
+          type: 'agent',
+          botType: agentConfig.botType,
+        },
+      })
+
+      broadcast(conversationId, {
+        type: 'agent_end',
+        agentId: agentConfig.id,
+        instanceId: step.instanceId,
+        messageId: agentMsg.id,
+        fullText: agentMsg.text,
+        model: agentModelConfig.model,
+        inputTokens: agentUsage.inputTokens,
+        outputTokens: agentUsage.outputTokens,
+        creditsCost: agentCreditsCost,
+      })
+
+      return // Skip normal HTML processing
+    }
+  }
+
   let htmlBlock = extractHtmlBlock(agentFullText)
   console.log(`[${agentConfig.name}:${step.instanceId}] HTML block: ${htmlBlock ? `YES (${htmlBlock.length} chars)` : 'NO - using text wrapper'}`)
 
-  // Auto-retry on validation errors for visual agents
+  // Auto-fix validation errors for visual agents: 1 retry max, then sanitize
   if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
     const validationErrors = validateHtml(htmlBlock)
     if (validationErrors.length > 0) {
-      console.log(`[${agentConfig.name}:${step.instanceId}] Validation errors: ${validationErrors.join(', ')} — retrying...`)
-      broadcast(conversationId, {
-        type: 'agent_thinking',
-        agentId: agentConfig.id,
-        agentName: agentConfig.name,
-        instanceId: step.instanceId,
-        step: 'Corrigiendo errores detectados...',
-      })
+      // Only retry if errors are structural (not just missing CDN)
+      const structuralErrors = validationErrors.filter(e => e.includes('Unbalanced'))
+      if (structuralErrors.length > 0) {
+        console.log(`[${agentConfig.name}:${step.instanceId}] Validation errors: ${validationErrors.join(', ')} — trying sanitizer...`)
+        // Try server-side sanitizer first (free, instant)
+        const sanitized = sanitizeHtml(htmlBlock)
+        const sanitizedErrors = validateHtml(sanitized)
+        if (sanitizedErrors.filter(e => e.includes('Unbalanced')).length === 0) {
+          console.log(`[${agentConfig.name}:${step.instanceId}] Sanitizer fixed all structural errors`)
+          htmlBlock = sanitized
+        } else {
+          // Sanitizer wasn't enough — do 1 LLM retry
+          console.log(`[${agentConfig.name}:${step.instanceId}] Sanitizer insufficient, retrying with LLM...`)
+          broadcast(conversationId, {
+            type: 'agent_thinking',
+            agentId: agentConfig.id,
+            agentName: agentConfig.name,
+            instanceId: step.instanceId,
+            step: 'Corrigiendo errores detectados...',
+          })
 
-      const retryMessages: LLMMessage[] = [
-        ...messages,
-        { role: 'assistant' as const, content: agentFullText },
-        { role: 'user' as const, content: `Tu HTML tiene los siguientes errores que debes corregir:\n\n${validationErrors.map((e, i) => `${i + 1}. ${e}`).join('\n')}\n\nGenera el documento HTML completo corregido. Responde SOLO con el HTML, sin texto adicional.` },
-      ]
+          const retryMessages: LLMMessage[] = [
+            ...messages,
+            { role: 'assistant' as const, content: agentFullText },
+            { role: 'user' as const, content: `Tu HTML tiene los siguientes errores que debes corregir:\n\n${validationErrors.map((e, i) => `${i + 1}. ${e}`).join('\n')}\n\nGenera el documento HTML completo corregido. Responde SOLO con el HTML, sin texto adicional.` },
+          ]
 
-      let retryText = ''
-      await provider.stream(agentConfig.systemPrompt, retryMessages, {
-        onToken: (token) => {
-          broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
-        },
-        onComplete: async (fullText, usage) => {
-          retryText = fullText
-          await trackUsage(userId, agentConfig.id, agentModelConfig!.model, usage.inputTokens, usage.outputTokens)
-          const retryCreditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig!.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
-          agentCreditsCost += retryCreditResult.creditsUsed
-        },
-        onError: (err) => {
-          console.error(`[${agentConfig.name}:${step.instanceId}] Retry error:`, err)
-        },
-      })
+          let retryText = ''
+          await provider.stream(agentConfig.systemPrompt, retryMessages, {
+            onToken: (token) => {
+              broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
+            },
+            onComplete: async (fullText, usage) => {
+              retryText = fullText
+              await trackUsage(userId, agentConfig.id, agentModelConfig!.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
+              const retryCreditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig!.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
+              agentCreditsCost += retryCreditResult.creditsUsed
+            },
+            onError: (err) => {
+              console.error(`[${agentConfig.name}:${step.instanceId}] Retry error:`, err)
+            },
+          })
 
-      const retryHtml = extractHtmlBlock(retryText)
-      if (retryHtml) {
-        const retryErrors = validateHtml(retryHtml)
-        if (retryErrors.length < validationErrors.length) {
-          console.log(`[${agentConfig.name}:${step.instanceId}] Retry improved: ${validationErrors.length} → ${retryErrors.length} errors`)
-          agentFullText = retryText
-          htmlBlock = retryHtml
-          plan.agentOutputs[step.instanceId] = retryText
+          const retryHtml = extractHtmlBlock(retryText)
+          if (retryHtml) {
+            // Apply sanitizer to retry result too
+            const sanitizedRetry = sanitizeHtml(retryHtml)
+            const retryErrors = validateHtml(sanitizedRetry)
+            if (retryErrors.filter(e => e.includes('Unbalanced')).length < structuralErrors.length) {
+              console.log(`[${agentConfig.name}:${step.instanceId}] Retry+sanitizer improved: ${structuralErrors.length} → ${retryErrors.filter(e => e.includes('Unbalanced')).length} structural errors`)
+              agentFullText = retryText
+              htmlBlock = sanitizedRetry
+              plan.agentOutputs[step.instanceId] = retryText
+            } else {
+              // Retry didn't help — use sanitized original
+              console.log(`[${agentConfig.name}:${step.instanceId}] Retry didn't improve, using sanitized original`)
+              htmlBlock = sanitized
+            }
+          } else {
+            // Retry produced no HTML — use sanitized original
+            htmlBlock = sanitized
+          }
         }
       }
     }
@@ -524,11 +791,19 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
 
   let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
 
+  // Fix localhost URLs → relative (LLM sometimes builds absolute URLs from tool results)
+  deliverableContentRaw = deliverableContentRaw.replace(/https?:\/\/localhost:\d+/g, '')
+
   // Inject error-catching script and visual editor for visual agents
   if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
     const errorScript = `<script>window.onerror=function(msg,url,line,col){window.parent.postMessage({type:'iframe-error',error:String(msg),line:line},'*');}</script>`
     deliverableContentRaw = deliverableContentRaw.replace('</head>', `${errorScript}\n</head>`)
     deliverableContentRaw = deliverableContentRaw.replace('</body>', `${VISUAL_EDITOR_SCRIPT}\n</body>`)
+
+    // Inject logo selection script for brand agent (logo deliverables)
+    if (agentConfig.id === 'brand') {
+      deliverableContentRaw = deliverableContentRaw.replace('</body>', `${LOGO_SELECTION_SCRIPT}\n</body>`)
+    }
   }
 
   const cdnBase = process.env.CDN_BASE_URL || `http://localhost:${process.env.PORT ?? '3002'}`
@@ -651,6 +926,21 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     inputTokens: agentUsage.inputTokens,
     outputTokens: agentUsage.outputTokens,
     creditsCost: agentCreditsCost,
+  })
+}
+
+// Suggest creating a project if the conversation isn't already in one
+async function suggestProjectIfNeeded(conversationId: string): Promise<void> {
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { projectId: true, title: true, userId: true },
+  })
+  if (!conv || conv.projectId || conv.userId === 'anonymous') return
+
+  broadcast(conversationId, {
+    type: 'project_suggest',
+    conversationId,
+    title: conv.title,
   })
 }
 

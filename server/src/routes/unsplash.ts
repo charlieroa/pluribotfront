@@ -42,7 +42,7 @@ router.get('/search', optionalAuth, async (req, res) => {
         thumb: urls.thumb,
         alt: (p.alt_description as string) || (p.description as string) || '',
         photographer: user.name as string,
-        photographerUrl: `${userLinks.html}?utm_source=pluribots&utm_medium=referral`,
+        photographerUrl: `${userLinks.html}?utm_source=plury&utm_medium=referral`,
       }
     })
 

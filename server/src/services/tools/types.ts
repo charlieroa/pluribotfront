@@ -10,4 +10,5 @@ export interface ToolContext {
   agentId: string
   agentName: string
   userId: string
+  instanceId?: string
 }

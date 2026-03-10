@@ -360,7 +360,7 @@ router.post('/approve-step', optionalAuth, async (req, res) => {
 
 // Refine a visual agent's output with user feedback
 router.post('/refine-step', optionalAuth, async (req, res) => {
-  const { conversationId, text, instanceId } = req.body as RefineStepRequest
+  const { conversationId, text, instanceId, selectedLogoIndex, selectedLogoSrc } = req.body as RefineStepRequest & { selectedLogoIndex?: number; selectedLogoSrc?: string }
   const userId = req.auth?.userId ?? 'anonymous'
 
   try {
@@ -407,8 +407,14 @@ router.post('/refine-step', optionalAuth, async (req, res) => {
 
     res.json({ ok: true, messageId: userMessage.id })
 
+    // Build feedback text with logo context if selected
+    let feedbackText = text
+    if (selectedLogoIndex !== undefined && selectedLogoSrc) {
+      feedbackText = `El cliente selecciono la OPCION ${selectedLogoIndex + 1}. URL: ${selectedLogoSrc}. Genera una nueva version SOLO de este logo, manteniendo su estilo base. Cambios solicitados: ${text}`
+    }
+
     // Execute refinement async
-    refineStep(plan, stepToRefine, text, userId).catch(err => {
+    refineStep(plan, stepToRefine, feedbackText, userId).catch(err => {
       console.error('[Chat] Error refining step:', err)
       broadcast(conversationId, { type: 'error', message: 'Error al refinar el paso' })
     })

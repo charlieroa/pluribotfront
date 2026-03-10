@@ -50,7 +50,7 @@ const ApisSection = () => {
   const [addingKey, setAddingKey] = useState(false)
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
   }
 

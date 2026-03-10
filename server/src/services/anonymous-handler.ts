@@ -12,9 +12,9 @@ export async function handleAnonymousMessage(conversationId: string, userText: s
   let responseText: string
 
   if (lowerText.includes('precio') || lowerText.includes('costo') || lowerText.includes('plan') || lowerText.includes('gratis')) {
-    responseText = `Pluribots tiene un plan gratuito para que pruebes la plataforma. Para ver los planes y acceder a los agentes, solo necesitas crear una cuenta. Es gratis y toma menos de 30 segundos.\n\nRegistrate para comenzar a usar los bots.`
+    responseText = `Plury tiene un plan gratuito para que pruebes la plataforma. Para ver los planes y acceder a los agentes, solo necesitas crear una cuenta. Es gratis y toma menos de 30 segundos.\n\nRegistrate para comenzar a usar los bots.`
   } else if (lowerText.includes('que es') || lowerText.includes('como funciona') || lowerText.includes('que hace') || lowerText.includes('hola') || lowerText.includes('hey') || lowerText.includes('hi')) {
-    responseText = `Hola! Soy Pluria, el orquestador de Pluribots.\n\nPluribots es una plataforma con agentes de IA especializados que trabajan por ti:\n\n• **Lupa** — Estratega SEO: auditorias, keywords y posicionamiento en Google\n• **Pixel** — Disenador Visual: logos, branding, posts, banners, flyers, moodboards y todo lo grafico con Midjourney\n• **Metric** — Ads Specialist: campanas de Meta Ads y Google Ads optimizadas\n• **Reel** — Creador de Video: reels y videos con IA generativa\n\nYo me encargo de coordinar a los agentes segun tu proyecto. Describis lo que necesitas y yo activo al equipo correcto.\n\nPara empezar a usarlos, registrate gratis. Es rapido!`
+    responseText = `Hola! Soy Pluria, el orquestador de Plury.\n\nPlury es una plataforma con agentes de IA especializados que trabajan por ti:\n\n• **Lupa** — Estratega SEO: auditorias, keywords y posicionamiento en Google\n• **Pixel** — Disenador Visual: logos, branding, posts, banners, flyers, moodboards y todo lo grafico con Midjourney\n• **Metric** — Ads Specialist: campanas de Meta Ads y Google Ads optimizadas\n• **Reel** — Creador de Video: reels y videos con IA generativa\n\nYo me encargo de coordinar a los agentes segun tu proyecto. Describis lo que necesitas y yo activo al equipo correcto.\n\nPara empezar a usarlos, registrate gratis. Es rapido!`
   } else if (lowerText.includes('seo') || lowerText.includes('keyword') || lowerText.includes('google') || lowerText.includes('posicion')) {
     responseText = `Para tareas de SEO tenemos a **Lupa**, nuestro estratega SEO. Puede hacer auditorias completas, investigacion de keywords, analisis de backlinks y estrategias de posicionamiento.\n\nPero para activar a Lupa necesitas una cuenta. Registrate gratis y podras usarlo de inmediato!`
   } else if (lowerText.includes('diseno') || lowerText.includes('logo') || lowerText.includes('banner') || lowerText.includes('landing') || lowerText.includes('imagen')) {
@@ -26,7 +26,7 @@ export async function handleAnonymousMessage(conversationId: string, userText: s
   } else if (lowerText.includes('web') || lowerText.includes('pagina') || lowerText.includes('codigo') || lowerText.includes('programar') || lowerText.includes('desarrollo')) {
     responseText = `Para desarrollo web tenemos a **Pixel**, nuestro disenador visual. Ademas de diseno grafico, puede ayudarte con el diseno de sitios web.\n\nRegistrate gratis para activar a Pixel y empezar tu proyecto!`
   } else {
-    responseText = `Eso suena como un gran proyecto! En Pluribots tengo 4 agentes especializados que pueden ayudarte:\n\n• **Lupa** (SEO) • **Pixel** (Diseno Visual) • **Metric** (Ads) • **Reel** (Video)\n\nPuedo coordinarlos automaticamente segun lo que necesites. Pero primero necesitas crear una cuenta para activar a los bots.\n\nRegistrate gratis y empezamos!`
+    responseText = `Eso suena como un gran proyecto! En Plury tengo 4 agentes especializados que pueden ayudarte:\n\n• **Lupa** (SEO) • **Pixel** (Diseno Visual) • **Metric** (Ads) • **Reel** (Video)\n\nPuedo coordinarlos automaticamente segun lo que necesites. Pero primero necesitas crear una cuenta para activar a los bots.\n\nRegistrate gratis y empezamos!`
   }
 
   // Save and stream the response

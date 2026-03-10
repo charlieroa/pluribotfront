@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CreditCard, DollarSign, TrendingUp, Percent, BarChart3, Zap, Image, Video, AlertTriangle, Wallet, Plus } from 'lucide-react'
+import { CreditCard, DollarSign, TrendingUp, Percent, BarChart3, Zap, Image, Video, AlertTriangle, Wallet, Plus, Database, MessageSquare } from 'lucide-react'
 
 interface BillingData {
   totalConsumed: number
@@ -26,6 +26,23 @@ interface BudgetStatus {
   setAt: string
 }
 
+interface CacheStats {
+  totalCacheCreationTokens: number
+  totalCacheReadTokens: number
+  totalInputTokens: number
+  cacheHitRate: number
+  estimatedSavings: number
+}
+
+interface TopConversation {
+  conversationId: string
+  title: string
+  totalCost: number
+  calls: number
+  inputTokens: number
+  outputTokens: number
+}
+
 interface CostsData {
   totalApiCost: number
   totalCreditsConsumed: number
@@ -36,21 +53,20 @@ interface CostsData {
   byModel: Array<{ model: string; calls: number; cost: number; creditsCharged: number }>
   toolCosts: Record<string, { calls: number; cost: number }>
   budgetStatus?: Record<string, BudgetStatus | null>
+  cacheStats?: CacheStats
+  topConversations?: TopConversation[]
 }
 
 const agentNames: Record<string, string> = {
   seo: 'Lupa', web: 'Pixel', ads: 'Metric', video: 'Reel', base: 'Pluria',
 }
 const agentColors: Record<string, string> = {
-  seo: '#3b82f6', web: '#a855f7', ads: '#10b981', video: '#ef4444', base: '#6366f1',
+  seo: '#3b82f6', web: '#a78bfa', ads: '#10b981', video: '#ef4444', base: '#6366f1',
 }
 
 const BUDGET_PROVIDERS = [
   { key: 'anthropic', label: 'Anthropic (Claude)', color: '#d97706' },
-  { key: 'openai', label: 'OpenAI (GPT)', color: '#10b981' },
-  { key: 'google', label: 'Google (Gemini)', color: '#3b82f6' },
-  { key: 'midjourney', label: 'Midjourney', color: '#a855f7' },
-  { key: 'deepseek', label: 'DeepSeek (V3)', color: '#0ea5e9' },
+  { key: 'midjourney', label: 'Midjourney', color: '#a78bfa' },
 ]
 
 const CreditsSection = () => {
@@ -62,7 +78,7 @@ const CreditsSection = () => {
   const [savingBudget, setSavingBudget] = useState<string | null>(null)
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
   }
 
@@ -134,9 +150,6 @@ const CreditsSection = () => {
 
   const providerConfig: Record<string, { label: string; color: string; bgColor: string }> = {
     anthropic: { label: 'Anthropic', color: '#d97706', bgColor: 'bg-amber-500' },
-    openai: { label: 'OpenAI', color: '#10b981', bgColor: 'bg-emerald-500' },
-    google: { label: 'Google', color: '#3b82f6', bgColor: 'bg-blue-500' },
-    deepseek: { label: 'DeepSeek', color: '#0ea5e9', bgColor: 'bg-sky-500' },
   }
 
   const toolDisplayNames: Record<string, { label: string; icon: typeof Image }> = {
@@ -321,7 +334,7 @@ const CreditsSection = () => {
             </div>
 
             <div className="relative overflow-hidden bg-surface border border-edge rounded-xl p-4">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500" />
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-[#a78bfa]" />
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
                   <CreditCard size={16} className="text-blue-500" />
@@ -335,14 +348,14 @@ const CreditsSection = () => {
             </div>
 
             <div className="relative overflow-hidden bg-surface border border-edge rounded-xl p-4">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-violet-500" />
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#a78bfa] to-[#a78bfa]" />
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-                  <Percent size={16} className="text-indigo-500" />
+                <div className="w-8 h-8 rounded-lg bg-[#a78bfa]/10 flex items-center justify-center">
+                  <Percent size={16} className="text-[#a78bfa]" />
                 </div>
                 <p className="text-[10px] font-bold text-ink-faint uppercase">% Margen</p>
               </div>
-              <p className={`text-2xl font-bold ${costsData.marginPercent >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
+              <p className={`text-2xl font-bold ${costsData.marginPercent >= 0 ? 'text-[#8b5cf6]' : 'text-red-600'}`}>
                 {costsData.marginPercent.toFixed(1)}%
               </p>
               <p className="text-[10px] text-ink-faint mt-0.5">rentabilidad</p>
@@ -450,6 +463,115 @@ const CreditsSection = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Cache Performance */}
+          {costsData.cacheStats && (costsData.cacheStats.totalInputTokens > 0 || costsData.cacheStats.totalCacheReadTokens > 0) && (
+            <div className="border-t border-edge pt-6">
+              <h2 className="text-base font-bold text-ink mb-1 flex items-center gap-2">
+                <Database size={18} className="text-primary" />
+                Cache Performance
+              </h2>
+              <p className="text-xs text-ink-faint mb-4">Prompt caching de Anthropic — tokens reutilizados vs generados</p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-surface border border-edge rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-ink-faint uppercase">Hit Rate</p>
+                  <p className={`text-2xl font-bold mt-1 ${costsData.cacheStats.cacheHitRate >= 30 ? 'text-emerald-600' : costsData.cacheStats.cacheHitRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                    {costsData.cacheStats.cacheHitRate}%
+                  </p>
+                  <p className="text-[10px] text-ink-faint">de input desde cache</p>
+                </div>
+                <div className="bg-surface border border-edge rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-ink-faint uppercase">Cache Reads</p>
+                  <p className="text-2xl font-bold text-emerald-600 mt-1">{fmt(costsData.cacheStats.totalCacheReadTokens)}</p>
+                  <p className="text-[10px] text-ink-faint">tokens reutilizados</p>
+                </div>
+                <div className="bg-surface border border-edge rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-ink-faint uppercase">Cache Writes</p>
+                  <p className="text-2xl font-bold text-amber-600 mt-1">{fmt(costsData.cacheStats.totalCacheCreationTokens)}</p>
+                  <p className="text-[10px] text-ink-faint">tokens escritos al cache</p>
+                </div>
+                <div className="bg-surface border border-edge rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-ink-faint uppercase">Ahorro Estimado</p>
+                  <p className="text-2xl font-bold text-emerald-600 mt-1">{fmtUSD(costsData.cacheStats.estimatedSavings)}</p>
+                  <p className="text-[10px] text-ink-faint">USD ahorrados</p>
+                </div>
+              </div>
+
+              {/* Cache hit rate visual bar */}
+              {costsData.cacheStats.totalInputTokens > 0 && (
+                <div className="bg-surface border border-edge rounded-xl p-4 mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-ink">Distribucion de tokens de entrada</span>
+                    <span className="text-[10px] text-ink-faint">{fmt(costsData.cacheStats.totalInputTokens + costsData.cacheStats.totalCacheReadTokens + costsData.cacheStats.totalCacheCreationTokens)} total</span>
+                  </div>
+                  <div className="w-full h-4 rounded-full overflow-hidden flex bg-subtle">
+                    {(() => {
+                      const total = costsData.cacheStats.totalInputTokens + costsData.cacheStats.totalCacheReadTokens + costsData.cacheStats.totalCacheCreationTokens
+                      const readPct = total > 0 ? (costsData.cacheStats.totalCacheReadTokens / total) * 100 : 0
+                      const createPct = total > 0 ? (costsData.cacheStats.totalCacheCreationTokens / total) * 100 : 0
+                      const normalPct = 100 - readPct - createPct
+                      return (
+                        <>
+                          <div className="h-full bg-emerald-500" style={{ width: `${readPct}%` }} title={`Cache reads: ${readPct.toFixed(1)}%`} />
+                          <div className="h-full bg-amber-500" style={{ width: `${createPct}%` }} title={`Cache writes: ${createPct.toFixed(1)}%`} />
+                          <div className="h-full bg-slate-400" style={{ width: `${normalPct}%` }} title={`Normal input: ${normalPct.toFixed(1)}%`} />
+                        </>
+                      )
+                    })()}
+                  </div>
+                  <div className="flex gap-4 mt-2 text-[10px]">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Cache read (0.1x)</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Cache write (1.25x)</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-400" /> Normal (1x)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Top Conversations by Cost */}
+          {costsData.topConversations && costsData.topConversations.length > 0 && (
+            <div className="border-t border-edge pt-6">
+              <h2 className="text-base font-bold text-ink mb-1 flex items-center gap-2">
+                <MessageSquare size={18} className="text-primary" />
+                Top Conversaciones por Costo
+              </h2>
+              <p className="text-xs text-ink-faint mb-4">Las 20 conversaciones mas costosas</p>
+
+              <div className="bg-surface border border-edge rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-subtle">
+                        <th className="text-left px-4 py-2 font-bold text-ink-faint uppercase">Conversacion</th>
+                        <th className="text-right px-4 py-2 font-bold text-ink-faint uppercase">Llamadas</th>
+                        <th className="text-right px-4 py-2 font-bold text-ink-faint uppercase">Input</th>
+                        <th className="text-right px-4 py-2 font-bold text-ink-faint uppercase">Output</th>
+                        <th className="text-right px-4 py-2 font-bold text-ink-faint uppercase">Costo USD</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {costsData.topConversations.map((c, i) => (
+                        <tr key={c.conversationId} className="border-t border-edge hover:bg-subtle/50">
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-ink-faint w-4">{i + 1}</span>
+                              <span className="font-semibold text-ink truncate max-w-[200px]">{c.title}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono text-ink">{fmt(c.calls)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-ink-light">{fmt(c.inputTokens)}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-ink-light">{fmt(c.outputTokens)}</td>
+                          <td className="px-4 py-2.5 text-right font-bold text-red-600">{fmtUSD(c.totalCost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

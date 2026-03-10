@@ -36,12 +36,12 @@ interface Props {
 
 const agentColors: Record<string, string> = {
   seo: '#3b82f6',
-  web: '#a855f7',
+  web: '#a78bfa',
   ads: '#10b981',
   video: '#ef4444',
   base: '#6366f1',
   system: '#6b7280',
-  human: '#8b5cf6',
+  human: '#a78bfa',
 }
 
 const agentNames: Record<string, string> = {
@@ -60,7 +60,7 @@ const AdminConversationView = ({ conversationId, onBack, onResolve }: Props) => 
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -172,7 +172,7 @@ const AdminConversationView = ({ conversationId, onBack, onResolve }: Props) => 
                   {!isUser && (
                     <div
                       className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-xs font-bold"
-                      style={{ backgroundColor: isHumanAgent ? '#8b5cf6' : botColor }}
+                      style={{ backgroundColor: isHumanAgent ? '#a78bfa' : botColor }}
                     >
                       {isHumanAgent ? <UserCircle size={16} /> : (agentNames[m.botType || ''] || m.sender).charAt(0)}
                     </div>
@@ -180,11 +180,11 @@ const AdminConversationView = ({ conversationId, onBack, onResolve }: Props) => 
                   <div className={`max-w-[70%] ${isUser ? 'bg-primary text-primary-fg' : 'bg-surface border border-edge'} p-3 rounded-2xl ${isUser ? 'rounded-tr-none' : 'rounded-tl-none'}`}>
                     {!isUser && (
                       <div className="flex items-center gap-1.5 mb-1">
-                        <p className="text-[11px] font-bold" style={{ color: isHumanAgent ? '#8b5cf6' : botColor }}>
+                        <p className="text-[11px] font-bold" style={{ color: isHumanAgent ? '#a78bfa' : botColor }}>
                           {isHumanAgent ? 'Agente Humano' : agentNames[m.botType || ''] || m.sender}
                         </p>
                         {isHumanAgent && (
-                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-500/10 text-violet-600 rounded-full">
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold bg-[#a78bfa]/10 text-[#8b5cf6] rounded-full">
                             Agente Humano
                           </span>
                         )}
@@ -215,7 +215,7 @@ const AdminConversationView = ({ conversationId, onBack, onResolve }: Props) => 
               <button
                 onClick={handleSendMessage}
                 disabled={!messageText.trim() || sending}
-                className="px-4 py-2.5 bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 text-sm font-semibold"
+                className="px-4 py-2.5 bg-[#8b5cf6] text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 text-sm font-semibold"
               >
                 <Send size={14} />
                 Enviar

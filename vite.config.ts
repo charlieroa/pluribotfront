@@ -7,6 +7,17 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          workspace: ['@webcontainer/api', 'highlight.js', 'jszip'],
+          flow: ['@xyflow/react'],
+        },
+      },
+    },
+  },
   server: {
     headers: {
       'Cross-Origin-Embedder-Policy': 'credentialless',

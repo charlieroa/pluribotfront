@@ -69,7 +69,7 @@ type SeniorTab = 'team' | 'tasks' | 'subscriptions' | 'stats'
 // ─── Helpers ───
 
 const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('pluribots_token')
+  const token = localStorage.getItem('plury_token')
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -99,7 +99,7 @@ const statusBadge = (status: string) => {
   const map: Record<string, { bg: string; text: string; label: string }> = {
     pending: { bg: 'bg-amber-500/10', text: 'text-amber-600', label: 'Pendiente' },
     in_progress: { bg: 'bg-blue-500/10', text: 'text-blue-600', label: 'En progreso' },
-    review: { bg: 'bg-purple-500/10', text: 'text-purple-600', label: 'En revisión' },
+    review: { bg: 'bg-[#a78bfa]/10', text: 'text-[#8b5cf6]', label: 'En revisión' },
     delivered: { bg: 'bg-emerald-500/10', text: 'text-emerald-600', label: 'Entregada' },
     cancelled: { bg: 'bg-gray-500/10', text: 'text-gray-500', label: 'Cancelada' },
   }
@@ -182,7 +182,7 @@ const tierBadge = (tier: string) => {
   const map: Record<string, { bg: string; text: string; label: string }> = {
     basic: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300', label: 'Básico' },
     pro: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', label: 'Pro' },
-    dedicated: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', label: 'Dedicado' },
+    dedicated: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-[#a78bfa]', label: 'Dedicado' },
   }
   const s = map[tier] ?? { bg: 'bg-gray-100', text: 'text-gray-700', label: tier }
   return (
@@ -987,8 +987,8 @@ const StatsSection = () => {
 
         <div className="bg-surface border border-edge rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <TrendingUp size={16} className="text-purple-500" />
+            <div className="w-8 h-8 rounded-lg bg-[#a78bfa]/10 flex items-center justify-center">
+              <TrendingUp size={16} className="text-[#a78bfa]" />
             </div>
           </div>
           <p className="text-2xl font-bold text-ink">{stats.slaCompliance}%</p>

@@ -45,6 +45,15 @@ router.post('/register', async (req, res) => {
     },
   })
 
+  // Auto-activate all bots and mark onboarding as done
+  const allBotIds = ['seo', 'web', 'ads', 'video', 'dev']
+  await Promise.all([
+    prisma.user.update({ where: { id: user.id }, data: { onboardingDone: true } }),
+    ...allBotIds.map(botId =>
+      prisma.userBot.create({ data: { userId: user.id, botId, isActive: true } })
+    ),
+  ])
+
   const token = jwt.sign(
     { userId: user.id, email: user.email },
     process.env.JWT_SECRET!,
@@ -53,7 +62,7 @@ router.post('/register', async (req, res) => {
 
   const response: AuthResponse = {
     token,
-    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role, organizationId: user.organizationId ?? undefined, creditBalance: user.creditBalance },
+    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role, organizationId: user.organizationId ?? undefined, creditBalance: user.creditBalance, metaConnected: false },
   }
 
   res.json(response)
@@ -87,7 +96,7 @@ router.post('/login', async (req, res) => {
 
   const response: AuthResponse = {
     token,
-    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role, organizationId: user.organizationId ?? undefined, creditBalance: user.creditBalance },
+    user: { id: user.id, email: user.email, name: user.name, planId: user.planId, onboardingDone: user.onboardingDone, profession: user.profession ?? undefined, role: user.role, organizationId: user.organizationId ?? undefined, creditBalance: user.creditBalance, metaConnected: !!user.metaAccessToken },
   }
 
   res.json(response)

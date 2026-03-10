@@ -36,14 +36,14 @@ const AgencySection = ({ onRegister }: AgencySectionProps) => {
   return (
     <section ref={sectionRef} id="agencias" className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
-        <div className="agency-anim relative bg-gradient-to-br from-purple-500/[0.08] to-violet-500/[0.03] border border-purple-500/20 rounded-3xl p-8 sm:p-12 overflow-hidden">
+        <div className="agency-anim relative bg-gradient-to-br from-[#a78bfa]/[0.08] to-[#a78bfa]/[0.03] border border-[#a78bfa]/20 rounded-3xl p-8 sm:p-12 overflow-hidden">
           {/* Glow */}
-          <div className="absolute top-0 right-0 w-[500px] h-[400px] bg-purple-500/10 rounded-full blur-[150px] pointer-events-none" />
+          <div className="absolute top-0 right-0 w-[500px] h-[400px] bg-[#a78bfa]/10 rounded-full blur-[150px] pointer-events-none" />
 
           <div className="relative z-10">
             {/* Header */}
             <div className="flex items-center gap-2 mb-4">
-              <span className="px-3 py-1 text-[11px] font-bold text-purple-300 bg-purple-500/10 border border-purple-500/20 rounded-full uppercase tracking-wider">Para agencias</span>
+              <span className="px-3 py-1 text-[11px] font-bold text-[#a78bfa] bg-[#a78bfa]/10 border border-[#a78bfa]/20 rounded-full uppercase tracking-wider">Para agencias</span>
             </div>
 
             <h2 className="agency-anim text-[30px] sm:text-[42px] font-bold tracking-[-0.03em] text-white mb-4 max-w-2xl">
@@ -60,8 +60,8 @@ const AgencySection = ({ onRegister }: AgencySectionProps) => {
                 const Icon = p.icon
                 return (
                   <div key={i} className="agency-anim flex items-start gap-3 bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
-                    <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
-                      <Icon size={16} className="text-purple-400" />
+                    <div className="w-9 h-9 rounded-lg bg-[#a78bfa]/10 flex items-center justify-center flex-shrink-0">
+                      <Icon size={16} className="text-[#a78bfa]" />
                     </div>
                     <div>
                       <p className="text-[13.5px] font-semibold text-white mb-0.5">{p.title}</p>
@@ -76,7 +76,7 @@ const AgencySection = ({ onRegister }: AgencySectionProps) => {
             <div className="agency-anim flex flex-wrap gap-3">
               <button
                 onClick={onRegister}
-                className="inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold text-white bg-[#7c3aed] rounded-full hover:bg-[#6d28d9] transition-all shadow-[0_0_20px_rgba(124,58,237,0.3)]"
+                className="inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold text-white bg-[#8b5cf6] rounded-full hover:bg-[#7c3aed] transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)]"
               >
                 Empezar como agencia <ArrowRight size={15} />
               </button>

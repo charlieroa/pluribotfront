@@ -18,7 +18,7 @@ const NavItem = ({ active, onClick, icon, label, badge }: NavItemProps) => (
     }`}
   >
     <div className="flex items-center gap-4">
-      <div className={`${active ? 'text-indigo-400' : 'text-slate-600 group-hover:text-slate-400'} transition-colors`}>
+      <div className={`${active ? 'text-[#a78bfa]' : 'text-slate-600 group-hover:text-slate-400'} transition-colors`}>
         {icon}
       </div>
       <span className="hidden md:block font-medium text-sm">{label}</span>

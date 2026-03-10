@@ -49,7 +49,7 @@ const VersionSelector = ({
     if (versions.length > 0) return
     setLoading(true)
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch(
         `${API_BASE}/conversations/${conversationId}/deliverables/${deliverableId}/versions`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
@@ -71,7 +71,7 @@ const VersionSelector = ({
 
   const handleSelectVersion = async (versionId: string) => {
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch(
         `${API_BASE}/conversations/${conversationId}/deliverables/${versionId}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
@@ -90,7 +90,7 @@ const VersionSelector = ({
     e.stopPropagation()
     if (!onCompare) return
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch(
         `${API_BASE}/conversations/${conversationId}/deliverables/${versionId}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }
@@ -109,7 +109,7 @@ const VersionSelector = ({
     e.stopPropagation()
     setRestoring(versionId)
     try {
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const res = await fetch(
         `${API_BASE}/conversations/${conversationId}/deliverables/${versionId}/restore`,
         {

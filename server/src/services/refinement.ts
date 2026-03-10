@@ -7,10 +7,11 @@ import { trackUsage } from './token-tracker.js'
 import { consumeCredits } from './credit-tracker.js'
 import { setExecutingPlan, type ExecutingPlan, type OrchestratorStep } from './plan-cache.js'
 import type { LLMMessage, LLMUsage } from './llm/types.js'
-import { extractDesignContext, extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT } from './html-utils.js'
+import { extractHtmlBlock, wrapTextAsHtml, VISUAL_EDITOR_SCRIPT, LOGO_SELECTION_SCRIPT } from './html-utils.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { executeToolCall } from './tools/executor.js'
 import { getNextVersionInfo } from './deliverable-versioning.js'
+import { parseProjectFilesFromText } from './project-files.js'
 const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
   seo: 'report',
   brand: 'design',
@@ -18,6 +19,7 @@ const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy'
   social: 'design',
   ads: 'copy',
   video: 'video',
+  dev: 'code',
 }
 
 // Refine a completed step by re-running the agent with user feedback
@@ -52,7 +54,11 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   const previousOutput = plan.agentOutputs[step.instanceId] || ''
 
-  const refinePrompt = `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
+  const isDevAgent = agentConfig.id === 'dev'
+
+  const refinePrompt = isDevAgent
+    ? `El cliente ha revisado tu proyecto y pide los siguientes cambios:\n\n${userFeedback}\n\nMODO EXTENSION: solo incluye los archivos NUEVOS o MODIFICADOS en tu respuesta JSON. Mantene el mismo formato: array de {path, content}. No incluyas archivos que no cambian.`
+    : `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
 
   // Build conversation: original task → previous output → refinement request
   const messages: LLMMessage[] = [
@@ -92,8 +98,8 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
       agentFullText = fullText
       agentUsage = usage
       plan.agentOutputs[step.instanceId] = fullText
-      await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens)
-      const creditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens)
+      await trackUsage(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
+      const creditResult = await consumeCredits(userId, agentConfig.id, agentModelConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens, conversationId)
       refineCreditsCost += creditResult.creditsUsed
       broadcast(conversationId, { type: 'credit_update', creditsUsed: creditResult.creditsUsed, balance: creditResult.balance })
     },
@@ -105,7 +111,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   if (agentConfig.tools.length > 0) {
     const { getToolDefinitions } = await import('./tools/executor.js')
-    const toolDefs = getToolDefinitions(agentConfig.tools)
+    const toolDefs = await getToolDefinitions(agentConfig.tools, userId)
 
     await provider.streamWithTools(agentConfig.systemPrompt, messages, toolDefs, {
       ...refineCallbacks,
@@ -117,7 +123,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
           instanceId: step.instanceId,
           step: `Ejecutando herramienta: ${toolCall.name}...`,
         })
-        return await executeToolCall(toolCall, conversationId, agentConfig, userId)
+        return await executeToolCall(toolCall, conversationId, agentConfig, userId, step.instanceId)
       },
     })
   } else {
@@ -127,23 +133,70 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   if (!agentFullText) return
 
   // Create new deliverable with refined content
-  const htmlBlock = extractHtmlBlock(agentFullText)
   const deliverableType = DELIVERABLE_TYPE_MAP[agentConfig.id] ?? 'report'
   const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 50)} (refinado)`
 
-  let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
+  let deliverableContent: string
+  let messageText: string
 
-  // Inject error-catching script and visual editor for visual agents
-  if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
-    const errorScript = `<script>window.onerror=function(msg,url,line,col){window.parent.postMessage({type:'iframe-error',error:String(msg),line:line},'*');}</script>`
-    deliverableContentRaw = deliverableContentRaw.replace('</head>', `${errorScript}\n</head>`)
-    deliverableContentRaw = deliverableContentRaw.replace('</body>', `${VISUAL_EDITOR_SCRIPT}\n</body>`)
+  // Dev agent: parse multi-file JSON and merge with previous deliverable
+  if (isDevAgent) {
+    try {
+      let newFiles = parseProjectFilesFromText(agentFullText).files
+
+      // Merge with previous deliverable (extension mode)
+      const prevDeliverable = await prisma.deliverable.findFirst({
+        where: { conversationId, instanceId: step.instanceId },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (prevDeliverable) {
+        try {
+          const prevFiles = JSON.parse(prevDeliverable.content)
+          if (Array.isArray(prevFiles)) {
+            const newFilePaths = new Set(newFiles.map((f: any) => f.path))
+            const merged = [
+              ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
+              ...newFiles,
+            ]
+            console.log(`[${agentConfig.name}:${step.instanceId}] Refine merge: ${newFiles.length} new/modified + ${prevFiles.length} existing = ${merged.length} total`)
+            newFiles = merged
+          }
+        } catch { /* ignore */ }
+      }
+
+      deliverableContent = JSON.stringify(newFiles)
+      messageText = `${agentConfig.name} refino el proyecto con ${newFiles.length} archivos. Ver en el canvas.`
+    } catch (err) {
+      console.error(`[${agentConfig.name}:${step.instanceId}] Failed to parse refined multi-file JSON:`, err)
+      broadcast(conversationId, { type: 'error', message: `Error al refinar proyecto: ${(err as Error).message}` })
+      return
+    }
+  } else {
+    // Non-dev agents: HTML processing
+    const htmlBlock = extractHtmlBlock(agentFullText)
+    let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
+
+    // Inject error-catching script and visual editor for visual agents
+    if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
+      const errorScript = `<script>window.onerror=function(msg,url,line,col){window.parent.postMessage({type:'iframe-error',error:String(msg),line:line},'*');}</script>`
+      deliverableContentRaw = deliverableContentRaw.replace('</head>', `${errorScript}\n</head>`)
+      deliverableContentRaw = deliverableContentRaw.replace('</body>', `${VISUAL_EDITOR_SCRIPT}\n</body>`)
+
+      // Inject logo selection script for brand agent
+      if (agentConfig.id === 'brand') {
+        deliverableContentRaw = deliverableContentRaw.replace('</body>', `${LOGO_SELECTION_SCRIPT}\n</body>`)
+      }
+    }
+
+    const cdnBase = process.env.CDN_BASE_URL || `http://localhost:${process.env.PORT ?? '3002'}`
+    deliverableContent = deliverableContentRaw
+      .replace(/src="\/uploads\//g, `src="${cdnBase}/uploads/`)
+      .replace(/src='\/uploads\//g, `src='${cdnBase}/uploads/`)
+
+    messageText = isVisualAgent && htmlBlock
+      ? `${agentConfig.name} genero una version refinada. Ver en el canvas.`
+      : agentFullText
   }
-
-  const cdnBase = process.env.CDN_BASE_URL || `http://localhost:${process.env.PORT ?? '3002'}`
-  const deliverableContent = deliverableContentRaw
-    .replace(/src="\/uploads\//g, `src="${cdnBase}/uploads/`)
-    .replace(/src='\/uploads\//g, `src='${cdnBase}/uploads/`)
 
   const refineVersionInfo = await getNextVersionInfo(conversationId, step.instanceId)
   const deliverableId = uuid()
@@ -187,12 +240,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
     },
   })
 
-  // Save agent message
-  let messageText = agentFullText
-  if (isVisualAgent && htmlBlock) {
-    messageText = `${agentConfig.name} genero una version refinada. Ver en el canvas.`
-  }
-
+  // Save agent message (messageText already set above for dev and non-dev agents)
   const agentMsg = await prisma.message.create({
     data: {
       id: uuid(),

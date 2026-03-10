@@ -51,13 +51,19 @@ export async function consumeCredits(
   inputTokens: number,
   outputTokens: number,
   cacheCreationInputTokens?: number,
-  cacheReadInputTokens?: number
+  cacheReadInputTokens?: number,
+  conversationId?: string
 ): Promise<CreditUsageResult> {
   const credits = calculateTokenCredits(model, inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens)
 
   // Create usage record
   const usageRecord = await prisma.usageRecord.create({
-    data: { userId, agentId, model, inputTokens, outputTokens },
+    data: {
+      userId, agentId, model, inputTokens, outputTokens,
+      cacheCreationInputTokens: cacheCreationInputTokens ?? 0,
+      cacheReadInputTokens: cacheReadInputTokens ?? 0,
+      conversationId: conversationId ?? null,
+    },
   })
 
   // Atomically deduct credits and record ledger entry

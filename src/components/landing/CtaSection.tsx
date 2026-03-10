@@ -38,7 +38,7 @@ const CtaSection = ({ onRegister }: CtaSectionProps) => {
         </p>
         <button
           onClick={onRegister}
-          className="cta-anim inline-flex items-center gap-2 px-8 py-3.5 text-[15px] font-bold text-white bg-[#7c3aed] rounded-full hover:bg-[#6d28d9] transition-all shadow-[0_0_40px_rgba(124,58,237,0.3)] hover:shadow-[0_0_60px_rgba(124,58,237,0.4)]"
+          className="cta-anim inline-flex items-center gap-2 px-8 py-3.5 text-[15px] font-bold text-white bg-[#8b5cf6] rounded-full hover:bg-[#7c3aed] transition-all shadow-[0_0_40px_rgba(139,92,246,0.3)] hover:shadow-[0_0_60px_rgba(139,92,246,0.4)]"
         >
           Comenzar gratis <ArrowRight size={16} />
         </button>

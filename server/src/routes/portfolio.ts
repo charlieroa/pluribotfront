@@ -5,28 +5,72 @@ import crypto from 'crypto'
 
 const router = Router()
 
+const RANDOM_NAMES = [
+  'Valentina M.', 'Santiago R.', 'Camila P.', 'Andres G.', 'Isabella L.',
+  'Juan D.', 'Sofia C.', 'Carlos H.', 'Mariana V.', 'Diego F.',
+  'Laura T.', 'Felipe A.', 'Daniela S.', 'Nicolas B.', 'Paula E.',
+  'Alejandro J.', 'Gabriela O.', 'Sebastian K.', 'Ana M.', 'David R.',
+]
+
+function hashCode(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i)
+    hash |= 0
+  }
+  return hash
+}
+
+const botTypeTags: Record<string, string[]> = {
+  web: ['Web', 'Diseño'],
+  dev: ['Full Stack', 'App'],
+  seo: ['SEO', 'Marketing'],
+  ads: ['Ads', 'Campaña'],
+  video: ['Video', 'Contenido'],
+}
+
 /**
  * GET /api/portfolio/public — List public deliverables (no auth required)
  */
 router.get('/public', async (_req, res) => {
   try {
     const deliverables = await prisma.deliverable.findMany({
-      where: { isPublic: true },
+      where: {
+        isPublic: true,
+        publishSlug: { not: null },
+      },
       select: {
         id: true,
         title: true,
         type: true,
         agent: true,
         botType: true,
-        netlifyUrl: true,
-        shareSlug: true,
+        publishSlug: true,
+        publishedAt: true,
+        thumbnailUrl: true,
         createdAt: true,
+        conversation: {
+          select: { user: { select: { name: true, role: true } } },
+        },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { publishedAt: 'desc' },
       take: 50,
     })
 
-    res.json({ deliverables })
+    const mapped = deliverables.map(d => ({
+      id: d.id,
+      title: d.title,
+      publishSlug: d.publishSlug,
+      thumbnailUrl: d.thumbnailUrl,
+      authorName: d.conversation?.user?.role === 'superadmin'
+        ? RANDOM_NAMES[Math.abs(hashCode(d.id)) % RANDOM_NAMES.length]
+        : (d.conversation?.user?.name || 'Anónimo'),
+      tags: botTypeTags[d.botType] || ['Proyecto'],
+      botType: d.botType,
+      createdAt: d.createdAt,
+    }))
+
+    res.json({ deliverables: mapped })
   } catch (err) {
     console.error('[Portfolio] Error:', err)
     res.status(500).json({ error: 'Error al obtener portfolio' })

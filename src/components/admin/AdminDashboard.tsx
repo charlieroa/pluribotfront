@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Building2, Bot, CreditCard, Wifi, Star, AlertTriangle, DollarSign } from 'lucide-react'
+import { Users, Building2, Bot, CreditCard, Wifi, Star, AlertTriangle, DollarSign, Headphones, Globe } from 'lucide-react'
 import UsersSection from './UsersSection'
 import AgenciesSection from './AgenciesSection'
 import BotsSection from './BotsSection'
 import CreditsSection from './CreditsSection'
 import ApisSection from './ApisSection'
 import SeniorManagement from './SeniorManagement'
+import SupportSection from './SupportSection'
+import PublishedSection from './PublishedSection'
 
 interface AdminStats {
   totalUsers: number
@@ -34,7 +36,7 @@ const SPENDING_LIMITS: Record<string, number> = {
   google: 30,
 }
 
-export type AdminTab = 'users' | 'agencies' | 'bots' | 'credits' | 'apis' | 'senior'
+export type AdminTab = 'users' | 'agencies' | 'bots' | 'credits' | 'apis' | 'senior' | 'support' | 'published'
 
 interface AdminDashboardProps {
   activeTab: AdminTab
@@ -47,7 +49,7 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
   const [providers, setProviders] = useState<ProviderHealth[]>([])
 
   const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -106,7 +108,9 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
     { id: 'bots', label: 'Bots', icon: Bot },
     { id: 'credits', label: 'Creditos', icon: CreditCard },
     { id: 'apis', label: 'APIs', icon: Wifi },
+    { id: 'published', label: 'Publicados', icon: Globe },
     { id: 'senior', label: 'Senior', icon: Star },
+    { id: 'support', label: 'Soporte', icon: Headphones },
   ]
 
   return (
@@ -115,8 +119,8 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
       {stats && (
         <div className="px-4 md:px-8 py-3 md:py-4 border-b border-edge bg-surface flex flex-wrap gap-4 md:gap-6">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-              <Users size={16} className="text-indigo-500" />
+            <div className="w-8 h-8 rounded-lg bg-[#a78bfa]/10 flex items-center justify-center">
+              <Users size={16} className="text-[#a78bfa]" />
             </div>
             <div>
               <p className="text-lg font-bold text-ink">{stats.totalUsers}</p>
@@ -124,8 +128,8 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <Building2 size={16} className="text-purple-500" />
+            <div className="w-8 h-8 rounded-lg bg-[#a78bfa]/10 flex items-center justify-center">
+              <Building2 size={16} className="text-[#a78bfa]" />
             </div>
             <div>
               <p className="text-lg font-bold text-ink">{stats.totalOrgs}</p>
@@ -237,7 +241,9 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
         {activeTab === 'bots' && <BotsSection />}
         {activeTab === 'credits' && <CreditsSection />}
         {activeTab === 'apis' && <ApisSection />}
+        {activeTab === 'published' && <PublishedSection />}
         {activeTab === 'senior' && <SeniorManagement />}
+        {activeTab === 'support' && <SupportSection />}
       </div>
     </div>
   )

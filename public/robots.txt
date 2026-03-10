@@ -23,4 +23,4 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://pluribots.com/sitemap.xml
+Sitemap: https://plury.co/sitemap.xml

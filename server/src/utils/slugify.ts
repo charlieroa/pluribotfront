@@ -10,13 +10,21 @@ const RESERVED_SLUGS = new Set([
  * Normalize text to a URL-safe slug (lowercase, no accents, hyphens).
  */
 export function slugify(text: string): string {
-  return text
+  let slug = text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // remove accents
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')    // non-alphanumeric → hyphen
     .replace(/^-+|-+$/g, '')        // trim leading/trailing hyphens
-    .slice(0, 63)
+
+  // Keep it short: max ~28 chars, cut at last word boundary
+  if (slug.length > 28) {
+    slug = slug.slice(0, 28)
+    const lastHyphen = slug.lastIndexOf('-')
+    if (lastHyphen > 8) slug = slug.slice(0, lastHyphen)
+  }
+
+  return slug.slice(0, 63)
 }
 
 /**

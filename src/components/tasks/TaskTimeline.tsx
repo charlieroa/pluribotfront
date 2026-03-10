@@ -18,7 +18,7 @@ const columns: { id: KanbanTask['status']; label: string; dotColor: string; head
 
 const agentColorMap: Record<string, string> = {
   seo: '#3b82f6',
-  web: '#a855f7',
+  web: '#a78bfa',
   ads: '#10b981',
   video: '#ef4444',
 }

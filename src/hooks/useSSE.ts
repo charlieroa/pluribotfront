@@ -26,7 +26,7 @@ export function useSSE(onEvent: (data: Record<string, unknown>) => void): UseSSE
 
       sseReadyRef.current = false
       sseConvIdRef.current = convId
-      const token = localStorage.getItem('pluribots_token')
+      const token = localStorage.getItem('plury_token')
       const url = `${API_BASE}/chat/${convId}/stream${token ? `?token=${token}` : ''}`
       const es = new EventSource(url)
       eventSourceRef.current = es

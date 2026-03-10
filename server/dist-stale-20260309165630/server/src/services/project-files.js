@@ -1,0 +1,111 @@
+const PATH_RE = /^(src|public)\/[a-zA-Z0-9._/-]+$|^(package\.json|vite\.config\.(js|ts)|tailwind\.config\.js|postcss\.config\.js|index\.html|README\.md)$/;
+function fallbackAppFile() {
+    return {
+        path: 'src/App.jsx',
+        content: `export default function App() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="max-w-lg text-center">
+        <h1 className="text-3xl font-semibold">Proyecto recuperado</h1>
+        <p className="mt-3 text-sm text-slate-300">El agente no genero un App valido. Se creo este fallback para evitar una pantalla en blanco.</p>
+      </div>
+    </div>
+  )
+}
+`,
+    };
+}
+export function validateProjectFiles(input) {
+    if (!Array.isArray(input)) {
+        throw new Error('El proyecto debe ser un array de archivos');
+    }
+    const warnings = [];
+    const deduped = new Map();
+    for (const rawFile of input) {
+        if (!rawFile || typeof rawFile !== 'object')
+            continue;
+        const file = rawFile;
+        const path = typeof file.path === 'string' ? file.path.trim().replace(/\\/g, '/') : '';
+        const content = typeof file.content === 'string' ? file.content : '';
+        if (!path || !content)
+            continue;
+        if (path.includes('..'))
+            throw new Error(`Ruta invalida: ${path}`);
+        if (!PATH_RE.test(path))
+            throw new Error(`Archivo no permitido: ${path}`);
+        if (content.length > 250_000)
+            throw new Error(`Archivo demasiado grande: ${path}`);
+        deduped.set(path, content);
+    }
+    const files = [...deduped.entries()].map(([path, content]) => ({ path, content }));
+    if (files.length === 0) {
+        throw new Error('El proyecto no contiene archivos validos');
+    }
+    const hasApp = files.some(file => file.path === 'src/App.jsx' || file.path === 'src/App.tsx');
+    if (!hasApp) {
+        warnings.push('Se agrego src/App.jsx fallback porque el proyecto no lo incluia');
+        files.unshift(fallbackAppFile());
+    }
+    const hasMain = files.some(file => file.path === 'src/main.jsx' || file.path === 'src/main.tsx');
+    if (!hasMain) {
+        warnings.push('El proyecto no incluye src/main.*; se espera que el template base lo provea');
+    }
+    return { files, warnings };
+}
+function unwrapProjectPayload(input) {
+    if (Array.isArray(input))
+        return input;
+    if (input && typeof input === 'object' && Array.isArray(input.files)) {
+        return input.files;
+    }
+    return input;
+}
+function extractJsonCandidate(raw) {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        throw new Error('Respuesta vacia del agente');
+    const fenceMatch = trimmed.match(/```(?:json|javascript)?\s*([\s\S]*?)```/i);
+    const unfenced = fenceMatch ? fenceMatch[1].trim() : trimmed;
+    const starts = [unfenced.indexOf('['), unfenced.indexOf('{')].filter(i => i >= 0);
+    if (starts.length === 0) {
+        throw new Error('No se encontro JSON del proyecto en la respuesta');
+    }
+    const start = Math.min(...starts);
+    const opening = unfenced[start];
+    const closing = opening === '[' ? ']' : '}';
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < unfenced.length; i++) {
+        const char = unfenced[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (char === '\\') {
+            escaped = true;
+            continue;
+        }
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString)
+            continue;
+        if (char === opening)
+            depth += 1;
+        if (char === closing) {
+            depth -= 1;
+            if (depth === 0) {
+                return unfenced.slice(start, i + 1);
+            }
+        }
+    }
+    throw new Error('El JSON del proyecto esta incompleto');
+}
+export function parseProjectFilesFromText(raw) {
+    const jsonCandidate = extractJsonCandidate(raw);
+    const parsed = JSON.parse(jsonCandidate);
+    return validateProjectFiles(unwrapProjectPayload(parsed));
+}
+//# sourceMappingURL=project-files.js.map

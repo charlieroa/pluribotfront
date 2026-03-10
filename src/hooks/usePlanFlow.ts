@@ -1,7 +1,71 @@
-import { useState } from 'react'
-import type { Message, Deliverable, PlanStep } from '../types'
+import { useState, useCallback, useEffect } from 'react'
+import type { Message, Deliverable, PlanStep, QuickReply } from '../types'
 
 const API_BASE = '/api'
+
+// Play a short chime using Web Audio API
+function playCompletionChime() {
+  try {
+    const ctx = new AudioContext()
+    const now = ctx.currentTime
+
+    // Two-note chime: C5 → E5
+    const notes = [523.25, 659.25]
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.15, now + i * 0.15)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.4)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now + i * 0.15)
+      osc.stop(now + i * 0.15 + 0.4)
+    })
+
+    setTimeout(() => ctx.close(), 1000)
+  } catch { /* Audio not supported */ }
+}
+
+// Show browser notification if tab is hidden
+function showBrowserNotification() {
+  if (!document.hidden) return
+  if (!('Notification' in window)) return
+
+  if (Notification.permission === 'granted') {
+    new Notification('Plury', { body: 'Tu proyecto esta listo', icon: '/favicon.ico' })
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(perm => {
+      if (perm === 'granted') {
+        new Notification('Plury', { body: 'Tu proyecto esta listo', icon: '/favicon.ico' })
+      }
+    })
+  }
+}
+
+// Flash tab title until focused
+function flashTabTitle() {
+  const original = document.title
+  const flash = '\u2713 Proyecto listo \u2014 Plury'
+  let on = true
+  const interval = setInterval(() => {
+    document.title = on ? flash : original
+    on = !on
+  }, 1500)
+  const restore = () => {
+    clearInterval(interval)
+    document.title = original
+    window.removeEventListener('focus', restore)
+  }
+  window.addEventListener('focus', restore)
+  // Also clean up if tab is already focused
+  if (!document.hidden) {
+    document.title = flash
+    setTimeout(() => { document.title = original }, 3000)
+    clearInterval(interval)
+  }
+}
 
 export interface ActiveAgent {
   agentId: string
@@ -71,6 +135,8 @@ export interface UsePlanFlowReturn {
   setProposedPlan: React.Dispatch<React.SetStateAction<ProposedPlan | null>>
   pendingStepApproval: StepApproval | null
   setPendingStepApproval: React.Dispatch<React.SetStateAction<StepApproval | null>>
+  pendingStepApprovals: StepApproval[]
+  setPendingStepApprovals: React.Dispatch<React.SetStateAction<StepApproval[]>>
   activeAgents: ActiveAgent[]
   setActiveAgents: React.Dispatch<React.SetStateAction<ActiveAgent[]>>
   coordinationAgents: CoordinationAgent[]
@@ -83,8 +149,13 @@ export interface UsePlanFlowReturn {
   setRefiningAgentName: React.Dispatch<React.SetStateAction<string | null>>
   inactiveBotPrompt: InactiveBotPrompt | null
   setInactiveBotPrompt: React.Dispatch<React.SetStateAction<InactiveBotPrompt | null>>
+  quickReplies: QuickReply[]
+  setQuickReplies: React.Dispatch<React.SetStateAction<QuickReply[]>>
+  projectSuggest: { conversationId: string; title: string } | null
+  setProjectSuggest: React.Dispatch<React.SetStateAction<{ conversationId: string; title: string } | null>>
   creditsExhausted: boolean
   setCreditsExhausted: React.Dispatch<React.SetStateAction<boolean>>
+  completionFlash: boolean
   handleApprove: (messageId: string, selectedAgents?: string[]) => Promise<void>
   handleReject: (messageId: string) => Promise<void>
   handleApproveStep: (convId: string, approved: boolean) => Promise<void>
@@ -94,7 +165,7 @@ export interface UsePlanFlowReturn {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('pluribots_token')
+  const token = localStorage.getItem('plury_token')
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -114,15 +185,26 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
   const [pendingApproval, setPendingApproval] = useState<string | null>(null)
   const [proposedPlan, setProposedPlan] = useState<ProposedPlan | null>(null)
   const [pendingStepApproval, setPendingStepApproval] = useState<StepApproval | null>(null)
+  const [pendingStepApprovals, setPendingStepApprovals] = useState<StepApproval[]>([])
   const [activeAgents, setActiveAgents] = useState<ActiveAgent[]>([])
   const [coordinationAgents, setCoordinationAgents] = useState<CoordinationAgent[]>([])
   const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([])
   const [isRefining, setIsRefining] = useState(false)
   const [refiningAgentName, setRefiningAgentName] = useState<string | null>(null)
   const [inactiveBotPrompt, setInactiveBotPrompt] = useState<InactiveBotPrompt | null>(null)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
+  const [projectSuggest, setProjectSuggest] = useState<{ conversationId: string; title: string } | null>(null)
   const [creditsExhausted, setCreditsExhausted] = useState(false)
+  const [completionFlash, setCompletionFlash] = useState(false)
 
-  const handleSSEEvent = (data: Record<string, unknown>) => {
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  const handleSSEEvent = useCallback((data: Record<string, unknown>) => {
     const key = (data.instanceId || data.agentId) as string
 
     switch (data.type) {
@@ -136,6 +218,7 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
       case 'agent_start':
         setStreamingAgent(key)
         setStreamingText('')
+        setQuickReplies([])
         setActiveAgents(prev => {
           const existing = prev.find(a => a.instanceId === key)
           if (existing) {
@@ -164,11 +247,40 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
           } else {
             msgText = `${agentName} completo su trabajo.`
           }
-          attachment = {
-            type: 'preview',
-            title: pendingDeliverable.title,
-            content: 'Ver resultado en el canvas',
-            deliverable: pendingDeliverable,
+
+          // For design deliverables (Pixel), extract image URLs and show inline
+          if (pendingDeliverable.type === 'design' && pendingDeliverable.content) {
+            // Match any image with /uploads/ path (generated images, stock photos, etc.)
+            const imgRegex = /<img[^>]+src=["']([^"']*\/uploads\/[^"']+)["']/g
+            const imageUrls: string[] = []
+            let match
+            while ((match = imgRegex.exec(pendingDeliverable.content)) !== null) {
+              imageUrls.push(match[1])
+            }
+
+            if (imageUrls.length > 0) {
+              attachment = {
+                type: 'image_grid',
+                title: pendingDeliverable.title,
+                content: `${imageUrls.length} imagen${imageUrls.length > 1 ? 'es' : ''} generada${imageUrls.length > 1 ? 's' : ''}`,
+                images: imageUrls,
+                deliverable: pendingDeliverable,
+              }
+            } else {
+              attachment = {
+                type: 'preview',
+                title: pendingDeliverable.title,
+                content: 'Ver resultado en el canvas',
+                deliverable: pendingDeliverable,
+              }
+            }
+          } else {
+            attachment = {
+              type: 'preview',
+              title: pendingDeliverable.title,
+              content: 'Ver resultado en el canvas',
+              deliverable: pendingDeliverable,
+            }
           }
         }
 
@@ -229,10 +341,13 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
         }])
         break
 
-      case 'step_complete':
+      case 'step_complete': {
         setIsRefining(false)
         setRefiningAgentName(null)
-        setPendingStepApproval({
+        const stepConvId = data.conversationId as string
+        const hasNext = !!(data.nextAgentId)
+
+        const newApproval: StepApproval = {
           agentId: data.agentId as string,
           agentName: data.agentName as string,
           instanceId: data.instanceId as string,
@@ -243,12 +358,48 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
           nextTask: data.nextTask as string | undefined,
           stepIndex: data.stepIndex as number,
           totalSteps: data.totalSteps as number,
-          conversationId: data.conversationId as string,
+          conversationId: stepConvId,
+        }
+
+        // Accumulate all step approvals (supports multiple parallel projects)
+        setPendingStepApprovals(prev => {
+          const exists = prev.some(a => a.instanceId === newApproval.instanceId)
+          return exists ? prev : [...prev, newApproval]
         })
+        // Keep backward compat: last step_complete sets the single approval
+        setPendingStepApproval(newApproval)
+
+        if (!hasNext) {
+          // Last step — notify user
+          playCompletionChime()
+          showBrowserNotification()
+          flashTabTitle()
+          setCompletionFlash(true)
+          setTimeout(() => setCompletionFlash(false), 3000)
+        }
+
+        if (hasNext) {
+          // Auto-continue to next agent after a short delay
+          setTimeout(async () => {
+            try {
+              await fetch(`${API_BASE}/chat/approve-step`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ conversationId: stepConvId, approved: true }),
+              })
+            } catch (err) {
+              console.error('[Chat] Auto-approve step error:', err)
+            }
+          }, 1500)
+        }
         break
+      }
 
       case 'coordination_start':
         setIsCoordinating(true)
+        setQuickReplies([])
+        setProjectSuggest(null)
+        setPendingStepApprovals([])
         setCoordinationAgents((data.agents as CoordinationAgent[]) || [])
         break
 
@@ -257,14 +408,30 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
         setIsRefining(false)
         setRefiningAgentName(null)
         setPendingStepApproval(null)
+        setPendingStepApprovals([])
         setThinkingSteps([])
         setCoordinationAgents([])
+        // Completion notifications
+        playCompletionChime()
+        showBrowserNotification()
+        flashTabTitle()
+        setCompletionFlash(true)
+        setTimeout(() => setCompletionFlash(false), 3000)
         break
 
       case 'deliverable':
         if (data.deliverable) {
-          latestDeliverableRef.current = data.deliverable as Deliverable
-          onDeliverable?.(data.deliverable as Deliverable)
+          const del = data.deliverable as Deliverable
+          latestDeliverableRef.current = del
+
+          // For design deliverables with generated images, DON'T open workspace panel
+          // — they will show inline as image_grid in the agent_end handler
+          const hasGeneratedImages = del.type === 'design' && del.content &&
+            /\/uploads\/generated\//.test(del.content)
+
+          if (!hasGeneratedImages) {
+            onDeliverable?.(del)
+          }
         }
         break
 
@@ -307,6 +474,14 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
         onCreditUpdate?.(data.balance as number)
         break
 
+      case 'quick_replies':
+        setQuickReplies((data.options as QuickReply[]) || [])
+        break
+
+      case 'project_suggest':
+        setProjectSuggest({ conversationId: data.conversationId as string, title: data.title as string })
+        break
+
       case 'error':
         console.error('[SSE] Error from server:', data.message)
         setIsCoordinating(false)
@@ -330,7 +505,8 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
         setStreamingText('')
         break
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId])
 
   const handleApprove = async (messageId: string, selectedAgents?: string[]) => {
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, approved: true } : m))
@@ -384,7 +560,7 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
 
   const handleActivateBot = async (botId: string) => {
     setInactiveBotPrompt(null)
-    const token = localStorage.getItem('pluribots_token')
+    const token = localStorage.getItem('plury_token')
     if (!token) return
     try {
       await fetch(`${API_BASE}/user/bots`, {
@@ -412,13 +588,17 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
     pendingApproval, setPendingApproval,
     proposedPlan, setProposedPlan,
     pendingStepApproval, setPendingStepApproval,
+    pendingStepApprovals, setPendingStepApprovals,
     activeAgents, setActiveAgents,
     coordinationAgents, setCoordinationAgents,
     thinkingSteps, setThinkingSteps,
     isRefining, setIsRefining,
     refiningAgentName, setRefiningAgentName,
     inactiveBotPrompt, setInactiveBotPrompt,
+    quickReplies, setQuickReplies,
+    projectSuggest, setProjectSuggest,
     creditsExhausted, setCreditsExhausted,
+    completionFlash,
     handleApprove,
     handleReject,
     handleApproveStep,

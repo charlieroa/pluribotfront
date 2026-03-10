@@ -67,7 +67,7 @@ const AuthModal = ({ isOpen, onClose, defaultMode = 'login' }: AuthModalProps) =
           </button>
 
           <div className="text-center mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-500/20 mx-auto mb-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] flex items-center justify-center shadow-md shadow-[#a78bfa]/20 mx-auto mb-2">
               <Bot size={20} className="text-white" />
             </div>
             <h2 className="text-lg font-bold text-ink">

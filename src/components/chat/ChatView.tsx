@@ -1,11 +1,10 @@
-import { useState, type FormEvent, type RefObject } from 'react'
-import type { Agent, Message, QuickAction, Deliverable } from '../../types'
-import type { ProposedPlan, StepApproval, ThinkingStep, InactiveBotPrompt, CoordinationAgent, ActiveAgent } from '../../hooks/useChat'
-import { Zap, X, UserCircle, Sparkles, ChevronDown } from 'lucide-react'
+import { useState, useEffect, type FormEvent, type RefObject } from 'react'
+import type { Agent, Message, QuickAction, Deliverable, KanbanTask, QuickReply } from '../../types'
+import type { ProposedPlan, StepApproval, ThinkingStep, CoordinationAgent, ActiveAgent, ConversationItem, ProjectItem } from '../../hooks/useChat'
+import { Zap, UserCircle, FolderPlus, FolderOpen, ChevronRight } from 'lucide-react'
 import WelcomeScreen from './WelcomeScreen'
-import MessageBubble, { StepApprovalCard } from './MessageBubble'
+import MessageBubble from './MessageBubble'
 import ChatInput from './ChatInput'
-import BotAvatar3D from '../avatars/BotAvatar3D'
 import ThinkingBox from './ThinkingBox'
 
 interface ChatViewProps {
@@ -20,7 +19,7 @@ interface ChatViewProps {
   chatEndRef: RefObject<HTMLDivElement>
   onApprove?: (id: string, selectedAgents?: string[]) => void
   onReject?: (id: string) => void
-  onOpenDeliverable?: (d: Deliverable) => void
+  onOpenDeliverable?: (d: Deliverable, clickedImageUrl?: string) => void
   pendingApproval?: string | null
   streamingText?: string
   streamingAgent?: string | null
@@ -33,9 +32,6 @@ interface ChatViewProps {
   coordinationAgents?: CoordinationAgent[]
   isRefineMode?: boolean
   onOpenMarketplace?: () => void
-  inactiveBotPrompt?: InactiveBotPrompt | null
-  onActivateBot?: (botId: string) => void
-  onDismissInactiveBot?: () => void
   assignedHumanAgent?: { name: string; role: string; specialty?: string; specialtyColor?: string; avatarUrl?: string } | null
   onRequestHuman?: () => void
   humanRequested?: boolean
@@ -45,21 +41,39 @@ interface ChatViewProps {
   onAbort?: () => void
   activeAgents?: ActiveAgent[]
   onLoadTemplate?: (templateId: string) => void
+  conversations?: ConversationItem[]
+  onLoadConversation?: (id: string) => void
   isRefining?: boolean
   refiningAgentName?: string | null
+  kanbanTasks?: KanbanTask[]
+  activeDeliverable?: Deliverable | null
+  quickReplies?: QuickReply[]
+  onQuickReply?: (value: string) => void
+  projectSuggest?: { conversationId: string; title: string } | null
+  onCreateProject?: (name: string, convId?: string) => Promise<string | null>
+  onAddToProject?: (projectId: string, convId: string) => Promise<void>
+  onDismissProjectSuggest?: () => void
+  projects?: ProjectItem[]
 }
 
-const agentMeta: Record<string, { name: string; color: string }> = {
-  seo: { name: 'Lupa', color: '#3b82f6' },
-  web: { name: 'Pixel', color: '#a855f7' },
-  ads: { name: 'Metric', color: '#10b981' },
-  video: { name: 'Reel', color: '#ef4444' },
-  base: { name: 'Pluria', color: '#6366f1' },
-  human: { name: 'Agente Humano', color: '#8b5cf6' },
-  system: { name: 'Sistema', color: '#6b7280' },
+const agentMeta: Record<string, { name: string; color: string; initial: string }> = {
+  seo: { name: 'Lupa', color: '#3b82f6', initial: 'L' },
+  web: { name: 'Pixel', color: '#a855f7', initial: 'P' },
+  content: { name: 'Pluma', color: '#f97316', initial: 'C' },
+  ads: { name: 'Metric', color: '#10b981', initial: 'M' },
+  video: { name: 'Reel', color: '#ef4444', initial: 'R' },
+  dev: { name: 'Code', color: '#f59e0b', initial: 'D' },
+  base: { name: 'Pluria', color: '#a78bfa', initial: 'P' },
+  human: { name: 'Agente Humano', color: '#8b5cf6', initial: 'H' },
+  system: { name: 'Sistema', color: '#6b7280', initial: 'S' },
 }
 
-const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, inactiveBotPrompt, onActivateBot, onDismissInactiveBot, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate, isRefining, refiningAgentName }: ChatViewProps) => (
+// Visual agents whose streaming output is HTML code (don't show in chat)
+const VISUAL_AGENTS = new Set(['web', 'dev', 'video'])
+
+const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate, conversations: _conversations, onLoadConversation: _onLoadConversation, isRefining, refiningAgentName, kanbanTasks: _kanbanTasks, activeDeliverable: _activeDeliverable, quickReplies, onQuickReply, projectSuggest, onCreateProject, onAddToProject, onDismissProjectSuggest, projects }: ChatViewProps) => {
+
+  return (
   <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
     {/* Human agent banner */}
     {assignedHumanAgent && (() => {
@@ -83,9 +97,11 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         </div>
       )
     })()}
-    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 custom-scrollbar bg-page min-h-0">
+    {/* Human assistance — subtle dot indicator, not a big banner */}
+
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-5 custom-scrollbar bg-surface min-h-0">
       {showWelcome && (
-        <WelcomeScreen quickActions={quickActions} setInputText={setInputText} onOpenMarketplace={onOpenMarketplace} onLoadTemplate={onLoadTemplate} />
+        <WelcomeScreen quickActions={quickActions} inputText={inputText} setInputText={setInputText} onSubmit={onSubmit} onOpenMarketplace={onOpenMarketplace} onLoadTemplate={onLoadTemplate} />
       )}
 
       {messages.map((m) => (
@@ -109,92 +125,102 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         <ThinkingBox steps={thinkingSteps} />
       )}
 
-      {/* Streaming bubble — shows text as it arrives from the LLM */}
-      {streamingAgent && streamingText && (
-        <div className="flex gap-4 max-w-2xl">
-          <BotAvatar3D
-            color={agentMeta[streamingAgent]?.color ?? '#6366f1'}
-            seed={agentMeta[streamingAgent]?.name ?? 'base'}
-            isActive={true}
-            size="sm"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="bg-surface p-4 rounded-2xl rounded-tl-none border border-edge shadow-sm text-ink">
-              <p className="text-xs font-bold text-primary mb-1">
-                {agentMeta[streamingAgent]?.name ?? streamingAgent}
-              </p>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{streamingText}<span className="animate-pulse">|</span></p>
+      {/* Streaming bubble — only for NON-visual agents (visual agents stream HTML code) */}
+      {streamingAgent && streamingText && !VISUAL_AGENTS.has(streamingAgent) && (() => {
+        const meta = agentMeta[streamingAgent]
+        const color = meta?.color ?? '#6366f1'
+        return (
+          <div className="flex items-start gap-3 max-w-2xl">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
+              style={{ backgroundColor: color }}
+            >
+              {meta?.initial ?? '?'}
+            </div>
+            <div className="pt-0.5">
+              <span className="text-sm font-semibold text-ink">{meta?.name ?? streamingAgent}</span>
+              <p className="text-sm leading-relaxed text-ink-light mt-1 whitespace-pre-wrap">{streamingText}<span className="animate-pulse text-ink-faint">|</span></p>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
-      {/* Step approval card */}
-      {pendingStepApproval && onApproveStep && (
-        <StepApprovalCard step={pendingStepApproval} onApproveStep={onApproveStep} onRequestHuman={onRequestHuman} humanRequested={humanRequested} />
-      )}
-
-      {/* Inactive bot activation card */}
-      {inactiveBotPrompt && onActivateBot && onDismissInactiveBot && (
-        <div className="flex gap-4 max-w-2xl">
-          <BotAvatar3D
-            color={agentMeta[inactiveBotPrompt.botId]?.color ?? '#6b7280'}
-            seed={inactiveBotPrompt.botName}
-            isActive={false}
-            size="sm"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl rounded-tl-none shadow-sm">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="text-xs font-bold text-amber-800">
-                  Bot inactivo: {inactiveBotPrompt.botName}
-                </p>
-                <button onClick={onDismissInactiveBot} className="text-amber-400 hover:text-amber-600 transition-colors">
-                  <X size={14} />
-                </button>
-              </div>
-              <p className="text-xs text-amber-700 mb-3">
-                Esta tarea necesita a <strong>{inactiveBotPrompt.botName}</strong>: "{inactiveBotPrompt.stepTask}"
-              </p>
+      {/* Visual agent streaming indicator — just shows "working" instead of raw code */}
+      {streamingAgent && streamingText && VISUAL_AGENTS.has(streamingAgent) && (() => {
+        const meta = agentMeta[streamingAgent]
+        const color = meta?.color ?? '#6366f1'
+        return (
+          <div className="flex items-start gap-3 max-w-2xl">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
+              style={{ backgroundColor: color }}
+            >
+              {meta?.initial ?? '?'}
+            </div>
+            <div className="pt-1">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onActivateBot(inactiveBotPrompt.botId)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-all"
-                >
-                  <Zap size={12} />
-                  Activar y continuar
-                </button>
-                <button
-                  onClick={onDismissInactiveBot}
-                  className="px-3 py-1.5 text-xs font-semibold text-amber-600 hover:text-amber-800 bg-amber-100 rounded-lg hover:bg-amber-200 transition-all"
-                >
-                  Omitir
-                </button>
+                <span className="text-sm font-semibold text-ink">{meta?.name ?? streamingAgent}</span>
+                <span className="text-xs text-ink-faint">generando...</span>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <div className="w-32 h-1 bg-subtle rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-transparent animate-shimmer" style={{ backgroundColor: color, opacity: 0.5 }} />
+                </div>
+                <span className="text-[10px] text-ink-faint font-mono">{Math.round(streamingText.length / 1000)}k chars</span>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
-      {/* Refining card — shows while agent refines without full coordination */}
+
+      {/* Refining indicator */}
       {isRefining && !isCoordinating && !pendingStepApproval && !streamingAgent && (
-        <RefiningCard agentName={refiningAgentName || 'Pluria'} thinkingSteps={thinkingSteps || []} />
+        <RefiningIndicator agentName={refiningAgentName || 'Pluria'} thinkingSteps={thinkingSteps || []} />
       )}
 
       {isCoordinating && !pendingStepApproval && (
-        <WorkingCard
+        <WorkingChecklist
           agents={coordinationAgents || []}
           thinkingSteps={thinkingSteps || []}
           activeAgents={activeAgents || []}
         />
       )}
+
+      {/* Quick reply buttons */}
+      {quickReplies && quickReplies.length > 0 && !isCoordinating && !streamingAgent && (
+        <div className="max-w-2xl pl-10 flex flex-wrap gap-2 animate-[fadeSlideIn_0.3s_ease-out]">
+          {quickReplies.map((qr, i) => (
+            <button
+              key={i}
+              onClick={() => onQuickReply?.(qr.value)}
+              className="px-4 py-2 bg-surface-alt border border-primary/20 text-sm font-medium text-primary rounded-xl hover:bg-primary/10 hover:border-primary/40 transition-all"
+            >
+              {qr.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Project suggestion card */}
+      {projectSuggest && !isCoordinating && !streamingAgent && (
+        <ProjectSuggestCard
+          title={projectSuggest.title}
+          conversationId={projectSuggest.conversationId}
+          projects={projects || []}
+          onCreateProject={onCreateProject}
+          onAddToProject={onAddToProject}
+          onDismiss={onDismissProjectSuggest}
+        />
+      )}
+
       <div ref={chatEndRef} />
     </div>
 
     {creditsExhausted && (
-      <div className="px-4 py-3 bg-red-50 border-t border-red-200 flex items-center gap-3">
-        <Zap size={16} className="text-red-500 flex-shrink-0" />
-        <p className="text-xs text-red-700 flex-1">
+      <div className="px-4 py-3 bg-red-500/10 border-t border-red-500/20 flex items-center gap-3">
+        <Zap size={16} className="text-red-400 flex-shrink-0" />
+        <p className="text-xs text-red-400 flex-1">
           <span className="font-bold">Creditos agotados.</span> Mejora tu plan para seguir usando los agentes.
         </p>
         {onUpgrade && (
@@ -208,203 +234,316 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
       </div>
     )}
 
-    <ChatInput
-      inputText={inputText}
-      setInputText={setInputText}
-      isCoordinating={(isCoordinating && !isRefineMode) || !!pendingApproval || !!creditsExhausted}
-      onSubmit={onSubmit}
-      onAbort={onAbort}
-      selectedModel={selectedModel}
-      onModelChange={onModelChange}
-      refineMode={isRefineMode}
-      refineAgentName={pendingStepApproval?.agentName}
-      disabledProviders={disabledProviders}
-    />
+    {!showWelcome && (
+      <ChatInput
+        inputText={inputText}
+        setInputText={setInputText}
+        isCoordinating={(isCoordinating && !isRefineMode) || !!pendingApproval || !!creditsExhausted}
+        onSubmit={onSubmit}
+        onAbort={onAbort}
+        selectedModel={selectedModel}
+        onModelChange={onModelChange}
+        refineMode={isRefineMode}
+        refineAgentName={pendingStepApproval?.agentName}
+        disabledProviders={disabledProviders}
+      />
+    )}
   </div>
-)
+  )
+}
 
-// Refining card — shows a spinner while a single agent refines
-const RefiningCard = ({ agentName, thinkingSteps }: { agentName: string; thinkingSteps: ThinkingStep[] }) => {
+// Refining indicator — minimal, just avatar + status
+const RefiningIndicator = ({ agentName, thinkingSteps }: { agentName: string; thinkingSteps: ThinkingStep[] }) => {
   const agentId = Object.keys(agentMeta).find(k => agentMeta[k].name === agentName) || 'web'
-  const color = agentMeta[agentId]?.color ?? '#6366f1'
+  const meta = agentMeta[agentId]
+  const color = meta?.color ?? '#6366f1'
   const latestStep = thinkingSteps.length > 0 ? thinkingSteps[thinkingSteps.length - 1] : null
 
   return (
-    <div className="flex gap-3 max-w-2xl">
-      <BotAvatar3D color={color} seed={agentName} isActive={true} size="sm" />
-      <div className="flex-1 min-w-0">
-        <div className="rounded-2xl rounded-tl-none border border-indigo-200 shadow-sm overflow-hidden bg-gradient-to-br from-indigo-50/80 to-purple-50/50">
-          <div className="px-4 py-3 flex items-center gap-2.5">
-            <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin flex-shrink-0" style={{ borderColor: color, borderTopColor: 'transparent' }} />
-            <span className="text-xs font-bold" style={{ color }}>{agentName} esta refinando...</span>
-            <div className="ml-auto flex gap-1">
-              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
-              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.15s]" />
-              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.3s]" />
-            </div>
-          </div>
-          {latestStep && (
-            <div className="px-4 pb-3">
-              <span className="text-[10px] text-ink-faint">{latestStep.step}</span>
-            </div>
-          )}
+    <div className="flex items-start gap-3 max-w-2xl">
+      <div className="relative flex-shrink-0">
+        <div
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold"
+          style={{ backgroundColor: color }}
+        >
+          {meta?.initial ?? '?'}
         </div>
+        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface" style={{ backgroundColor: color }}>
+          <div className="w-full h-full rounded-full animate-ping" style={{ backgroundColor: color, opacity: 0.4 }} />
+        </div>
+      </div>
+      <div className="pt-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-ink">{agentName}</span>
+          <span className="text-xs text-ink-faint">refinando...</span>
+        </div>
+        {latestStep && (
+          <p className="text-xs text-ink-faint mt-0.5">{latestStep.step}</p>
+        )}
       </div>
     </div>
   )
 }
 
-// Working card — shows agents working with progress bar
-const WorkingCard = ({ agents, thinkingSteps, activeAgents }: { agents: CoordinationAgent[]; thinkingSteps: ThinkingStep[]; activeAgents: ActiveAgent[] }) => {
-  const [expanded, setExpanded] = useState(false)
+// Working checklist — clean Lovable-style progress list with avatars
+const WorkingChecklist = ({ agents, thinkingSteps, activeAgents }: { agents: CoordinationAgent[]; thinkingSteps: ThinkingStep[]; activeAgents: ActiveAgent[] }) => {
+  const [startTime] = useState(Date.now())
+  const [elapsed, setElapsed] = useState(0)
 
-  const latestStep = thinkingSteps.length > 0 ? thinkingSteps[thinkingSteps.length - 1] : null
-  const totalAgents = activeAgents.length
+  const totalAgents = activeAgents.length || agents.length
   const doneAgents = activeAgents.filter(a => a.status === 'done').length
-  const progressPercent = totalAgents > 0 ? Math.round((doneAgents / totalAgents) * 100) : 0
+  const allDone = doneAgents === totalAgents && totalAgents > 0
+
+  useEffect(() => {
+    if (allDone) return
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [allDone, startTime])
+
+  const formatTime = (s: number) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+
+  // Build unified plan items
+  const planItems = agents.length > 0
+    ? agents.map(ca => {
+        const active = activeAgents.find(a => a.agentId === ca.agentId)
+        return { ...ca, status: active?.status ?? 'waiting' as const, instanceId: active?.instanceId ?? ca.agentId, model: active?.model }
+      })
+    : activeAgents.map(a => ({ agentId: a.agentId, agentName: a.agentName, task: a.task, status: a.status, instanceId: a.instanceId, model: a.model }))
+
+  const workingItem = planItems.find(i => i.status === 'working')
+  const workingMeta = workingItem ? agentMeta[workingItem.agentId] : null
+  const workingThought = workingItem
+    ? (() => { const arr = thinkingSteps.filter(s => s.instanceId === workingItem.instanceId || s.agentId === workingItem.agentId); return arr[arr.length - 1] ?? null })()
+    : null
 
   return (
-    <div className="flex gap-3 max-w-2xl">
-      {/* Stacked avatars */}
-      <div className="flex flex-col gap-1 flex-shrink-0 pt-1">
-        {agents.length > 0 ? (
-          agents.slice(0, 3).map((agent, i) => (
-            <BotAvatar3D
-              key={`${agent.agentId}-${i}`}
-              color={agentMeta[agent.agentId]?.color ?? '#6b7280'}
-              seed={agent.agentName}
-              isActive={true}
-              size="sm"
-            />
-          ))
-        ) : (
-          <BotAvatar3D color="#6366f1" seed="Pluria" isActive={true} size="sm" />
-        )}
-      </div>
+    <div className="max-w-2xl space-y-2 animate-[fadeSlideIn_0.3s_ease-out]">
+      <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes checkPop { 0% { transform: scale(0); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.check-pop { animation: checkPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }`}</style>
 
-      <div className="flex-1 min-w-0">
-        <div className="rounded-2xl rounded-tl-none border border-indigo-200 shadow-sm overflow-hidden bg-gradient-to-br from-indigo-50/80 to-purple-50/50">
-          {/* Header */}
-          <div className="px-4 py-3 flex items-center gap-2.5">
-            <Sparkles size={14} className="text-indigo-500 animate-pulse" />
-            <span className="text-xs font-bold text-indigo-600">Trabajando en tu proyecto</span>
-            {totalAgents > 0 && (
-              <span className="text-[10px] font-semibold text-indigo-400 ml-auto">
-                {doneAgents}/{totalAgents}
-              </span>
-            )}
-            {totalAgents === 0 && (
-              <div className="ml-auto flex gap-1">
-                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
-                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.15s]" />
-                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.3s]" />
-              </div>
-            )}
+      {/* Fallback when no agents yet */}
+      {agents.length === 0 && activeAgents.length === 0 && (
+        <div className="flex items-center gap-3 py-1">
+          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+            <div className="w-4 h-4 rounded-full animate-spin border-2 border-primary border-t-transparent" />
           </div>
+          <span className="text-sm font-semibold text-ink">Preparando plan de trabajo...</span>
+        </div>
+      )}
 
-          {/* Progress bar */}
-          {totalAgents > 0 && (
-            <div className="px-4 pb-2">
-              <div className="w-full h-1.5 bg-indigo-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${Math.max(progressPercent, doneAgents === 0 ? 8 : progressPercent)}%` }}
-                />
-              </div>
-            </div>
-          )}
+      {/* Plan checklist — compact items */}
+      {planItems.map((item, idx) => {
+        const isDone = item.status === 'done'
+        const isWorking = item.status === 'working'
+        const meta = agentMeta[item.agentId]
+        const color = meta?.color ?? '#6b7280'
 
-          {/* Agent steps list */}
-          {activeAgents.length > 0 && (
-            <div className="px-4 pb-2 space-y-1.5">
-              {activeAgents.map(agent => {
-                const isDone = agent.status === 'done'
-                const isWorking = agent.status === 'working'
-                const color = agentMeta[agent.agentId]?.color ?? '#6b7280'
-                // Find latest thinking step for this agent
-                const agentThinking = thinkingSteps.filter(s => s.instanceId === agent.instanceId || s.agentId === agent.agentId)
-                const lastThought = agentThinking.length > 0 ? agentThinking[agentThinking.length - 1] : null
-
-                return (
-                  <div key={agent.instanceId} className="flex items-center gap-2">
-                    {isDone ? (
-                      <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
-                        <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      </div>
-                    ) : isWorking ? (
-                      <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin flex-shrink-0" style={{ borderColor: color, borderTopColor: 'transparent' }} />
-                    ) : (
-                      <div className="w-4 h-4 rounded-full border-2 flex-shrink-0" style={{ borderColor: `${color}40` }} />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[11px] font-semibold ${isDone ? 'line-through opacity-50' : ''}`} style={{ color }}>
-                          {agent.agentName}
-                        </span>
-                        {agent.model && (
-                          <span className="text-[9px] text-ink-faint bg-subtle px-1.5 py-0.5 rounded font-mono">
-                            {agent.model.replace('claude-', '').replace('-20250929', '').replace('-20251001', '')}
-                          </span>
-                        )}
-                        {isWorking && lastThought && (
-                          <span className="text-[10px] text-ink-faint truncate">{lastThought.step}</span>
-                        )}
-                        {isDone && (
-                          <span className="text-[10px] text-emerald-500 font-medium">Listo</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Fallback when no agents yet */}
-          {agents.length === 0 && activeAgents.length === 0 && !latestStep && (
-            <div className="px-4 pb-3 flex items-center gap-2">
-              <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-              <span className="text-[11px] text-ink-faint">Preparando agentes...</span>
-            </div>
-          )}
-
-          {/* Expandable thinking history */}
-          {thinkingSteps.length > 1 && (
-            <>
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="w-full px-4 py-2 flex items-center gap-1.5 text-[10px] font-medium text-indigo-400 hover:text-indigo-600 transition-colors border-t border-indigo-100"
+        return (
+          <div
+            key={item.instanceId}
+            className={`flex items-center gap-3 py-1.5 transition-opacity duration-300 ${isDone ? 'opacity-60' : ''}`}
+            style={{ animationDelay: `${idx * 60}ms` }}
+          >
+            {/* Avatar — always visible */}
+            <div className="relative flex-shrink-0">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold transition-all duration-300"
+                style={{ backgroundColor: isDone ? `${color}90` : color }}
               >
-                <ChevronDown size={10} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                {expanded ? 'Ocultar detalle' : 'Ver detalle'}
-              </button>
-
-              {expanded && (
-                <div className="px-4 pb-3 border-t border-indigo-100">
-                  <div className="space-y-1 pt-2">
-                    {thinkingSteps.map((s, i) => {
-                      const isLatest = i === thinkingSteps.length - 1
-                      return (
-                        <div
-                          key={s.timestamp}
-                          className={`flex items-center gap-2 ${isLatest ? 'opacity-100' : 'opacity-40'}`}
-                        >
-                          <div
-                            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isLatest ? 'animate-pulse' : ''}`}
-                            style={{ backgroundColor: agentMeta[s.agentId]?.color ?? '#6b7280' }}
-                          />
-                          <span className={`text-[10px] ${isLatest ? 'font-medium text-ink-light' : 'text-ink-faint'}`}>
-                            {s.agentName}: {s.step}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                {meta?.initial ?? '?'}
+              </div>
+              {/* Check badge overlay */}
+              {isDone && (
+                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center border-2 border-surface check-pop">
+                  <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
               )}
-            </>
+              {/* Working pulse ring */}
+              {isWorking && (
+                <div className="absolute inset-[-3px] rounded-full border-2 animate-ping opacity-30" style={{ borderColor: color }} />
+              )}
+            </div>
+
+            {/* Task text */}
+            <div className="min-w-0 flex-1">
+              <p className={`text-[13px] leading-snug ${isDone ? 'text-ink-faint line-through' : 'text-ink-light'}`}>
+                {item.task}
+              </p>
+            </div>
+
+            {/* Status badge */}
+            {isDone && (
+              <svg className="flex-shrink-0 check-pop" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="8" fill="#10b981"/><path d="M4.5 8l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Active agent working indicator — prominent */}
+      {workingItem && workingMeta && (
+        <div className="mt-3 flex items-center gap-3 px-4 py-3 bg-surface-alt rounded-xl border border-edge">
+          <div className="relative flex-shrink-0">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[13px] font-bold"
+              style={{ backgroundColor: workingMeta.color }}
+            >
+              {workingMeta.initial}
+            </div>
+            <div className="absolute inset-[-2px] rounded-full border-2 animate-spin" style={{ borderColor: 'transparent', borderTopColor: workingMeta.color, animationDuration: '1.5s' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink">
+              {workingItem.agentName} <span className="font-normal text-ink-faint">trabajando en</span>
+            </p>
+            <p className="text-xs text-ink-light truncate">{workingThought?.step || workingItem.task}</p>
+          </div>
+          <div className="w-24 h-1.5 bg-subtle rounded-full overflow-hidden flex-shrink-0">
+            <div className="h-full rounded-full animate-[shimmer_1.5s_infinite]" style={{ backgroundColor: workingMeta.color, opacity: 0.6, width: '60%' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Progress footer */}
+      {totalAgents > 0 && (
+        <div className="flex items-center gap-3 pt-1">
+          {/* Mini progress bar */}
+          <div className="flex-1 h-1 bg-subtle rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${(doneAgents / totalAgents) * 100}%` }}
+            />
+          </div>
+          <span className={`text-[10px] font-medium flex-shrink-0 ${allDone ? 'text-emerald-500' : 'text-ink-faint'}`}>
+            {allDone ? `Listo en ${formatTime(elapsed)}` : `${doneAgents}/${totalAgents} · ${formatTime(elapsed)}`}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Project suggestion card — modal-style with explanation + community sharing
+const ProjectSuggestCard = ({ title, conversationId, projects, onCreateProject, onAddToProject, onDismiss }: {
+  title: string
+  conversationId: string
+  projects: ProjectItem[]
+  onCreateProject?: (name: string, convId?: string) => Promise<string | null>
+  onAddToProject?: (projectId: string, convId: string) => Promise<void>
+  onDismiss?: () => void
+}) => {
+  const [mode, setMode] = useState<'initial' | 'new' | 'existing'>('initial')
+  const [projectName, setProjectName] = useState(title)
+
+  if (mode === 'new') {
+    return (
+      <div className="max-w-lg pl-10 animate-[fadeSlideIn_0.2s_ease-out]">
+        <div className="rounded-2xl border border-primary/20 bg-surface-alt p-5 shadow-lg">
+          <p className="text-sm font-bold text-ink mb-3">Nombre del proyecto</p>
+          <input
+            value={projectName}
+            onChange={e => setProjectName(e.target.value)}
+            className="w-full px-3 py-2.5 text-sm bg-surface border border-edge rounded-lg mb-4 focus:outline-none focus:border-primary"
+            autoFocus
+            onKeyDown={e => e.key === 'Enter' && projectName.trim() && onCreateProject?.(projectName.trim(), conversationId)}
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => projectName.trim() && onCreateProject?.(projectName.trim(), conversationId)}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary text-primary-fg text-xs font-bold rounded-lg hover:opacity-90 transition-all"
+            >
+              <FolderPlus size={14} />
+              Guardar proyecto
+            </button>
+            <button onClick={() => setMode('initial')} className="px-3 py-2 text-xs text-ink-faint hover:text-ink transition-colors">
+              Volver
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (mode === 'existing' && projects.length > 0) {
+    return (
+      <div className="max-w-lg pl-10 animate-[fadeSlideIn_0.2s_ease-out]">
+        <div className="rounded-2xl border border-primary/20 bg-surface-alt p-5 shadow-lg">
+          <p className="text-sm font-bold text-ink mb-3">Agregar a proyecto existente</p>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            {projects.map(p => (
+              <button
+                key={p.id}
+                onClick={() => onAddToProject?.(p.id, conversationId)}
+                className="w-full flex items-center gap-2 p-2.5 rounded-lg text-left hover:bg-subtle transition-colors"
+              >
+                <FolderOpen size={14} className="text-primary flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-ink truncate">{p.name}</p>
+                  <p className="text-[10px] text-ink-faint">{p.conversationCount} conversaciones</p>
+                </div>
+                <ChevronRight size={14} className="text-ink-faint flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setMode('initial')} className="mt-2 text-xs text-ink-faint hover:text-ink transition-colors">
+            Volver
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-lg pl-10 animate-[fadeSlideIn_0.3s_ease-out]">
+      <div className="rounded-2xl border border-primary/15 bg-surface-alt p-5 shadow-lg">
+        {/* Header with icon */}
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <FolderPlus size={20} className="text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-ink">Guardar como proyecto</p>
+            <p className="text-xs text-ink-faint mt-0.5">
+              Un proyecto agrupa todo tu trabajo: web, logo, video, pauta, contenido.
+              Podras seguir iterando y agregar mas assets en el futuro.
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-2">
+          <button
+            onClick={() => setMode('new')}
+            className="w-full flex items-center gap-3 px-4 py-3 bg-primary text-primary-fg text-sm font-bold rounded-xl hover:opacity-90 transition-all"
+          >
+            <FolderPlus size={16} />
+            <div className="text-left flex-1">
+              <span>Nuevo proyecto</span>
+              <p className="text-[10px] font-normal opacity-80">Crea un espacio para organizar este y futuros trabajos</p>
+            </div>
+          </button>
+
+          {projects.length > 0 && (
+            <button
+              onClick={() => setMode('existing')}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-surface border border-edge text-sm font-semibold text-ink-light rounded-xl hover:bg-subtle transition-all"
+            >
+              <FolderOpen size={16} />
+              <div className="text-left flex-1">
+                <span>Agregar a proyecto existente</span>
+                <p className="text-[10px] font-normal text-ink-faint">{projects.length} proyecto{projects.length > 1 ? 's' : ''} disponible{projects.length > 1 ? 's' : ''}</p>
+              </div>
+            </button>
           )}
         </div>
+
+        {/* Dismiss */}
+        <button
+          onClick={onDismiss}
+          className="w-full mt-3 text-xs text-ink-faint hover:text-ink text-center py-1 transition-colors"
+        >
+          Ahora no
+        </button>
       </div>
     </div>
   )

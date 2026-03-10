@@ -5,12 +5,14 @@ import { getProvider } from './llm/router.js'
 import { orchestratorConfig } from '../config/agents.js'
 import { trackUsage } from './token-tracker.js'
 import { checkCredits, consumeCredits } from './credit-tracker.js'
-import type { OrchestratorStep } from './plan-cache.js'
+import { setPendingPlan, type OrchestratorStep } from './plan-cache.js'
+import { agentConfigs } from '../config/agents.js'
 import type { LLMMessage } from './llm/types.js'
 import { readAndEncodeImage } from './image-utils.js'
 import { handleAnonymousMessage } from './anonymous-handler.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { startParallelExecution } from './execution-engine.js'
+import { getToolDefinitions, executeToolCall } from './tools/executor.js'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -18,6 +20,7 @@ export interface OrchestratorOutput {
   requiresApproval?: boolean
   approvalMessage?: string
   directResponse?: string
+  quickReplies?: Array<{ label: string; value: string; icon?: string }>
   steps: Array<{
     agentId: string
     instanceId?: string
@@ -25,6 +28,128 @@ export interface OrchestratorOutput {
     userDescription?: string
     dependsOn?: string[]
   }>
+}
+
+function stripCodeFences(text: string): string {
+  return text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim()
+}
+
+function tryParseJson(text: string): OrchestratorOutput | null {
+  try {
+    return JSON.parse(text) as OrchestratorOutput
+  } catch {
+    return null
+  }
+}
+
+function extractJsonStringField(text: string, fieldName: string): string | null {
+  const pattern = new RegExp(`"${fieldName}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 's')
+  const match = text.match(pattern)
+  if (!match) return null
+
+  try {
+    return JSON.parse(`"${match[1]}"`) as string
+  } catch {
+    return match[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+  }
+}
+
+function salvageJsonLikeOutput(text: string): OrchestratorOutput | null {
+  if (!text.includes('"directResponse"') && !text.includes('"quickReplies"') && !text.includes('"steps"')) {
+    return null
+  }
+
+  const directResponse = extractJsonStringField(text, 'directResponse') ?? undefined
+  const quickReplyMatches = [...text.matchAll(/"label"\s*:\s*"((?:\\.|[^"\\])*)"\s*,\s*"value"\s*:\s*"((?:\\.|[^"\\])*)"/g)]
+  const quickReplies = quickReplyMatches.map(([, rawLabel, rawValue]) => ({
+    label: (() => {
+      try { return JSON.parse(`"${rawLabel}"`) as string } catch { return rawLabel }
+    })(),
+    value: (() => {
+      try { return JSON.parse(`"${rawValue}"`) as string } catch { return rawValue }
+    })(),
+  }))
+
+  if (!directResponse && quickReplies.length === 0) {
+    return null
+  }
+
+  return {
+    directResponse,
+    quickReplies,
+    steps: [],
+  }
+}
+
+function normalizeOrchestratorOutput(output: Partial<OrchestratorOutput>, fallbackText: string): OrchestratorOutput {
+  const quickReplies = Array.isArray(output.quickReplies)
+    ? output.quickReplies
+        .filter((item): item is { label: string; value: string; icon?: string } => {
+          return !!item && typeof item.label === 'string' && typeof item.value === 'string'
+        })
+        .map(item => ({
+          label: item.label.trim(),
+          value: item.value.trim(),
+          ...(item.icon ? { icon: item.icon } : {}),
+        }))
+        .filter(item => item.label && item.value)
+    : []
+
+  const steps = Array.isArray(output.steps)
+    ? output.steps
+        .filter((step): step is OrchestratorOutput['steps'][number] => {
+          return !!step && typeof step.agentId === 'string' && typeof step.task === 'string'
+        })
+        .map(step => ({
+          agentId: step.agentId,
+          task: step.task,
+          ...(step.instanceId ? { instanceId: step.instanceId } : {}),
+          ...(step.userDescription ? { userDescription: step.userDescription } : {}),
+          ...(Array.isArray(step.dependsOn) ? { dependsOn: step.dependsOn.filter(dep => typeof dep === 'string') } : {}),
+        }))
+    : []
+
+  const directResponse = typeof output.directResponse === 'string'
+    ? output.directResponse.trim()
+    : ''
+
+  return {
+    directResponse: directResponse || (steps.length === 0 ? (quickReplies.length > 0 ? '¿Qué tipo de proyecto prefieres?' : stripCodeFences(fallbackText)) : undefined),
+    quickReplies,
+    steps,
+  }
+}
+
+function parseOrchestratorOutput(fullText: string): OrchestratorOutput {
+  const cleaned = stripCodeFences(fullText)
+  const directParse = tryParseJson(cleaned)
+  if (directParse) return normalizeOrchestratorOutput(directParse, fullText)
+
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = cleaned.slice(firstBrace, lastBrace + 1)
+    const substringParse = tryParseJson(candidate)
+    if (substringParse) return normalizeOrchestratorOutput(substringParse, fullText)
+
+    const repairedParse = tryParseJson(candidate.replace(/,\s*([}\]])/g, '$1'))
+    if (repairedParse) return normalizeOrchestratorOutput(repairedParse, fullText)
+  }
+
+  const salvaged = salvageJsonLikeOutput(cleaned)
+  if (salvaged) return normalizeOrchestratorOutput(salvaged, fullText)
+
+  return {
+    directResponse: cleaned || fullText,
+    quickReplies: [],
+    steps: [],
+  }
 }
 
 export async function processMessage(conversationId: string, text: string, userId: string, modelOverride?: string, imageUrl?: string): Promise<void> {
@@ -85,6 +210,8 @@ export async function processMessage(conversationId: string, text: string, userI
       const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
       if (lastUserMsg) {
         lastUserMsg.images = [{ type: 'image', source: encoded.source, mediaType: encoded.mediaType }]
+        // Append the image URL to the text so the orchestrator can pass it to agents (e.g. for remove_background tool)
+        lastUserMsg.content += `\n\n[Imagen adjunta por el usuario: ${imageUrl}]`
       }
     }
   }
@@ -114,27 +241,46 @@ export async function processMessage(conversationId: string, text: string, userI
 
   let orchestratorOutput: OrchestratorOutput | null = null
 
-  await provider.stream(orchestratorConfig.systemPrompt, messages, {
-    onToken: () => {},
-    onComplete: (fullText, usage) => {
-      console.log('[processMessage] LLM complete:', fullText.substring(0, 100))
-      try {
-        const cleanText = fullText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        orchestratorOutput = JSON.parse(cleanText) as OrchestratorOutput
-      } catch {
-        orchestratorOutput = {
-          directResponse: fullText,
-          steps: [],
-        }
-      }
-      trackUsage(userId, 'base', resolvedOrchConfig.model, usage.inputTokens, usage.outputTokens).catch(console.error)
-      consumeCredits(userId, 'base', resolvedOrchConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens).catch(console.error)
-    },
-    onError: (err) => {
-      console.error('[Orchestrator] Error:', err)
-      broadcast(conversationId, { type: 'error', message: 'Error al analizar el mensaje' })
-    },
-  })
+  const orchTools = orchestratorConfig.tools
+  if (orchTools.length > 0) {
+    const toolDefs = await getToolDefinitions(orchTools, userId)
+    await provider.streamWithTools(orchestratorConfig.systemPrompt, messages, toolDefs, {
+      onToken: () => {},
+      onToolCall: async (toolCall) => {
+        broadcast(conversationId, {
+          type: 'agent_thinking',
+          agentId: 'base',
+          agentName: 'Pluria',
+          step: toolCall.name === 'web_fetch' ? 'Visitando sitio web de referencia...' : `Usando ${toolCall.name}...`,
+        })
+        return await executeToolCall(toolCall, conversationId, orchestratorConfig, userId)
+      },
+      onComplete: (fullText, usage) => {
+        console.log('[processMessage] LLM complete:', fullText.substring(0, 100))
+        orchestratorOutput = parseOrchestratorOutput(fullText)
+        trackUsage(userId, 'base', resolvedOrchConfig.model, usage.inputTokens, usage.outputTokens).catch(console.error)
+        consumeCredits(userId, 'base', resolvedOrchConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens).catch(console.error)
+      },
+      onError: (err) => {
+        console.error('[Orchestrator] Error:', err)
+        broadcast(conversationId, { type: 'error', message: 'Error al analizar el mensaje' })
+      },
+    })
+  } else {
+    await provider.stream(orchestratorConfig.systemPrompt, messages, {
+      onToken: () => {},
+      onComplete: (fullText, usage) => {
+        console.log('[processMessage] LLM complete:', fullText.substring(0, 100))
+        orchestratorOutput = parseOrchestratorOutput(fullText)
+        trackUsage(userId, 'base', resolvedOrchConfig.model, usage.inputTokens, usage.outputTokens).catch(console.error)
+        consumeCredits(userId, 'base', resolvedOrchConfig.model, usage.inputTokens, usage.outputTokens, usage.cacheCreationInputTokens, usage.cacheReadInputTokens).catch(console.error)
+      },
+      onError: (err) => {
+        console.error('[Orchestrator] Error:', err)
+        broadcast(conversationId, { type: 'error', message: 'Error al analizar el mensaje' })
+      },
+    })
+  }
 
   console.log('[processMessage] Output:', orchestratorOutput ? 'ready' : 'null')
   if (!orchestratorOutput) return
@@ -147,6 +293,7 @@ export async function processMessage(conversationId: string, text: string, userI
   })
 
   const output = orchestratorOutput as OrchestratorOutput
+  if (!Array.isArray(output.steps)) output.steps = []
 
   const instanceCounts: Record<string, number> = {}
   for (const s of output.steps) {
@@ -167,7 +314,41 @@ export async function processMessage(conversationId: string, text: string, userI
       userDescription: s.userDescription!,
       dependsOn: s.dependsOn,
     }))
-    await startParallelExecution(conversationId, stepsForExec, userId, modelOverride, imageUrl)
+
+    const getAgentName = (agentId: string) => agentConfigs.find(a => a.id === agentId)?.name ?? agentId
+
+    if (stepsForExec.length >= 2) {
+      // 2+ steps → show plan proposal for user approval
+      const approvalMsg = await prisma.message.create({
+        data: {
+          id: uuid(),
+          conversationId,
+          sender: 'Pluria',
+          text: 'He preparado un plan de trabajo para tu proyecto. Revisa los pasos y aprueba para comenzar.',
+          type: 'approval',
+          botType: 'base',
+        },
+      })
+
+      await setPendingPlan(approvalMsg.id, { steps: stepsForExec })
+
+      broadcast(conversationId, {
+        type: 'plan_proposal',
+        messageId: approvalMsg.id,
+        text: approvalMsg.text,
+        steps: stepsForExec.map(s => ({
+          agentId: s.agentId,
+          agentName: getAgentName(s.agentId),
+          instanceId: s.instanceId,
+          task: s.task,
+          userDescription: s.userDescription,
+          dependsOn: s.dependsOn,
+        })),
+      })
+    } else {
+      // Single step → execute directly (builder mode)
+      await startParallelExecution(conversationId, stepsForExec, userId, modelOverride, imageUrl)
+    }
   } else if (output.directResponse) {
     const directMsg = await prisma.message.create({
       data: {
@@ -204,5 +385,13 @@ export async function processMessage(conversationId: string, text: string, userI
       messageId: directMsg.id,
       fullText: output.directResponse,
     })
+
+    // Send quick replies if the orchestrator provided them
+    if (output.quickReplies && output.quickReplies.length > 0) {
+      broadcast(conversationId, {
+        type: 'quick_replies',
+        options: output.quickReplies,
+      })
+    }
   }
 }

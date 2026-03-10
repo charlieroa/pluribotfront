@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth.js'
 
 const router = Router()
 const resolveCname = promisify(dns.resolveCname)
-const APP_DOMAIN = process.env.APP_DOMAIN || 'pluribots.com'
+const APP_DOMAIN = process.env.APP_DOMAIN || 'plury.co'
 
 const DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/
 

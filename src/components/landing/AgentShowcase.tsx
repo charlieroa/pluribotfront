@@ -6,13 +6,13 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 gsap.registerPlugin(ScrollTrigger)
 
 const templates = [
-  { title: 'Landing Page', desc: 'Páginas de venta con diseño moderno y responsive.', icon: Layout, gradient: 'from-violet-500/20 to-purple-500/5' },
+  { title: 'Landing Page', desc: 'Páginas de venta con diseño moderno y responsive.', icon: Layout, gradient: 'from-[#a78bfa]/20 to-[#a78bfa]/5' },
   { title: 'E-commerce Store', desc: 'Tiendas online con catálogo, carrito y checkout.', icon: Code2, gradient: 'from-blue-500/20 to-cyan-500/5' },
   { title: 'Portfolio Personal', desc: 'Sitio minimalista para mostrar tu trabajo.', icon: Palette, gradient: 'from-pink-500/20 to-rose-500/5' },
   { title: 'Blog / Magazine', desc: 'Blog con diseño elegante y sistema de posts.', icon: Globe, gradient: 'from-emerald-500/20 to-green-500/5' },
   { title: 'Dashboard App', desc: 'Paneles con gráficos, métricas y tablas.', icon: BarChart3, gradient: 'from-amber-500/20 to-yellow-500/5' },
   { title: 'Campaña de Ads', desc: 'Creativos y copy para Meta y Google Ads.', icon: TrendingUp, gradient: 'from-cyan-500/20 to-teal-500/5' },
-  { title: 'Estrategia SEO', desc: 'Auditoría, keywords y plan de contenido.', icon: Search, gradient: 'from-indigo-500/20 to-violet-500/5' },
+  { title: 'Estrategia SEO', desc: 'Auditoría, keywords y plan de contenido.', icon: Search, gradient: 'from-[#a78bfa]/20 to-[#a78bfa]/5' },
   { title: 'Video Promocional', desc: 'Reels y videos cortos generados con IA.', icon: Film, gradient: 'from-red-500/20 to-orange-500/5' },
 ]
 

@@ -5,7 +5,10 @@ export async function trackUsage(
   agentId: string,
   model: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cacheCreationInputTokens?: number,
+  cacheReadInputTokens?: number,
+  conversationId?: string
 ): Promise<void> {
   await prisma.usageRecord.create({
     data: {
@@ -14,6 +17,9 @@ export async function trackUsage(
       model,
       inputTokens,
       outputTokens,
+      cacheCreationInputTokens: cacheCreationInputTokens ?? 0,
+      cacheReadInputTokens: cacheReadInputTokens ?? 0,
+      conversationId: conversationId ?? null,
     },
   })
 }

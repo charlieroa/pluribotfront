@@ -22,12 +22,12 @@ const examples = [
     id: 1,
     title: 'Landing page con reservas online',
     desc: 'Sitio completo para un salón de belleza con formulario de reservas, galería y testimonios.',
-    gradientFrom: '#a855f7',
-    gradientTo: '#7c3aed',
-    bots: [{ name: 'Pixel', color: '#a855f7' }],
+    gradientFrom: '#a78bfa',
+    gradientTo: '#a78bfa',
+    bots: [{ name: 'Pixel', color: '#a78bfa' }],
     type: 'Landing page',
     categoryId: 'landing',
-    typeColor: 'text-purple-600 bg-purple-500/10',
+    typeColor: 'text-[#8b5cf6] bg-[#a78bfa]/10',
     prompt: 'Crea una landing page para un salón de belleza con reservas online',
   },
   {
@@ -48,7 +48,7 @@ const examples = [
     desc: 'Identidad visual completa para una cafetería artesanal: logo, tipografía y manual.',
     gradientFrom: '#d97706',
     gradientTo: '#b45309',
-    bots: [{ name: 'Pixel', color: '#a855f7' }],
+    bots: [{ name: 'Pixel', color: '#a78bfa' }],
     type: 'Branding',
     categoryId: 'branding',
     typeColor: 'text-amber-600 bg-amber-500/10',
@@ -70,12 +70,12 @@ const examples = [
     id: 5,
     title: 'E-commerce con catálogo interactivo',
     desc: 'Sitio web de tienda online con filtros, carrito de compras y diseño responsivo.',
-    gradientFrom: '#8b5cf6',
-    gradientTo: '#7c3aed',
-    bots: [{ name: 'Pixel', color: '#a855f7' }],
+    gradientFrom: '#a78bfa',
+    gradientTo: '#a78bfa',
+    bots: [{ name: 'Pixel', color: '#a78bfa' }],
     type: 'Web',
     categoryId: 'web',
-    typeColor: 'text-violet-600 bg-violet-500/10',
+    typeColor: 'text-[#8b5cf6] bg-[#a78bfa]/10',
     prompt: 'Construye un sitio e-commerce con catálogo de productos',
   },
   {
@@ -99,7 +99,7 @@ const examples = [
     bots: [{ name: 'Metric', color: '#10b981' }],
     type: 'Landing page',
     categoryId: 'landing',
-    typeColor: 'text-purple-600 bg-purple-500/10',
+    typeColor: 'text-[#8b5cf6] bg-[#a78bfa]/10',
     prompt: 'Crea una landing de suscripción con campaña de Google Ads',
   },
   {
@@ -108,7 +108,7 @@ const examples = [
     desc: 'Diseños para redes sociales: 10 posts y 5 stories para lanzamiento de producto.',
     gradientFrom: '#f97316',
     gradientTo: '#ea580c',
-    bots: [{ name: 'Pixel', color: '#a855f7' }],
+    bots: [{ name: 'Pixel', color: '#a78bfa' }],
     type: 'Social',
     categoryId: 'social',
     typeColor: 'text-orange-600 bg-orange-500/10',
@@ -129,7 +129,7 @@ interface PublicProject {
 
 const botColorMap: Record<string, string> = {
   brand: '#ec4899',
-  web: '#a855f7',
+  web: '#a78bfa',
   seo: '#3b82f6',
   ads: '#10b981',
   social: '#f97316',
@@ -162,7 +162,7 @@ const PortfolioView = ({ onContactBot }: PortfolioViewProps) => {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] flex items-center justify-center">
               <Sparkles size={20} className="text-white" />
             </div>
             <div>
@@ -260,7 +260,7 @@ const PortfolioView = ({ onContactBot }: PortfolioViewProps) => {
           <>
             <div className="mt-12 mb-4">
               <h2 className="text-lg font-bold text-ink">Proyectos de la comunidad</h2>
-              <p className="text-sm text-ink-faint">Proyectos reales creados por usuarios de Pluribots</p>
+              <p className="text-sm text-ink-faint">Proyectos reales creados por usuarios de Plury</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {publicProjects.map(project => {

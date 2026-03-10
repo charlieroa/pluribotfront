@@ -8,7 +8,12 @@ import { deployTools } from './deploy.js'
 import { imagenTools } from './imagen.js'
 import { videoTools } from './video.js'
 import { unsplashTools } from './unsplash.js'
+import { codeEditTools } from './code-edit.js'
+import { metaAdsTools } from './meta-ads.js'
+import { removeBgTools } from './remove-bg.js'
+import { webFetchTools } from './web-fetch.js'
 import { consumeToolCredits } from '../credit-tracker.js'
+import { prisma } from '../../db/client.js'
 
 const allTools: ToolDefinition[] = [
   ...seoTools,
@@ -18,11 +23,28 @@ const allTools: ToolDefinition[] = [
   ...imagenTools,
   ...videoTools,
   ...unsplashTools,
+  ...codeEditTools,
+  ...metaAdsTools,
+  ...removeBgTools,
+  ...webFetchTools,
 ]
 
-export function getToolDefinitions(toolNames: string[]): { name: string; description: string; parameters: Record<string, unknown> }[] {
+const META_TOOL_PREFIX = 'meta_'
+
+export async function getToolDefinitions(toolNames: string[], userId?: string): Promise<{ name: string; description: string; parameters: Record<string, unknown> }[]> {
+  // Check if user has Meta connected — if not, filter out meta tools
+  let hasMetaConnected = false
+  if (userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { metaAccessToken: true },
+    })
+    hasMetaConnected = !!user?.metaAccessToken
+  }
+
   return allTools
     .filter(t => toolNames.includes(t.name))
+    .filter(t => hasMetaConnected || !t.name.startsWith(META_TOOL_PREFIX))
     .map(t => ({
       name: t.name,
       description: t.description,
@@ -34,7 +56,8 @@ export async function executeToolCall(
   toolCall: ToolCall,
   conversationId: string,
   agentConfig: AgentConfig,
-  userId: string
+  userId: string,
+  instanceId?: string
 ): Promise<string> {
   const tool = allTools.find(t => t.name === toolCall.name)
   if (!tool) {
@@ -46,6 +69,7 @@ export async function executeToolCall(
     agentId: agentConfig.id,
     agentName: agentConfig.name,
     userId,
+    instanceId,
   }
 
   try {

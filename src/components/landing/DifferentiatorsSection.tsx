@@ -11,9 +11,9 @@ const differentiators = [
     badge: 'Agencia 360°',
     title: 'No solo código — tu equipo creativo completo',
     desc: 'Plury no es solo un builder. Somos una agencia digital completa con IA: branding, web, SEO, campañas de ads, video y contenido. Todo desde un solo lugar, con agentes especializados en cada área.',
-    gradient: 'from-purple-500/20 to-violet-500/5',
-    borderColor: 'border-purple-500/20',
-    badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+    gradient: 'from-[#a78bfa]/20 to-[#a78bfa]/5',
+    borderColor: 'border-[#a78bfa]/20',
+    badgeColor: 'bg-[#a78bfa]/10 text-[#a78bfa] border-[#a78bfa]/20',
   },
   {
     icon: Headphones,
