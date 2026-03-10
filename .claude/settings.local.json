@@ -116,7 +116,12 @@
       "Bash(cmd.exe /c \"where npx\" 2>&1)",
       "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\" && cd /c/proyectos/pluribots/server && node node_modules/typescript/bin/tsc 2>&1)",
       "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\" && node node_modules/typescript/bin/tsc --noEmit --project tsconfig.app.json 2>&1)",
-      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\" && node node_modules/vite/bin/vite.js build 2>&1)"
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\" && node node_modules/vite/bin/vite.js build 2>&1)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Bash(node -e \"console.log\\(process.execPath\\)\")",
+      "Bash(\"/c/Users/User/AppData/Roaming/nvm/v22.12.0/node.exe\" \"/c/Users/User/AppData/Roaming/nvm/v22.12.0/node_modules/npm/bin/npx-cli.js\" --version)",
+      "Bash(node -v && node -e \"console.log\\(require\\('child_process'\\).execSync\\('npm --version'\\).toString\\(\\)\\)\" 2>/dev/null; \"/c/Program Files/nodejs/node.exe\" -e \"console.log\\(process.version\\)\")",
+      "Bash(cmd.exe /c \"npm --version\" 2>&1)"
     ]
   }
 }

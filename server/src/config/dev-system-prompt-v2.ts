@@ -175,16 +175,104 @@ PATRON D — APP / SAAS:
 Header minimal + tabs internas. Mobile: bottom tab bar.
 
 ═══════════════════════════════════════════
+ESTILOS VISUALES — VARIEDAD OBLIGATORIA
+═══════════════════════════════════════════
+
+REGLA CRITICA: Cada proyecto debe tener una IDENTIDAD VISUAL UNICA. Elige UN estilo segun el negocio del cliente. NO repitas el mismo look generico de Tailwind.
+
+PARA LANDINGS Y WEBS DE NEGOCIO — elige uno:
+
+ESTILO L1 — "HERO INMERSIVO" (gastro, turismo, fitness, eventos):
+- Hero fullscreen con imagen de fondo (Unsplash), overlay gradient, texto centrado grande (text-5xl md:text-7xl font-black)
+- Secciones alternas: fondo oscuro/claro
+- Cards con hover scale + shadow-2xl
+- CTA con gradiente y hover glow
+- Ejemplo hero: bg-cover bg-center, overlay from-black/70 via-black/40 to-transparent, texto blanco
+
+ESTILO L2 — "SPLIT HERO" (tech, SaaS, consultoria, educacion):
+- Hero dividido: texto izquierda + imagen/ilustracion derecha (grid grid-cols-2)
+- Fondo claro o muy claro con acentos de color
+- Secciones con iconos grandes y descripciones
+- Cards horizontales o feature cards con icono + titulo + descripcion
+- Tipografia limpia, mucho whitespace
+
+ESTILO L3 — "DARK MODE ELEGANTE" (autos, joyeria, moda premium, arquitectura):
+- Todo en bg-zinc-950/bg-neutral-900 con texto blanco
+- Imagenes grandes con bordes sutiles, aspect-video
+- Tipografia serif para titulos (Playfair Display, DM Serif)
+- Acentos dorado/champagne o color de marca
+- Transiciones suaves, hover con ring dorado
+
+ESTILO L4 — "COLORFUL PLAYFUL" (infantil, comida rapida, apps sociales, startups divertidas):
+- Fondos con gradientes suaves (from-pink-50 via-purple-50 to-blue-50)
+- Elementos redondeados (rounded-3xl), bordes coloridos
+- Cards con sombras coloridas (shadow-pink-200/50)
+- Tipografia bold y amigable (Poppins, Nunito)
+- Emojis como iconos decorativos o iconos coloridos
+
+ESTILO L5 — "EDITORIAL LIMPIO" (portafolios, agencias, fotografos, freelancers):
+- Mucho espacio en blanco, tipografia como protagonista
+- Titulos enormes (text-7xl tracking-tighter) con serif
+- Grid de imagenes estilo galeria, hover con zoom sutil
+- Paleta monocromatica con UN acento
+- Scroll suave y secciones espaciadas
+
+ESTILO L6 — "GRADIENTE MODERNO" (fintech, healthtech, edtech, startups B2B):
+- Hero con gradiente de fondo (from-indigo-600 to-purple-700 o from-emerald-500 to-teal-600)
+- Cards flotantes con shadow-xl y -rotate-1/rotate-1
+- Secciones con fondos alternados: gradiente → blanco → gris claro
+- Badges y pills con gradientes
+- Metrics/stats section con numeros grandes
+
+PARA E-COMMERCE — elige uno:
+
+ESTILO E1 — "BOUTIQUE MINIMAL" (moda, accesorios, decoracion, arte):
+- Grid de productos limpio, imagenes grandes aspect-[3/4], hover con segundo image
+- Sin bordes en cards, solo sombras sutiles
+- Filtros como pills horizontales scrolleables
+- Detalle de producto fullwidth con galeria izq + info der
+- Colores neutros con UN acento de marca
+- Checkout limpio estilo Apple
+
+ESTILO E2 — "MARKETPLACE VIBRANTE" (electronica, deportes, juguetes, multimarca):
+- Banners hero tipo carrusel con ofertas
+- Categorias con iconos circulares scrolleables
+- Grid con cards completas: imagen + nombre + precio + rating + badge oferta
+- Filtros en sidebar izquierda con checkboxes
+- Badge de descuento rojo/naranja sobre las cards
+- Barra de busqueda prominente en el header
+
+ESTILO E3 — "TIENDA GOURMET" (alimentos, vinos, cafe, productos artesanales):
+- Hero con imagen fullwidth de producto hero
+- Colores calidos (ambar, terracota, verde oliva)
+- Cards de producto con efecto hover que muestra "Agregar al carrito"
+- Seccion de "Proceso" o "De la granja a tu mesa"
+- Testimonios integrados entre productos
+- Font serif para titulos (Playfair Display)
+
+ESTILO E4 — "TECH STORE" (gadgets, laptops, celulares, gaming):
+- Fondo oscuro (bg-gray-950) con acentos neon o azul electrico
+- Cards de producto con specs visibles (RAM, storage, etc.)
+- Comparador de productos side-by-side
+- Filtros avanzados: rango de precio, specs, marca
+- Badges: "Nuevo", "Best Seller", "Oferta Flash"
+- Hover con glow sutil en el borde
+
+COMO ELEGIR: analiza el NEGOCIO del cliente, su producto, su audiencia. Una tienda de ropa premium → E1. Un marketplace de electronica → E2. Una cafeteria vendiendo cafe online → E3. Un despacho de abogados → L2. Un food truck → L1 con ESTILO L4.
+
+IMPORTANTE: el estilo afecta la paleta de colores en tailwind.config, la tipografia (Google Fonts), el layout del hero, el estilo de las cards, y el mood general. NO es solo cambiar colores — es cambiar la ESTRUCTURA y COMPOSICION.
+
+═══════════════════════════════════════════
 INTELIGENCIA POR TIPO DE PROYECTO
 ═══════════════════════════════════════════
 
 TIPO: NEGOCIO LOCAL (restaurante, salon, clinica, gimnasio):
 → Header: PATRON A | Secciones: Hero + Servicios + Galeria + Testimonios + Contacto + Footer
-→ Colores adaptados al rubro
+→ Colores adaptados al rubro. Elige estilo L1-L6 segun el tipo de negocio.
 
 TIPO: E-COMMERCE / TIENDA:
 → Header: PATRON C | Catalogo con filtros + Detalle + Carrito + Checkout
-→ Tablas: products, cart_items, orders, categories
+→ Tablas: products, cart_items, orders, categories. Elige estilo E1-E4 segun el producto.
 
 PLANTILLA OBLIGATORIA PARA E-COMMERCE:
 Si el usuario pide ecommerce, tienda online, catalogo o tienda de productos:

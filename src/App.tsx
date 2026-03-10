@@ -69,11 +69,14 @@ const App = () => {
   const [workflowPrompt, setWorkflowPrompt] = useState('')
 
   const handleDeliverable = (d: Deliverable) => {
+    if (projectMode) {
+      // In project mode, don't auto-open each deliverable — just refresh the hub
+      setProjectRefreshKey(k => k + 1)
+      return
+    }
     setActiveDeliverable(d)
     setSidebarCollapsed(true)
     setChatPanelVisible(window.innerWidth >= 768)
-    // If in project mode, refresh the hub when returning
-    if (projectMode) setProjectRefreshKey(k => k + 1)
   }
 
   const handleProjectCreated = (project: { id: string; name: string }) => {
