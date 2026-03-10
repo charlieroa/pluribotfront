@@ -11,6 +11,7 @@ interface ShowcaseApp {
   tags: string[]
   color: string
   url?: string
+  img?: string
 }
 
 const botTypeGradient: Record<string, string> = {
@@ -48,6 +49,7 @@ const ShowcaseSection = () => {
           tags: d.tags || ['Proyecto'],
           color: botTypeGradient[d.botType] || 'from-[#a78bfa]/20 to-[#a78bfa]/5',
           url: d.publishSlug ? `https://${d.publishSlug}.${APP_DOMAIN}` : undefined,
+          img: d.thumbnailUrl || undefined,
         }))
         if (real.length >= 4) setApps(real.slice(0, 8))
         else if (real.length > 0) setApps([...real, ...fallbackApps.slice(0, 8 - real.length)])
@@ -87,13 +89,21 @@ const ShowcaseSection = () => {
                 {...linkProps}
                 className="show-anim group cursor-pointer bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden hover:border-white/[0.12] hover:-translate-y-1 transition-all"
               >
-                <div className="h-[100px] bg-gradient-to-br from-black/60 to-black/30 p-3 flex items-end justify-between">
-                  <div className="flex gap-1.5">
-                    {app.tags.map(tag => (
-                      <span key={tag} className="text-[10px] bg-black/40 text-white/80 px-2 py-0.5 rounded-full backdrop-blur-md font-medium">{tag}</span>
-                    ))}
+                <div className="relative h-[120px] bg-gradient-to-br from-black/60 to-black/30 overflow-hidden">
+                  {app.img ? (
+                    <img src={app.img} alt={app.name} className="w-full h-full object-cover object-top opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" loading="lazy" />
+                  ) : (
+                    <div className={`w-full h-full bg-gradient-to-br ${app.color}`} />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                  <div className="absolute bottom-2 left-2 right-2 flex items-end justify-between">
+                    <div className="flex gap-1.5">
+                      {app.tags.map(tag => (
+                        <span key={tag} className="text-[10px] bg-black/40 text-white/80 px-2 py-0.5 rounded-full backdrop-blur-md font-medium">{tag}</span>
+                      ))}
+                    </div>
+                    {app.url && <ExternalLink size={13} className="text-white/0 group-hover:text-white/60 transition-colors" />}
                   </div>
-                  {app.url && <ExternalLink size={13} className="text-white/0 group-hover:text-white/60 transition-colors" />}
                 </div>
                 <div className="p-4">
                   <h3 className="text-[13.5px] font-semibold text-white mb-0.5">{app.name}</h3>
