@@ -5,11 +5,16 @@
  * Available on Agency ($99/mo) and Enterprise ($299/mo) plans.
  *
  * Endpoints:
- *   POST   /api/v1/generate        - Generate a web page/app
- *   GET    /api/v1/generations/:id  - Check generation status & get result
- *   GET    /api/v1/usage            - Credit balance & usage
- *   GET    /api/v1/agents           - List available agents
- *   GET    /api/v1/docs             - API documentation (OpenAPI JSON)
+ *   POST   /api/v1/generate                    - Generate a web page/app
+ *   GET    /api/v1/generations/:id              - Check generation status & get result
+ *   GET    /api/v1/generations                  - List all generations
+ *   POST   /api/v1/generations/:id/refine       - Refine/edit with text instructions
+ *   POST   /api/v1/generations/:id/publish      - Publish to subdomain
+ *   POST   /api/v1/generations/:id/edit         - Apply visual edits (font, color, image)
+ *   GET    /api/v1/generations/:id/editor-url   - Get embeddable editor URL
+ *   GET    /api/v1/usage                        - Credit balance & usage
+ *   GET    /api/v1/agents                       - List available agents
+ *   GET    /api/v1/docs                         - API documentation (OpenAPI JSON)
  */
 import { Router } from 'express'
 import { v4 as uuid } from 'uuid'
@@ -18,8 +23,30 @@ import { prisma } from '../db/client.js'
 import { apiKeyAuth } from '../middleware/api-key.js'
 import { checkCredits, getCreditUsage } from '../services/credit-tracker.js'
 import { processMessage } from '../services/orchestrator.js'
+import { getExecutingPlan } from '../services/plan-cache.js'
+import { refineStep } from '../services/refinement.js'
+import { deployProject } from '../services/deploy.js'
+import { generateUniqueSlug, isSlugValid, isSlugAvailable } from '../utils/slugify.js'
+import { VISUAL_EDITOR_SCRIPT } from '../services/html-utils.js'
+import { getNextVersionInfo } from '../services/deliverable-versioning.js'
 
 const router = Router()
+
+// Simple in-memory rate limit for free endpoints (edit, editor)
+const editRateMap = new Map<string, { count: number; resetAt: number }>()
+const EDIT_RATE_LIMIT = 60   // max requests
+const EDIT_RATE_WINDOW = 60_000 // per minute
+
+function checkEditRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const entry = editRateMap.get(userId)
+  if (!entry || now > entry.resetAt) {
+    editRateMap.set(userId, { count: 1, resetAt: now + EDIT_RATE_WINDOW })
+    return true
+  }
+  entry.count++
+  return entry.count <= EDIT_RATE_LIMIT
+}
 
 // ─── GET /docs ─── (public, no auth required)
 router.get('/docs', (_req, res) => {
@@ -53,7 +80,7 @@ router.post('/generate', async (req, res) => {
   const agentId = agent || 'dev'
 
   // Validate agent
-  const validAgents = ['dev', 'web', 'seo', 'content', 'ads']
+  const validAgents = ['dev', 'web', 'voxel', 'seo', 'content', 'ads']
   if (!validAgents.includes(agentId)) {
     res.status(400).json({
       error: `Invalid agent: ${agentId}. Valid agents: ${validAgents.join(', ')}`,
@@ -155,7 +182,6 @@ router.get('/generations/:id', async (req, res) => {
             botType: true,
             version: true,
             publishSlug: true,
-            netlifyUrl: true,
             createdAt: true,
           },
         },
@@ -214,7 +240,7 @@ router.get('/generations/:id', async (req, res) => {
       text: d.type !== 'code' && d.type !== 'design' ? d.content : undefined,
       agent: d.botType,
       version: d.version,
-      published_url: d.publishSlug ? `https://plury.co/p/${d.publishSlug}` : d.netlifyUrl || null,
+      published_url: d.publishSlug ? `https://plury.co/p/${d.publishSlug}` : null,
       created_at: d.createdAt.toISOString(),
     }))
 
@@ -310,6 +336,371 @@ router.get('/usage', async (req, res) => {
   }
 })
 
+// ─── POST /generations/:id/refine ───
+// Send text feedback to refine/edit the generated website.
+router.post('/generations/:id/refine', async (req, res) => {
+  const userId = req.apiKey!.userId
+  const convId = req.params.id
+  const { feedback, deliverable_id } = req.body as { feedback?: string; deliverable_id?: string }
+
+  if (!feedback || typeof feedback !== 'string' || feedback.trim().length < 3) {
+    res.status(400).json({ error: 'feedback is required (min 3 characters)' })
+    return
+  }
+
+  try {
+    // Verify ownership
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: convId, userId },
+      include: { deliverables: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    })
+    if (!conversation) {
+      res.status(404).json({ error: 'Generation not found' })
+      return
+    }
+
+    // Credit check
+    const creditCheck = await checkCredits(userId)
+    if (!creditCheck.allowed) {
+      res.status(402).json({ error: 'Insufficient credits', balance: creditCheck.balance })
+      return
+    }
+
+    // Try to find an existing plan for refinement (in-memory)
+    const plan = await getExecutingPlan(convId)
+    if (plan) {
+      // Find the step to refine (prefer deliverable_id match, else last completed)
+      let stepToRefine = plan.steps.find(s => {
+        if (deliverable_id) {
+          // Match by checking if the step produced this deliverable
+          return plan.completedInstances.includes(s.instanceId)
+        }
+        return false
+      })
+      if (!stepToRefine) {
+        // Fallback: last completed step
+        for (let i = plan.steps.length - 1; i >= 0; i--) {
+          if (plan.completedInstances.includes(plan.steps[i].instanceId)) {
+            stepToRefine = plan.steps[i]
+            break
+          }
+        }
+      }
+
+      if (stepToRefine) {
+        refineStep(plan, stepToRefine, feedback, userId).catch(err => {
+          console.error(`[API v1] Refinement error for ${convId}:`, err)
+        })
+
+        res.status(202).json({
+          id: convId,
+          status: 'refining',
+          message: 'Refinement started. Poll the generation endpoint for updated results.',
+          poll_url: `/api/v1/generations/${convId}`,
+        })
+        return
+      }
+    }
+
+    // Fallback: send as a new message to the conversation (triggers orchestrator)
+    await prisma.message.create({
+      data: {
+        id: uuid(),
+        conversationId: convId,
+        sender: 'User',
+        text: feedback,
+        type: 'user',
+      },
+    })
+
+    processMessage(convId, feedback, userId).catch(err => {
+      console.error(`[API v1] Refine via message error for ${convId}:`, err)
+    })
+
+    res.status(202).json({
+      id: convId,
+      status: 'refining',
+      message: 'Refinement started. Poll the generation endpoint for updated results.',
+      poll_url: `/api/v1/generations/${convId}`,
+    })
+  } catch (err) {
+    console.error('[API v1] Refine error:', err)
+    res.status(500).json({ error: 'Internal error starting refinement' })
+  }
+})
+
+// ─── POST /generations/:id/publish ───
+// Publish a deliverable to a plury.co subdomain.
+router.post('/generations/:id/publish', async (req, res) => {
+  const userId = req.apiKey!.userId
+  const convId = req.params.id
+  const { deliverable_id, slug } = req.body as { deliverable_id?: string; slug?: string }
+
+  try {
+    // Get the conversation's deliverables
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: convId, userId },
+      include: { deliverables: { orderBy: { createdAt: 'desc' } } },
+    })
+    if (!conversation) {
+      res.status(404).json({ error: 'Generation not found' })
+      return
+    }
+
+    // Find the deliverable to publish
+    let deliverable = deliverable_id
+      ? conversation.deliverables.find(d => d.id === deliverable_id)
+      : conversation.deliverables[0]
+
+    if (!deliverable || !deliverable.content) {
+      res.status(400).json({ error: 'No publishable deliverable found' })
+      return
+    }
+
+    // Determine slug
+    let finalSlug = deliverable.publishSlug
+    if (!finalSlug) {
+      if (slug) {
+        const s = slug.toLowerCase()
+        const validation = isSlugValid(s)
+        if (!validation.valid) {
+          res.status(400).json({ error: validation.error })
+          return
+        }
+        if (!(await isSlugAvailable(s))) {
+          res.status(409).json({ error: 'Slug already taken' })
+          return
+        }
+        finalSlug = s
+      } else {
+        finalSlug = await generateUniqueSlug(deliverable.title)
+      }
+    }
+
+    // Deploy
+    await deployProject(deliverable.id, deliverable.content)
+
+    // Update DB
+    await prisma.deliverable.update({
+      where: { id: deliverable.id },
+      data: {
+        publishSlug: finalSlug,
+        publishedAt: new Date(),
+        isPublic: true,
+      },
+    })
+
+    const APP_DOMAIN = process.env.APP_DOMAIN || 'plury.co'
+    const url = `https://${finalSlug}.${APP_DOMAIN}`
+
+    res.json({
+      url,
+      slug: finalSlug,
+      deliverable_id: deliverable.id,
+      message: 'Published successfully',
+    })
+  } catch (err) {
+    console.error('[API v1] Publish error:', err)
+    res.status(500).json({ error: 'Internal error publishing' })
+  }
+})
+
+// ─── POST /generations/:id/edit ───
+// Apply programmatic visual edits (font, colors, images, text) directly to HTML.
+router.post('/generations/:id/edit', async (req, res) => {
+  const userId = req.apiKey!.userId
+  const convId = req.params.id
+  const { deliverable_id, edits } = req.body as {
+    deliverable_id?: string
+    edits?: Array<{
+      action: 'change_font' | 'change_color' | 'change_text' | 'change_image' | 'change_background' | 'apply_style'
+      selector: string        // CSS selector to target element(s)
+      value: string            // new font family, color hex, text, image URL, etc.
+      property?: string        // for apply_style: CSS property name
+    }>
+  }
+
+  // Rate limit — /edit is free, prevent abuse
+  if (!checkEditRateLimit(userId)) {
+    res.status(429).json({ error: 'Rate limit exceeded. Max 60 edit requests per minute.' })
+    return
+  }
+
+  if (!edits || !Array.isArray(edits) || edits.length === 0) {
+    res.status(400).json({
+      error: 'edits array is required',
+      example: {
+        edits: [
+          { action: 'change_font', selector: 'h1', value: "'Montserrat', sans-serif" },
+          { action: 'change_color', selector: '.hero h1', value: '#3b82f6' },
+          { action: 'change_text', selector: '.hero h1', value: 'New Title' },
+          { action: 'change_image', selector: '.hero img', value: 'https://images.unsplash.com/photo-xxx' },
+          { action: 'change_background', selector: '.hero', value: '#0f172a' },
+          { action: 'apply_style', selector: '.cta-btn', value: '16px', property: 'borderRadius' },
+        ],
+      },
+    })
+    return
+  }
+
+  try {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: convId, userId },
+      include: { deliverables: { orderBy: { createdAt: 'desc' } } },
+    })
+    if (!conversation) {
+      res.status(404).json({ error: 'Generation not found' })
+      return
+    }
+
+    let deliverable = deliverable_id
+      ? conversation.deliverables.find(d => d.id === deliverable_id)
+      : conversation.deliverables[0]
+
+    if (!deliverable || !deliverable.content) {
+      res.status(400).json({ error: 'No editable deliverable found' })
+      return
+    }
+
+    // Build a JS script that applies all edits to the HTML DOM
+    const editScript = edits.map((edit, i) => {
+      const sel = edit.selector.replace(/'/g, "\\'")
+      const val = edit.value.replace(/'/g, "\\'")
+      switch (edit.action) {
+        case 'change_font':
+          return `document.querySelectorAll('${sel}').forEach(function(el){el.style.fontFamily='${val}';});`
+        case 'change_color':
+          return `document.querySelectorAll('${sel}').forEach(function(el){el.style.color='${val}';});`
+        case 'change_background':
+          return `document.querySelectorAll('${sel}').forEach(function(el){el.style.backgroundColor='${val}';});`
+        case 'change_text':
+          return `document.querySelectorAll('${sel}').forEach(function(el){el.textContent='${val}';});`
+        case 'change_image':
+          return `document.querySelectorAll('${sel}').forEach(function(el){if(el.tagName==='IMG')el.src='${val}';else el.style.backgroundImage='url(${val})';});`
+        case 'apply_style': {
+          const prop = (edit.property || '').replace(/'/g, "\\'")
+          return `document.querySelectorAll('${sel}').forEach(function(el){el.style['${prop}']='${val}';});`
+        }
+        default:
+          return ''
+      }
+    }).filter(Boolean).join('\n')
+
+    // Inject Google Font links for any font edits
+    const fontEdits = edits.filter(e => e.action === 'change_font')
+    let fontLinks = ''
+    for (const fe of fontEdits) {
+      // Extract font name from value like "'Montserrat', sans-serif"
+      const match = fe.value.match(/'([^']+)'/)
+      if (match) {
+        const fontName = match[1].replace(/ /g, '+')
+        fontLinks += `<link href="https://fonts.googleapis.com/css2?family=${fontName}:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">\n`
+      }
+    }
+
+    // Apply edits: inject script that runs once on load, then removes itself
+    let html = deliverable.content
+    const applyScript = `<script>(function(){${editScript}document.currentScript.remove();})();</script>`
+
+    if (fontLinks && html.includes('</head>')) {
+      html = html.replace('</head>', `${fontLinks}</head>`)
+    }
+    if (html.includes('</body>')) {
+      html = html.replace('</body>', `${applyScript}\n</body>`)
+    } else {
+      html += applyScript
+    }
+
+    // Save as new version
+    const { parentId, version } = await getNextVersionInfo(convId, deliverable.instanceId)
+    const newId = uuid()
+    await prisma.deliverable.create({
+      data: {
+        id: newId,
+        conversationId: convId,
+        title: deliverable.title,
+        type: deliverable.type,
+        content: html,
+        agent: deliverable.agent,
+        botType: deliverable.botType,
+        instanceId: deliverable.instanceId,
+        version,
+        parentId,
+        publishSlug: deliverable.publishSlug,
+        createdAt: new Date(),
+      },
+    })
+
+    // If already published, re-deploy with updated content
+    if (deliverable.publishSlug) {
+      await deployProject(newId, html)
+    }
+
+    res.json({
+      deliverable_id: newId,
+      version,
+      edits_applied: edits.length,
+      published_url: deliverable.publishSlug
+        ? `https://${deliverable.publishSlug}.${process.env.APP_DOMAIN || 'plury.co'}`
+        : null,
+      message: 'Edits applied successfully',
+    })
+  } catch (err) {
+    console.error('[API v1] Edit error:', err)
+    res.status(500).json({ error: 'Internal error applying edits' })
+  }
+})
+
+// ─── GET /generations/:id/editor-url ───
+// Returns a URL to the embeddable visual editor for this generation.
+router.get('/generations/:id/editor-url', async (req, res) => {
+  const userId = req.apiKey!.userId
+  const convId = req.params.id
+
+  try {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: convId, userId },
+      include: { deliverables: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    })
+    if (!conversation) {
+      res.status(404).json({ error: 'Generation not found' })
+      return
+    }
+
+    const deliverable = conversation.deliverables[0]
+    if (!deliverable) {
+      res.status(400).json({ error: 'No deliverable found to edit' })
+      return
+    }
+
+    // Generate a short-lived editor token (24h)
+    const editorToken = crypto.randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+
+    // Store in dedicated editor token fields (separate from webhook)
+    await prisma.conversation.update({
+      where: { id: convId },
+      data: {
+        editorToken,
+        editorTokenExpiresAt: expiresAt,
+      },
+    })
+
+    const APP_DOMAIN = process.env.APP_DOMAIN || 'plury.co'
+    const editorUrl = `https://${APP_DOMAIN}/editor?token=${editorToken}&id=${deliverable.id}`
+
+    res.json({
+      editor_url: editorUrl,
+      deliverable_id: deliverable.id,
+      expires_at: expiresAt.toISOString(),
+      message: 'Embed this URL in an iframe to let your clients edit visually.',
+    })
+  } catch (err) {
+    console.error('[API v1] Editor URL error:', err)
+    res.status(500).json({ error: 'Internal error generating editor URL' })
+  }
+})
+
 // ─── Helper functions (used by public routes above) ───
 
 function getOpenApiDocs() {
@@ -347,7 +738,7 @@ function getOpenApiDocs() {
                   required: ['prompt'],
                   properties: {
                     prompt: { type: 'string', description: 'What to generate', example: 'Create a landing page for a pizza delivery business with online ordering' },
-                    agent: { type: 'string', enum: ['dev', 'web', 'seo', 'content', 'ads'], default: 'dev', description: 'Which AI agent to use' },
+                    agent: { type: 'string', enum: ['dev', 'web', 'voxel', 'seo', 'content', 'ads'], default: 'dev', description: 'Which AI agent to use' },
                     model: { type: 'string', description: 'Model override (optional)' },
                     webhook_url: { type: 'string', format: 'uri', description: 'URL to POST results when generation completes. Signed with HMAC-SHA256.' },
                   },
@@ -452,6 +843,104 @@ function getOpenApiDocs() {
           },
         },
       },
+      '/generations/{id}/refine': {
+        post: {
+          summary: 'Refine a generated website with text feedback',
+          description: 'Send instructions like "change the hero color to blue" or "add a testimonials section". The AI will regenerate incorporating your feedback.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['feedback'],
+                  properties: {
+                    feedback: { type: 'string', description: 'What to change', example: 'Change the hero background to dark blue and use Montserrat font' },
+                    deliverable_id: { type: 'string', description: 'Specific deliverable to refine (optional, defaults to latest)' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '202': { description: 'Refinement started' },
+            '404': { description: 'Generation not found' },
+          },
+        },
+      },
+      '/generations/{id}/publish': {
+        post: {
+          summary: 'Publish to a plury.co subdomain',
+          description: 'Deploy the generated website to a live URL like https://my-client.plury.co',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    deliverable_id: { type: 'string', description: 'Specific deliverable to publish (optional)' },
+                    slug: { type: 'string', description: 'Custom subdomain slug (optional, auto-generated if omitted)', example: 'my-client-site' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Published successfully', content: { 'application/json': { schema: { type: 'object', properties: { url: { type: 'string' }, slug: { type: 'string' } } } } } },
+            '409': { description: 'Slug already taken' },
+          },
+        },
+      },
+      '/generations/{id}/edit': {
+        post: {
+          summary: 'Apply visual edits programmatically',
+          description: 'FREE — Change fonts, colors, text, images, and styles without AI. No credits consumed. Rate limited to 60 req/min.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['edits'],
+                  properties: {
+                    deliverable_id: { type: 'string' },
+                    edits: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        required: ['action', 'selector', 'value'],
+                        properties: {
+                          action: { type: 'string', enum: ['change_font', 'change_color', 'change_text', 'change_image', 'change_background', 'apply_style'] },
+                          selector: { type: 'string', description: 'CSS selector', example: '.hero h1' },
+                          value: { type: 'string', description: 'New value', example: '#3b82f6' },
+                          property: { type: 'string', description: 'CSS property (for apply_style action)', example: 'borderRadius' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Edits applied' },
+            '429': { description: 'Rate limit exceeded (60/min)' },
+          },
+        },
+      },
+      '/generations/{id}/editor-url': {
+        get: {
+          summary: 'Get embeddable visual editor URL',
+          description: 'FREE — Returns an embeddable editor URL. Clients edit visually (fonts, colors, images, text). Saves persist to DB. Token expires in 24h.',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Editor URL', content: { 'application/json': { schema: { type: 'object', properties: { editor_url: { type: 'string' }, expires_at: { type: 'string' } } } } } },
+          },
+        },
+      },
       '/agents': {
         get: {
           summary: 'List available AI agents',
@@ -478,6 +967,13 @@ function getAgentsList() {
       description: 'Visual designer. Creates logos, branding materials, social media posts, and banners using AI image generation.',
       capabilities: ['logos', 'branding', 'social_posts', 'banners', 'moodboards'],
       credit_cost: '10 credits per image generation',
+    },
+    {
+      id: 'voxel',
+      name: 'Voxel',
+      description: '3D artist. Converts uploaded reference images into downloadable 3D assets and clean preview deliverables.',
+      capabilities: ['image_to_3d', 'glb_assets', '3d_preview', 'product_visualization'],
+      credit_cost: 'Variable - depends on 3D generation',
     },
     {
       id: 'seo',

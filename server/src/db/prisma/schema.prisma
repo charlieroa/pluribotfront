@@ -37,6 +37,9 @@ model User {
   metaTokenExpiresAt DateTime?
   metaUserName       String?
   billingCycleStart DateTime?
+  stripeCustomerId  String?        @unique
+  stripeSubscriptionId String?     @unique
+  stripeSubscriptionStatus String?
   organizationId String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -50,6 +53,7 @@ model User {
   seniorTasks         SeniorTask[]
   seniorSubscriptions SeniorSubscription[]
   apiKeys             UserApiKey[]
+  billingCheckouts    BillingCheckout[]
 }
 
 model Organization {
@@ -88,6 +92,7 @@ model Project {
   user           User           @relation(fields: [userId], references: [id])
   conversations  Conversation[]
   assets         ProjectAsset[]
+  apps           ProjectApp[]
 }
 
 model Conversation {
@@ -102,6 +107,8 @@ model Conversation {
   projectBackendEnabled Boolean @default(false)
   webhookUrl       String?
   webhookSecret    String?
+  editorToken          String?
+  editorTokenExpiresAt DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   user             User      @relation(fields: [userId], references: [id])
@@ -114,6 +121,8 @@ model Conversation {
   projectData      ProjectData[]
   usageRecords     UsageRecord[]
   projectAssets    ProjectAsset[]
+  projectFiles     ProjectFile[]
+  projectApps      ProjectApp[]
 }
 
 model Message {
@@ -140,8 +149,6 @@ model Deliverable {
   instanceId     String?
   version        Int      @default(1)
   parentId       String?
-  netlifySiteId  String?
-  netlifyUrl     String?
   isPublic       Boolean  @default(false)
   shareSlug               String?   @unique
   publishSlug             String?   @unique
@@ -150,12 +157,14 @@ model Deliverable {
   customDomainStatus      String?   // 'pending_dns' | 'dns_verified' | 'active' | 'error'
   customDomainVerifiedAt  DateTime?
   thumbnailUrl            String?
+  visualOverrides         String?
   createdAt               DateTime  @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   parent         Deliverable?  @relation("DeliverableVersions", fields: [parentId], references: [id])
   children       Deliverable[] @relation("DeliverableVersions")
   kanbanTask     KanbanTask?
   projectAssets  ProjectAsset[]
+  projectFiles   ProjectFile[]
 
   @@index([conversationId, instanceId])
 }
@@ -212,6 +221,41 @@ model CreditLedger {
 
   @@index([userId, createdAt])
   @@index([userId, type])
+}
+
+model BillingCheckout {
+  id                     String   @id @default(cuid())
+  userId                 String
+  purpose                String   // 'credit_purchase' | 'plan_subscription'
+  status                 String   @default("pending") // 'pending' | 'open' | 'paid' | 'completed' | 'expired' | 'failed'
+  packageId              String?
+  targetPlanId           String?
+  stripeSessionId        String?  @unique
+  stripeCustomerId       String?
+  stripeSubscriptionId   String?
+  stripePaymentIntentId  String?
+  amount                 Int
+  currency               String   @default("usd")
+  metadataJson           String?
+  processedAt            DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model BillingWebhookEvent {
+  id              String   @id @default(cuid())
+  provider        String   @default("stripe")
+  providerEventId String   @unique
+  type            String
+  payloadJson     String
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([provider, type])
 }
 
 model SeniorMember {
@@ -365,6 +409,22 @@ model SeniorSubscription {
   updatedAt       DateTime @updatedAt
 }
 
+model ProjectFile {
+  id             String   @id @default(uuid())
+  conversationId String
+  deliverableId  String
+  filePath       String
+  hash           String
+  size           Int
+  lastModified   DateTime @default(now())
+  createdAt      DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  deliverable    Deliverable  @relation(fields: [deliverableId], references: [id])
+
+  @@unique([deliverableId, filePath])
+  @@index([conversationId])
+}
+
 model ProjectAsset {
   id             String   @id @default(uuid())
   projectId      String
@@ -381,4 +441,43 @@ model ProjectAsset {
 
   @@index([projectId])
   @@index([deliverableId])
+}
+
+model ProjectApp {
+  id               String   @id @default(uuid())
+  projectId        String
+  conversationId   String?
+  name             String
+  slug             String
+  appType          String   // 'generic' | 'saas' | 'ecommerce' | 'delivery' | 'chatflow' | 'mobility'
+  vertical         String?  // finer category for future specialization
+  status           String   @default("draft") // 'draft' | 'active' | 'archived'
+  runtime          String   @default("project_backend") // 'project_backend' | 'workflow' | 'realtime'
+  configJson       String?  // UI/runtime config
+  capabilitiesJson String?  // enabled features/modules
+  metadataJson     String?  // arbitrary app metadata
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  project          Project      @relation(fields: [projectId], references: [id])
+  conversation     Conversation? @relation(fields: [conversationId], references: [id])
+  events           ProjectAppEvent[]
+
+  @@unique([projectId, slug])
+  @@index([projectId, appType])
+}
+
+model ProjectAppEvent {
+  id          String   @id @default(uuid())
+  projectAppId String
+  channelKey  String
+  eventKey    String
+  direction   String   // 'emit' | 'listen' | 'bi'
+  payloadJson String
+  source      String   @default("system") // 'system' | 'simulation' | 'user'
+  createdAt   DateTime @default(now())
+  projectApp  ProjectApp @relation(fields: [projectAppId], references: [id])
+
+  @@index([projectAppId, createdAt])
+  @@index([projectAppId, channelKey])
+  @@index([projectAppId, eventKey])
 }
