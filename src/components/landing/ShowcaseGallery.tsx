@@ -13,11 +13,13 @@ interface ShowcaseProject {
 }
 
 const APP_DOMAIN = 'plury.co'
+const FALLBACK_THUMB = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400"><rect width="640" height="400" fill="%230b0b10"/><rect x="28" y="28" width="584" height="344" rx="28" fill="%23161722"/><rect x="54" y="250" width="220" height="18" rx="9" fill="%23222b3a"/><rect x="54" y="282" width="320" height="14" rx="7" fill="%23222b3a"/><rect x="54" y="70" width="120" height="120" rx="24" fill="%23222b3a"/></svg>'
 
 const categories = [
   { id: 'all', label: 'Todos' },
   { id: 'dev', label: 'Apps & SaaS' },
   { id: 'web', label: 'Diseno Web' },
+  { id: 'image', label: 'Logos & Imagenes' },
   { id: 'seo', label: 'SEO' },
   { id: 'ads', label: 'Ads & Marketing' },
   { id: 'video', label: 'Video' },
@@ -26,6 +28,7 @@ const categories = [
 const botColor: Record<string, string> = {
   dev: '#f59e0b',
   web: '#a855f7',
+  image: '#8b5cf6',
   seo: '#3b82f6',
   ads: '#10b981',
   video: '#ef4444',
@@ -35,6 +38,7 @@ const botColor: Record<string, string> = {
 const botLabel: Record<string, string> = {
   dev: 'Code',
   web: 'Pixel',
+  image: 'Logos & Imagenes',
   seo: 'Lupa',
   ads: 'Metric',
   video: 'Reel',
@@ -84,13 +88,25 @@ const ShowcaseGallery = ({ onBack }: ShowcaseGalleryProps) => {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetch('/api/portfolio/public')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        setProjects(data.deliverables || [])
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
+    Promise.all([
+      fetch('/api/portfolio/public').then(r => r.ok ? r.json() : { deliverables: [] }),
+      fetch('/api/community/images').then(r => r.ok ? r.json() : []),
+    ]).then(([data, communityImgs]) => {
+      const portfolioProjects: ShowcaseProject[] = data.deliverables || []
+      // Convert community images to ShowcaseProject format
+      const communityProjects: ShowcaseProject[] = (communityImgs || []).map((img: any) => ({
+        id: img.id,
+        title: img.prompt || 'Imagen generada',
+        publishSlug: null,
+        thumbnailUrl: img.imageUrl,
+        authorName: img.authorName || 'Comunidad',
+        tags: [img.model || 'imagen'],
+        botType: 'image',
+        createdAt: img.createdAt,
+      }))
+      setProjects([...portfolioProjects, ...communityProjects])
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }, [])
 
   const filtered = useMemo(() => {
@@ -237,6 +253,11 @@ const ProjectCard = ({ project, index }: { project: ShowcaseProject; index: numb
           alt={project.title}
           className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
           loading="lazy"
+          onError={(e) => {
+            const image = e.currentTarget
+            image.onerror = null
+            image.src = FALLBACK_THUMB
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
         {/* Tags */}

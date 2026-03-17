@@ -12,6 +12,7 @@ import { codeEditTools } from './code-edit.js'
 import { metaAdsTools } from './meta-ads.js'
 import { removeBgTools } from './remove-bg.js'
 import { webFetchTools } from './web-fetch.js'
+import { model3dTools } from './model-3d.js'
 import { consumeToolCredits } from '../credit-tracker.js'
 import { prisma } from '../../db/client.js'
 
@@ -27,6 +28,7 @@ const allTools: ToolDefinition[] = [
   ...metaAdsTools,
   ...removeBgTools,
   ...webFetchTools,
+  ...model3dTools,
 ]
 
 const META_TOOL_PREFIX = 'meta_'
@@ -76,7 +78,7 @@ export async function executeToolCall(
     const result = await tool.execute(toolCall.input, context)
 
     // Charge tool credits for image/video generation after successful execution
-    const chargeableTools = ['generate_image', 'generate_video']
+    const chargeableTools = ['generate_image', 'edit_image', 'reframe_image', 'upscale_image', 'describe_image', 'generate_video', 'generate_3d_model']
     if (chargeableTools.includes(toolCall.name) && !result.startsWith('Error')) {
       consumeToolCredits(userId, context.agentId, toolCall.name).catch(err =>
         console.error(`[Tool] Error charging credits for ${toolCall.name}:`, err)

@@ -3,11 +3,8 @@ import type { Agent, Message, QuickAction, Deliverable, KanbanTask, QuickReply }
 import type { ProposedPlan, StepApproval, ThinkingStep, CoordinationAgent, ActiveAgent, ConversationItem, ProjectItem } from '../../hooks/useChat'
 import { Zap, UserCircle, FolderPlus, FolderOpen, ChevronRight } from 'lucide-react'
 import WelcomeScreen from './WelcomeScreen'
-import MessageBubble from './MessageBubble'
+import MessageBubble, { StepApprovalCard } from './MessageBubble'
 import ChatInput from './ChatInput'
-import ThinkingBox from './ThinkingBox'
-import { CompactPipeline } from '../workflow/PipelineView'
-import type { PipelineStep } from '../workflow/PipelineView'
 
 interface ChatViewProps {
   messages: Message[]
@@ -30,6 +27,8 @@ interface ChatViewProps {
   onApproveStep?: (conversationId: string, approved: boolean) => void
   selectedModel?: string
   onModelChange?: (model: string) => void
+  selectedImageModel?: string
+  onImageModelChange?: (model: string) => void
   thinkingSteps?: ThinkingStep[]
   coordinationAgents?: CoordinationAgent[]
   isRefineMode?: boolean
@@ -56,11 +55,16 @@ interface ChatViewProps {
   onAddToProject?: (projectId: string, convId: string) => Promise<void>
   onDismissProjectSuggest?: () => void
   projects?: ProjectItem[]
+  onEditImage?: (imageUrl: string) => void
+  onUseAsReference?: (imageUrl: string) => void
+  referenceImageUrl?: string | null
+  onClearReference?: () => void
 }
 
 const agentMeta: Record<string, { name: string; color: string; initial: string }> = {
   seo: { name: 'Lupa', color: '#3b82f6', initial: 'L' },
   web: { name: 'Pixel', color: '#a855f7', initial: 'P' },
+  voxel: { name: 'Voxel', color: '#06b6d4', initial: 'V' },
   content: { name: 'Pluma', color: '#f97316', initial: 'C' },
   ads: { name: 'Metric', color: '#10b981', initial: 'M' },
   video: { name: 'Reel', color: '#ef4444', initial: 'R' },
@@ -71,9 +75,12 @@ const agentMeta: Record<string, { name: string; color: string; initial: string }
 }
 
 // Visual agents whose streaming output is HTML code (don't show in chat)
-const VISUAL_AGENTS = new Set(['web', 'dev', 'video'])
+const VISUAL_AGENTS = new Set(['web', 'voxel', 'dev', 'video'])
 
-const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate, conversations: _conversations, onLoadConversation: _onLoadConversation, isRefining, refiningAgentName, kanbanTasks: _kanbanTasks, activeDeliverable: _activeDeliverable, quickReplies, onQuickReply, projectSuggest, onCreateProject, onAddToProject, onDismissProjectSuggest, projects }: ChatViewProps) => {
+const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating, inputText, setInputText, onSubmit, chatEndRef, onApprove, onReject, onOpenDeliverable, pendingApproval, streamingText, streamingAgent, proposedPlan, pendingStepApproval, onApproveStep, selectedModel, onModelChange, selectedImageModel, onImageModelChange, thinkingSteps, coordinationAgents, isRefineMode, onOpenMarketplace, assignedHumanAgent, onRequestHuman, humanRequested, creditsExhausted, onUpgrade, disabledProviders, onAbort, activeAgents, onLoadTemplate, conversations: _conversations, onLoadConversation: _onLoadConversation, isRefining, refiningAgentName, kanbanTasks: _kanbanTasks, activeDeliverable, quickReplies, onQuickReply, projectSuggest, onCreateProject, onAddToProject, onDismissProjectSuggest, projects, onEditImage, onUseAsReference, referenceImageUrl, onClearReference }: ChatViewProps) => {
+  const hasVisualStreaming = !!(streamingAgent && VISUAL_AGENTS.has(streamingAgent))
+  const showUnifiedProgress = ((isCoordinating || isRefining || (activeAgents?.length ?? 0) > 0 || !!streamingAgent || hasVisualStreaming) && !(pendingStepApproval && !isRefining))
+  const hasVisibleResult = !!activeDeliverable || !!pendingStepApproval
 
   return (
   <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
@@ -103,7 +110,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
 
     <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-5 custom-scrollbar bg-surface min-h-0">
       {showWelcome && (
-        <WelcomeScreen quickActions={quickActions} inputText={inputText} setInputText={setInputText} onSubmit={onSubmit} onOpenMarketplace={onOpenMarketplace} onLoadTemplate={onLoadTemplate} />
+        <WelcomeScreen quickActions={quickActions} inputText={inputText} setInputText={setInputText} onSubmit={onSubmit} onOpenMarketplace={onOpenMarketplace} onLoadTemplate={onLoadTemplate} selectedImageModel={selectedImageModel} onImageModelChange={onImageModelChange} />
       )}
 
       {messages.map((m) => (
@@ -114,6 +121,8 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
           onApprove={onApprove}
           onReject={onReject}
           onOpenDeliverable={onOpenDeliverable}
+          onEditImage={onEditImage}
+          onUseAsReference={onUseAsReference}
           proposedPlan={proposedPlan}
           pendingStepApproval={pendingStepApproval}
           onApproveStep={onApproveStep}
@@ -122,13 +131,17 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         />
       ))}
 
-      {/* Thinking box — only shown outside coordination (e.g. refine mode) */}
-      {thinkingSteps && thinkingSteps.length > 0 && !streamingText && !isCoordinating && (
-        <ThinkingBox steps={thinkingSteps} />
+      {pendingStepApproval && onApproveStep && (
+        <StepApprovalCard
+          step={pendingStepApproval}
+          onApproveStep={onApproveStep}
+          onRequestHuman={onRequestHuman}
+          humanRequested={humanRequested}
+        />
       )}
 
       {/* Streaming bubble — only for NON-visual agents (visual agents stream HTML code) */}
-      {streamingAgent && streamingText && !VISUAL_AGENTS.has(streamingAgent) && (() => {
+      {streamingAgent && streamingText && !VISUAL_AGENTS.has(streamingAgent) && !showUnifiedProgress && (() => {
         const meta = agentMeta[streamingAgent]
         const color = meta?.color ?? '#6366f1'
         return (
@@ -147,42 +160,10 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         )
       })()}
 
-      {/* Visual agent streaming indicator — just shows "working" instead of raw code */}
-      {streamingAgent && streamingText && VISUAL_AGENTS.has(streamingAgent) && (() => {
-        const meta = agentMeta[streamingAgent]
-        const color = meta?.color ?? '#6366f1'
-        return (
-          <div className="flex items-start gap-3 max-w-2xl">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
-              style={{ backgroundColor: color }}
-            >
-              {meta?.initial ?? '?'}
-            </div>
-            <div className="pt-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-ink">{meta?.name ?? streamingAgent}</span>
-                <span className="text-xs text-ink-faint">generando...</span>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <div className="w-32 h-1 bg-subtle rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-transparent animate-shimmer" style={{ backgroundColor: color, opacity: 0.5 }} />
-                </div>
-                <span className="text-[10px] text-ink-faint font-mono">{Math.round(streamingText.length / 1000)}k chars</span>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-
-      {/* Refining indicator */}
-      {isRefining && !isCoordinating && !pendingStepApproval && !streamingAgent && (
-        <RefiningIndicator agentName={refiningAgentName || 'Pluria'} thinkingSteps={thinkingSteps || []} />
-      )}
-
-      {isCoordinating && !pendingStepApproval && (
-        <WorkingChecklist
+      {showUnifiedProgress && (
+        <WorkstreamCard
+          isRefining={!!isRefining}
+          refiningAgentName={refiningAgentName || null}
           agents={coordinationAgents || []}
           thinkingSteps={thinkingSteps || []}
           activeAgents={activeAgents || []}
@@ -190,7 +171,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
       )}
 
       {/* Quick reply buttons */}
-      {quickReplies && quickReplies.length > 0 && !isCoordinating && !streamingAgent && (
+      {quickReplies && quickReplies.length > 0 && !isCoordinating && !streamingAgent && !hasVisibleResult && (
         <div className="max-w-2xl pl-10 flex flex-wrap gap-2 animate-[fadeSlideIn_0.3s_ease-out]">
           {quickReplies.map((qr, i) => (
             <button
@@ -205,7 +186,7 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
       )}
 
       {/* Project suggestion card */}
-      {projectSuggest && !isCoordinating && !streamingAgent && (
+      {projectSuggest && !isCoordinating && !streamingAgent && !hasVisibleResult && (
         <ProjectSuggestCard
           title={projectSuggest.title}
           conversationId={projectSuggest.conversationId}
@@ -245,6 +226,10 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
         onAbort={onAbort}
         selectedModel={selectedModel}
         onModelChange={onModelChange}
+        selectedImageModel={selectedImageModel}
+        onImageModelChange={onImageModelChange}
+        referenceImageUrl={referenceImageUrl}
+        onClearReference={onClearReference}
         refineMode={isRefineMode}
         refineAgentName={pendingStepApproval?.agentName}
         disabledProviders={disabledProviders}
@@ -254,41 +239,19 @@ const ChatView = ({ messages, agents, quickActions, showWelcome, isCoordinating,
   )
 }
 
-// Refining indicator — minimal, just avatar + status
-const RefiningIndicator = ({ agentName, thinkingSteps }: { agentName: string; thinkingSteps: ThinkingStep[] }) => {
-  const agentId = Object.keys(agentMeta).find(k => agentMeta[k].name === agentName) || 'web'
-  const meta = agentMeta[agentId]
-  const color = meta?.color ?? '#6366f1'
-  const latestStep = thinkingSteps.length > 0 ? thinkingSteps[thinkingSteps.length - 1] : null
-
-  return (
-    <div className="flex items-start gap-3 max-w-2xl">
-      <div className="relative flex-shrink-0">
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold"
-          style={{ backgroundColor: color }}
-        >
-          {meta?.initial ?? '?'}
-        </div>
-        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface" style={{ backgroundColor: color }}>
-          <div className="w-full h-full rounded-full animate-ping" style={{ backgroundColor: color, opacity: 0.4 }} />
-        </div>
-      </div>
-      <div className="pt-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ink">{agentName}</span>
-          <span className="text-xs text-ink-faint">refinando...</span>
-        </div>
-        {latestStep && (
-          <p className="text-xs text-ink-faint mt-0.5">{latestStep.step}</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Working checklist — clean Lovable-style progress list with avatars
-const WorkingChecklist = ({ agents, thinkingSteps, activeAgents }: { agents: CoordinationAgent[]; thinkingSteps: ThinkingStep[]; activeAgents: ActiveAgent[] }) => {
+const WorkstreamCard = ({
+  isRefining,
+  refiningAgentName,
+  agents,
+  thinkingSteps,
+  activeAgents,
+}: {
+  isRefining: boolean
+  refiningAgentName: string | null
+  agents: CoordinationAgent[]
+  thinkingSteps: ThinkingStep[]
+  activeAgents: ActiveAgent[]
+}) => {
   const [startTime] = useState(Date.now())
   const [elapsed, setElapsed] = useState(0)
 
@@ -303,137 +266,57 @@ const WorkingChecklist = ({ agents, thinkingSteps, activeAgents }: { agents: Coo
   }, [allDone, startTime])
 
   const formatTime = (s: number) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+  const inferredRefineAgentId = Object.entries(agentMeta).find(([, meta]) => meta.name === refiningAgentName)?.[0] ?? 'dev'
 
-  // Build unified plan items
-  const planItems = agents.length > 0
+  let planItems = agents.length > 0
     ? agents.map(ca => {
         const active = activeAgents.find(a => a.agentId === ca.agentId)
         return { ...ca, status: active?.status ?? 'waiting' as const, instanceId: active?.instanceId ?? ca.agentId, model: active?.model }
       })
     : activeAgents.map(a => ({ agentId: a.agentId, agentName: a.agentName, task: a.task, status: a.status, instanceId: a.instanceId, model: a.model }))
 
-  const workingItem = planItems.find(i => i.status === 'working')
-  const workingMeta = workingItem ? agentMeta[workingItem.agentId] : null
+  if (isRefining && planItems.length === 0) {
+    planItems = [{
+      agentId: inferredRefineAgentId,
+      agentName: refiningAgentName || agentMeta[inferredRefineAgentId]?.name || 'Code',
+      task: 'Aplicando cambios sobre el resultado actual',
+      status: 'working' as const,
+      instanceId: `refine-${inferredRefineAgentId}`,
+      model: undefined,
+    }]
+  }
+
+  const workingItem = planItems.find(i => i.status === 'working') ?? planItems.find(i => i.status === 'waiting') ?? null
+  const latestThought = thinkingSteps[thinkingSteps.length - 1] ?? null
   const workingThought = workingItem
-    ? (() => { const arr = thinkingSteps.filter(s => s.instanceId === workingItem.instanceId || s.agentId === workingItem.agentId); return arr[arr.length - 1] ?? null })()
+    ? (() => {
+        const arr = thinkingSteps.filter(s => s.instanceId === workingItem.instanceId || s.agentId === workingItem.agentId)
+        return arr[arr.length - 1] ?? null
+      })()
     : null
+  // Minimal step text — only show tool executions or a short status
+  const minimalStep = (() => {
+    const step = workingThought?.step || latestThought?.step || ''
+    if (step.includes('herramienta') || step.includes('generate_image') || step.includes('tool')) return step
+    if (isRefining) return 'Aplicando cambios...'
+    return 'Generando...'
+  })()
 
   return (
-    <div className="max-w-2xl space-y-2 animate-[fadeSlideIn_0.3s_ease-out]">
-      <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes checkPop { 0% { transform: scale(0); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
-.check-pop { animation: checkPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }`}</style>
+    <div className="max-w-md animate-[fadeSlideIn_0.2s_ease-out]">
+      <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } } @keyframes barPulse { 0% { width: 8%; } 50% { width: 65%; } 100% { width: 8%; } }`}</style>
 
-      {/* Pipeline node view — compact visual representation */}
-      {planItems.length > 0 && (
-        <CompactPipeline
-          steps={planItems.map((item): PipelineStep => ({
-            agentId: item.agentId,
-            agentName: item.agentName,
-            instanceId: item.instanceId,
-            task: item.task,
-            status: item.status === 'done' ? 'complete' : item.status === 'working' ? 'running' : 'pending',
-          }))}
-        />
-      )}
-
-      {/* Fallback when no agents yet */}
-      {agents.length === 0 && activeAgents.length === 0 && (
-        <div className="flex items-center gap-3 py-1">
-          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-            <div className="w-4 h-4 rounded-full animate-spin border-2 border-primary border-t-transparent" />
-          </div>
-          <span className="text-sm font-semibold text-ink">Preparando plan de trabajo...</span>
+      <div className="flex items-center gap-3 px-1 py-1.5">
+        <div className="relative w-5 h-5 flex-shrink-0">
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
         </div>
-      )}
+        <span className="text-[12px] text-ink-faint font-medium truncate">{minimalStep}</span>
+        <span className="text-[11px] text-ink-faint/50 font-mono tabular-nums flex-shrink-0">{formatTime(elapsed)}</span>
+      </div>
+      <div className="h-[2px] bg-edge rounded-full overflow-hidden mx-1">
+        <div className="h-full rounded-full bg-primary" style={{ animation: 'barPulse 2.5s ease-in-out infinite' }} />
+      </div>
 
-      {/* Plan checklist — compact items */}
-      {planItems.map((item, idx) => {
-        const isDone = item.status === 'done'
-        const isWorking = item.status === 'working'
-        const meta = agentMeta[item.agentId]
-        const color = meta?.color ?? '#6b7280'
-
-        return (
-          <div
-            key={item.instanceId}
-            className={`flex items-center gap-3 py-1.5 transition-opacity duration-300 ${isDone ? 'opacity-60' : ''}`}
-            style={{ animationDelay: `${idx * 60}ms` }}
-          >
-            {/* Avatar — always visible */}
-            <div className="relative flex-shrink-0">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold transition-all duration-300"
-                style={{ backgroundColor: isDone ? `${color}90` : color }}
-              >
-                {meta?.initial ?? '?'}
-              </div>
-              {/* Check badge overlay */}
-              {isDone && (
-                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center border-2 border-surface check-pop">
-                  <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </div>
-              )}
-              {/* Working pulse ring */}
-              {isWorking && (
-                <div className="absolute inset-[-3px] rounded-full border-2 animate-ping opacity-30" style={{ borderColor: color }} />
-              )}
-            </div>
-
-            {/* Task text */}
-            <div className="min-w-0 flex-1">
-              <p className={`text-[13px] leading-snug ${isDone ? 'text-ink-faint line-through' : 'text-ink-light'}`}>
-                {item.task}
-              </p>
-            </div>
-
-            {/* Status badge */}
-            {isDone && (
-              <svg className="flex-shrink-0 check-pop" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="8" fill="#10b981"/><path d="M4.5 8l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            )}
-          </div>
-        )
-      })}
-
-      {/* Active agent working indicator — prominent */}
-      {workingItem && workingMeta && (
-        <div className="mt-3 flex items-center gap-3 px-4 py-3 bg-surface-alt rounded-xl border border-edge">
-          <div className="relative flex-shrink-0">
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[13px] font-bold"
-              style={{ backgroundColor: workingMeta.color }}
-            >
-              {workingMeta.initial}
-            </div>
-            <div className="absolute inset-[-2px] rounded-full border-2 animate-spin" style={{ borderColor: 'transparent', borderTopColor: workingMeta.color, animationDuration: '1.5s' }} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink">
-              {workingItem.agentName} <span className="font-normal text-ink-faint">trabajando en</span>
-            </p>
-            <p className="text-xs text-ink-light truncate">{workingThought?.step || workingItem.task}</p>
-          </div>
-          <div className="w-24 h-1.5 bg-subtle rounded-full overflow-hidden flex-shrink-0">
-            <div className="h-full rounded-full animate-[shimmer_1.5s_infinite]" style={{ backgroundColor: workingMeta.color, opacity: 0.6, width: '60%' }} />
-          </div>
-        </div>
-      )}
-
-      {/* Progress footer */}
-      {totalAgents > 0 && (
-        <div className="flex items-center gap-3 pt-1">
-          {/* Mini progress bar */}
-          <div className="flex-1 h-1 bg-subtle rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${(doneAgents / totalAgents) * 100}%` }}
-            />
-          </div>
-          <span className={`text-[10px] font-medium flex-shrink-0 ${allDone ? 'text-emerald-500' : 'text-ink-faint'}`}>
-            {allDone ? `Listo en ${formatTime(elapsed)}` : `${doneAgents}/${totalAgents} · ${formatTime(elapsed)}`}
-          </span>
-        </div>
-      )}
     </div>
   )
 }

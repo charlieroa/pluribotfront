@@ -51,14 +51,15 @@ export interface Deliverable {
   botType: string
   version?: number
   versionCount?: number
+  validationPassed?: boolean
+  previewStable?: boolean
   publishSlug?: string
   customDomain?: string
   customDomainStatus?: string
   thumbnailUrl?: string | null
-  netlifyUrl?: string | null
 }
 
-export type AssetCategory = 'branding' | 'webs' | 'apps' | 'video' | 'copy' | 'seo' | 'ads' | 'other'
+export type AssetCategory = 'logo' | 'graphic' | 'web' | 'app' | 'video' | 'copy' | 'seo' | 'ads' | 'other'
 
 export interface ProjectAsset {
   id: string
@@ -75,7 +76,8 @@ export interface ProjectAsset {
     type: string
     botType: string
     thumbnailUrl?: string | null
-    netlifyUrl?: string | null
+    publishSlug?: string | null
+    customDomain?: string | null
   }
 }
 
@@ -99,5 +101,5 @@ export interface QuickAction {
 
 // ─── Plan & Model types (re-exported from shared/types.ts) ───
 
-export type { PlanStep, AvailableModel } from '../../shared/types'
-export { AVAILABLE_MODELS } from '../../shared/types'
+export type { PlanStep, AvailableModel, AvailableImageModel } from '../../shared/types'
+export { AVAILABLE_MODELS, AVAILABLE_IMAGE_MODELS } from '../../shared/types'

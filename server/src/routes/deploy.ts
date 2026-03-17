@@ -3,10 +3,12 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { prisma } from '../db/client.js'
-import { optionalAuth } from '../middleware/auth.js'
+import { authMiddleware, optionalAuth } from '../middleware/auth.js'
 import { deployProject, getDeployStatus, removeDeploy } from '../services/deploy.js'
-import { deployToNetlify } from '../services/netlify-deploy.js'
+import { validateBeforeDeploy } from '../services/test-runner.js'
 import { slugify, isSlugValid, isSlugAvailable, generateUniqueSlug } from '../utils/slugify.js'
+import { injectVisualOverrides } from '../services/html-utils.js'
+import { findAccessibleDeliverable } from '../services/access-control.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -107,7 +109,7 @@ router.post('/suggest-slug', async (req, res) => {
  * POST /api/deploy — Deploy a deliverable as a static site
  * Body: { deliverableId: string, slug?: string }
  */
-router.post('/', optionalAuth, async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
   const { deliverableId, slug: requestedSlug, isPublic } = req.body as { deliverableId: string; slug?: string; isPublic?: boolean }
 
   if (!deliverableId) {
@@ -116,12 +118,10 @@ router.post('/', optionalAuth, async (req, res) => {
   }
 
   try {
-    const deliverable = await prisma.deliverable.findUnique({
-      where: { id: deliverableId },
-    })
+    const deliverable = await findAccessibleDeliverable(deliverableId, req.auth!.userId)
 
     if (!deliverable) {
-      res.status(404).json({ error: 'Deliverable no encontrado' })
+      res.status(404).json({ error: 'Deliverable no encontrado o sin permisos' })
       return
     }
 
@@ -163,6 +163,16 @@ router.post('/', optionalAuth, async (req, res) => {
       } catch {}
     }
 
+    // --- Pre-publish validation ---
+    const validation = await validateBeforeDeploy(deliverable.content)
+    if (!validation.passed && !req.body.skipChecks) {
+      res.status(422).json({
+        error: 'El proyecto tiene errores que deben corregirse antes de publicar',
+        validation,
+      })
+      return
+    }
+
     // --- Write HTML to disk ---
     const deployId = deliverable.id
     await deployProject(deployId, deliverable.content)
@@ -190,6 +200,7 @@ router.post('/', optionalAuth, async (req, res) => {
       slug: finalSlug,
       deployId,
       provider: 'subdomain',
+      validation,
     })
   } catch (err) {
     console.error('[Deploy] Error:', err)
@@ -214,15 +225,63 @@ router.get('/:deployId', async (req, res) => {
 /**
  * DELETE /api/deploy/:deployId — Remove a deploy
  */
-router.delete('/:deployId', optionalAuth, async (req, res) => {
+router.delete('/:deployId', authMiddleware, async (req, res) => {
   const deployId = req.params.deployId as string
 
   try {
+    const deliverable = await findAccessibleDeliverable(deployId, req.auth!.userId)
+    if (!deliverable) {
+      res.status(404).json({ error: 'Deploy no encontrado o sin permisos' })
+      return
+    }
+
     removeDeploy(deployId)
     res.json({ ok: true })
   } catch (err) {
     console.error('[Deploy] Remove error:', err)
     res.status(500).json({ error: 'Error al eliminar deploy' })
+  }
+})
+
+/**
+ * POST /api/deploy/:deliverableId/visual-overrides — Save visual edits and re-deploy
+ * Body: { theme, edits }
+ */
+router.post('/:deliverableId/visual-overrides', authMiddleware, async (req, res) => {
+  const deliverableId = req.params.deliverableId as string
+  const { theme, edits } = req.body as { theme?: any; edits?: any[] }
+
+  try {
+    const deliverable = await findAccessibleDeliverable(deliverableId, req.auth!.userId)
+
+    if (!deliverable) {
+      res.status(404).json({ error: 'Deliverable no encontrado o sin permisos' })
+      return
+    }
+
+    // Save the visual overrides as JSON (use raw query since column may not be in Prisma types yet)
+    const overridesJson = JSON.stringify({ theme, edits: edits ?? [] })
+    await prisma.$executeRawUnsafe(
+      `UPDATE Deliverable SET visualOverrides = ? WHERE id = ?`,
+      overridesJson,
+      deliverableId,
+    )
+
+    // If published, re-inject overrides into deployed HTML
+    if (deliverable.publishSlug) {
+      const htmlPath = path.join(path.resolve(__dirname, '../../deploys'), deliverableId, 'index.html')
+      if (fs.existsSync(htmlPath)) {
+        let html = fs.readFileSync(htmlPath, 'utf-8')
+        html = injectVisualOverrides(html, overridesJson)
+        fs.writeFileSync(htmlPath, html, 'utf-8')
+        console.log(`[Deploy] Visual overrides applied to ${deliverable.publishSlug}.${APP_DOMAIN}`)
+      }
+    }
+
+    res.json({ ok: true, published: !!deliverable.publishSlug })
+  } catch (err) {
+    console.error('[Deploy] Save visual overrides error:', err)
+    res.status(500).json({ error: 'Error al guardar cambios visuales' })
   }
 })
 

@@ -58,15 +58,17 @@ interface CostsData {
 }
 
 const agentNames: Record<string, string> = {
-  seo: 'Lupa', web: 'Pixel', ads: 'Metric', video: 'Reel', base: 'Pluria',
+  seo: 'Lupa', web: 'Pixel', voxel: 'Voxel', ads: 'Metric', video: 'Reel', base: 'Pluria',
 }
 const agentColors: Record<string, string> = {
-  seo: '#3b82f6', web: '#a78bfa', ads: '#10b981', video: '#ef4444', base: '#6366f1',
+  seo: '#3b82f6', web: '#a78bfa', voxel: '#06b6d4', ads: '#10b981', video: '#ef4444', base: '#6366f1',
 }
 
 const BUDGET_PROVIDERS = [
   { key: 'anthropic', label: 'Anthropic (Claude)', color: '#d97706' },
-  { key: 'midjourney', label: 'Midjourney', color: '#a78bfa' },
+  { key: 'ideogram', label: 'Ideogram', color: '#a855f7' },
+  { key: 'ltx', label: 'LTX Video', color: '#ef4444' },
+  { key: 'meshy', label: 'Meshy', color: '#06b6d4' },
 ]
 
 const CreditsSection = () => {
@@ -150,11 +152,15 @@ const CreditsSection = () => {
 
   const providerConfig: Record<string, { label: string; color: string; bgColor: string }> = {
     anthropic: { label: 'Anthropic', color: '#d97706', bgColor: 'bg-amber-500' },
+    ideogram: { label: 'Ideogram', color: '#a855f7', bgColor: 'bg-violet-500' },
+    ltx: { label: 'LTX', color: '#ef4444', bgColor: 'bg-rose-500' },
+    meshy: { label: 'Meshy', color: '#06b6d4', bgColor: 'bg-cyan-500' },
   }
 
   const toolDisplayNames: Record<string, { label: string; icon: typeof Image }> = {
-    generate_image: { label: 'Generacion de imagenes', icon: Image },
-    generate_video: { label: 'Generacion de video', icon: Video },
+    generate_image: { label: 'Imagenes con Ideogram', icon: Image },
+    generate_video: { label: 'Video con LTX', icon: Video },
+    generate_3d_model: { label: 'Modelos 3D con Meshy', icon: Image },
   }
 
   const totalProviderCost = costsData

@@ -5,6 +5,13 @@ import crypto from 'crypto'
 
 const router = Router()
 
+function toAbsoluteAssetUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (/^https?:\/\//i.test(url)) return url
+  const base = process.env.DEPLOY_BASE_URL || `https://${process.env.APP_DOMAIN || 'plury.co'}`
+  return `${base.replace(/\/$/, '')}${url.startsWith('/') ? url : `/${url}`}`
+}
+
 const RANDOM_NAMES = [
   'Valentina M.', 'Santiago R.', 'Camila P.', 'Andres G.', 'Isabella L.',
   'Juan D.', 'Sofia C.', 'Carlos H.', 'Mariana V.', 'Diego F.',
@@ -61,7 +68,7 @@ router.get('/public', async (_req, res) => {
       id: d.id,
       title: d.title,
       publishSlug: d.publishSlug,
-      thumbnailUrl: d.thumbnailUrl,
+      thumbnailUrl: toAbsoluteAssetUrl(d.thumbnailUrl),
       authorName: d.conversation?.user?.role === 'superadmin'
         ? RANDOM_NAMES[Math.abs(hashCode(d.id)) % RANDOM_NAMES.length]
         : (d.conversation?.user?.name || 'Anónimo'),
@@ -91,8 +98,9 @@ router.get('/shared/:slug', async (req, res) => {
         content: true,
         agent: true,
         botType: true,
-        netlifyUrl: true,
         shareSlug: true,
+        publishSlug: true,
+        customDomain: true,
         isPublic: true,
         createdAt: true,
       },

@@ -46,6 +46,15 @@ const categoryImages: Record<string, string[]> = {
 }
 
 const APP_DOMAIN = 'plury.co'
+const FALLBACK_THUMB = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400"><rect width="640" height="400" fill="%230b0b10"/><rect x="28" y="28" width="584" height="344" rx="28" fill="%23161722"/><rect x="54" y="250" width="220" height="18" rx="9" fill="%23222b3a"/><rect x="54" y="282" width="320" height="14" rx="7" fill="%23222b3a"/><rect x="54" y="70" width="120" height="120" rx="24" fill="%23222b3a"/></svg>'
+
+interface CommunityImg {
+  id: string
+  imageUrl: string
+  authorName: string
+  model?: string
+  prompt?: string
+}
 
 const CommunityCarousel = ({ onShowGallery }: { onShowGallery?: () => void }) => {
   const row1Ref = useRef<HTMLDivElement>(null)
@@ -53,31 +62,38 @@ const CommunityCarousel = ({ onShowGallery }: { onShowGallery?: () => void }) =>
   const sectionRef = useRef<HTMLElement>(null)
   const [projects, setProjects] = useState<Project[]>(fallbackProjects)
 
-  // Fetch real public projects from the API
+  // Fetch real public projects + community images and merge
   useEffect(() => {
-    fetch('/api/portfolio/public')
-      .then(r => r.ok ? r.json() : { deliverables: [] })
-      .then((resp: { deliverables: { id: string; title: string; publishSlug: string | null; thumbnailUrl: string | null; authorName: string; botType: string }[] }) => {
-        const data = resp.deliverables || []
-        if (data.length === 0) return
-        const mapped: Project[] = data.slice(0, 8).map((d, i) => {
-          const fallbackImages = categoryImages[d.botType] || categoryImages.web
-          return {
-            name: d.title.replace(/^(Code|Web|SEO|Ads|Video|Content):\s*/i, '').slice(0, 50),
-            author: d.authorName || 'Plury',
-            tag: tagByBot[d.botType] || 'Proyecto',
-            img: d.thumbnailUrl || fallbackImages[i % fallbackImages.length],
-            color: botGradient[d.botType] || 'from-[#a78bfa]/30',
-            url: d.publishSlug ? `https://${d.publishSlug}.${APP_DOMAIN}` : undefined,
-          }
-        })
-        // Fill with fallbacks if we have less than 8
-        while (mapped.length < 8) {
-          mapped.push(fallbackProjects[mapped.length % fallbackProjects.length])
+    Promise.all([
+      fetch('/api/portfolio/public').then(r => r.ok ? r.json() : { deliverables: [] }),
+      fetch('/api/community/images').then(r => r.ok ? r.json() : []),
+    ]).then(([portfolioResp, communityImgs]) => {
+      const data = portfolioResp.deliverables || []
+      const mapped: Project[] = data.slice(0, 6).map((d: any, i: number) => {
+        const fallbackImages = categoryImages[d.botType] || categoryImages.web
+        return {
+          name: d.title.replace(/^(Code|Web|SEO|Ads|Video|Content):\s*/i, '').slice(0, 50),
+          author: d.authorName || 'Plury',
+          tag: tagByBot[d.botType] || 'Proyecto',
+          img: d.thumbnailUrl || fallbackImages[i % fallbackImages.length],
+          color: botGradient[d.botType] || 'from-[#a78bfa]/30',
+          url: d.publishSlug ? `https://${d.publishSlug}.${APP_DOMAIN}` : undefined,
         }
-        setProjects(mapped)
       })
-      .catch(() => { /* keep fallback */ })
+      // Mix community images into the carousel
+      const communityMapped: Project[] = (communityImgs as CommunityImg[]).slice(0, 6).map((img) => ({
+        name: img.prompt || 'Imagen generada',
+        author: img.authorName || 'Comunidad',
+        tag: img.model === 'gemini-pro' ? 'Gemini Pro' : img.model === 'gemini-flash' ? 'Gemini' : img.model === 'ideogram' ? 'Ideogram' : 'Logo',
+        img: img.imageUrl,
+        color: 'from-violet-500/30',
+      }))
+      const all = [...mapped, ...communityMapped]
+      while (all.length < 8) {
+        all.push(fallbackProjects[all.length % fallbackProjects.length])
+      }
+      setProjects(all)
+    }).catch(() => { /* keep fallback */ })
   }, [])
 
   const row1 = projects.slice(0, 4)
@@ -125,7 +141,17 @@ const CommunityCarousel = ({ onShowGallery }: { onShowGallery?: () => void }) =>
     const inner = (
       <div className="flex-shrink-0 w-[320px] sm:w-[360px] group cursor-pointer">
         <div className="relative rounded-2xl overflow-hidden aspect-[16/10] bg-zinc-900">
-          <img src={p.img} alt={p.name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" loading="lazy" />
+          <img
+            src={p.img}
+            alt={p.name}
+            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+            loading="lazy"
+            onError={(e) => {
+              const img = e.currentTarget
+              img.onerror = null
+              img.src = FALLBACK_THUMB
+            }}
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
           <span className="absolute top-3 left-3 text-[10px] font-semibold bg-black/50 backdrop-blur-md text-white/90 px-2.5 py-1 rounded-full">{p.tag}</span>
         </div>

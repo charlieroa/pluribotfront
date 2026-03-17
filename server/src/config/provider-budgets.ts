@@ -14,13 +14,15 @@ export interface ProviderBudget {
   setAt: string        // ISO date
 }
 
-export type BudgetProvider = 'anthropic' | 'midjourney'
+export type BudgetProvider = 'anthropic' | 'ideogram' | 'ltx' | 'meshy'
 
 type BudgetsMap = Record<BudgetProvider, ProviderBudget | null>
 
 const EMPTY_BUDGETS: BudgetsMap = {
   anthropic: null,
-  midjourney: null,
+  ideogram: null,
+  ltx: null,
+  meshy: null,
 }
 
 function readBudgets(): BudgetsMap {
@@ -30,7 +32,9 @@ function readBudgets(): BudgetsMap {
     // Only pick valid keys
     return {
       anthropic: raw.anthropic ?? null,
-      midjourney: raw.midjourney ?? null,
+      ideogram: raw.ideogram ?? null,
+      ltx: raw.ltx ?? null,
+      meshy: raw.meshy ?? null,
     }
   } catch {
     return { ...EMPTY_BUDGETS }

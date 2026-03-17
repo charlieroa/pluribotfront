@@ -32,8 +32,6 @@ interface ProviderHealth {
 // Spending limits — superadmin can mentally adjust these
 const SPENDING_LIMITS: Record<string, number> = {
   anthropic: 50, // USD/month alert threshold
-  openai: 20,
-  google: 30,
 }
 
 export type AdminTab = 'users' | 'agencies' | 'bots' | 'credits' | 'apis' | 'senior' | 'support' | 'published'

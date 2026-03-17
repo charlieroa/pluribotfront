@@ -116,6 +116,11 @@ router.get('/', (_req: Request, res: Response) => {
       emptyEl.style.display = 'none';
       iframeEl.style.display = 'block';
       iframeEl.srcdoc = html;
+      // Enable edit mode after a short delay so the iframe loads
+      setTimeout(function() {
+        iframeEl.contentWindow.postMessage({ type: 'toggle-edit-mode', enabled: true }, '*');
+        addMessage('You can now click any element in the preview to edit it visually. Double-click text to edit inline.', false);
+      }, 1000);
     }
 
     async function generate(prompt) {
@@ -193,6 +198,13 @@ router.get('/', (_req: Request, res: Response) => {
       }
       if (e.data && e.data.type === 'plury:setApiKey') {
         API_KEY = e.data.apiKey;
+      }
+      // Forward visual editor events to parent
+      if (e.data && e.data.type === 'element-selected') {
+        window.parent.postMessage({ type: 'plury:element-selected', element: e.data }, '*');
+      }
+      if (e.data && e.data.type === 'content-updated') {
+        window.parent.postMessage({ type: 'plury:content-updated', html: e.data.html }, '*');
       }
     });
   })();

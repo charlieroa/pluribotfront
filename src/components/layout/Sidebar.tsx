@@ -135,6 +135,16 @@ const Sidebar = ({ onNewChat, collapsed, onToggleCollapse, conversations = [], c
               </div>
             ) : (
               <div className="space-y-1">
+                {/* Projects section header */}
+                {projects.length > 0 && (
+                  <div className="pb-1.5 pt-1">
+                    <p className="text-[9px] font-bold text-primary/60 uppercase tracking-[0.16em] px-1 flex items-center gap-1.5">
+                      <FolderOpen size={10} />
+                      Mis proyectos
+                    </p>
+                  </div>
+                )}
+
                 {/* Grouped projects */}
                 {projects.map(project => {
                   const projectConvs = conversations.filter(c => c.projectId === project.id)
@@ -156,16 +166,23 @@ const Sidebar = ({ onNewChat, collapsed, onToggleCollapse, conversations = [], c
                           }
                         }}
                         className={`w-full flex items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
-                          hasActiveConv ? 'bg-primary/5' : 'hover:bg-subtle'
+                          hasActiveConv ? 'bg-primary/8 ring-1 ring-primary/20' : 'hover:bg-subtle'
                         }`}
                       >
-                        <FolderOpen size={14} className={`flex-shrink-0 transition-colors ${hasActiveConv ? 'text-primary' : 'text-ink-faint'}`} />
-                        <p className={`text-xs font-bold truncate flex-1 ${hasActiveConv ? 'text-primary' : 'text-ink'}`}>
-                          {project.name}
-                        </p>
-                        <span className="text-[9px] text-ink-faint bg-subtle px-1.5 py-0.5 rounded-full font-semibold">
-                          {projectConvs.length}
-                        </span>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          hasActiveConv ? 'bg-primary/15' : 'bg-subtle'
+                        }`}>
+                          <FolderOpen size={13} className={hasActiveConv ? 'text-primary' : 'text-ink-faint'} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-bold truncate ${hasActiveConv ? 'text-primary' : 'text-ink'}`}>
+                            {project.name}
+                          </p>
+                          <p className="text-[10px] text-ink-faint truncate">
+                            {project.conversationCount || projectConvs.length} chat{(project.conversationCount || projectConvs.length) !== 1 ? 's' : ''} · {(project.deliverables?.length || 0)} pieza{(project.deliverables?.length || 0) !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${project.status === 'active' ? 'bg-emerald-500' : 'bg-ink-faint/25'}`} title={project.status === 'active' ? 'Activo' : 'Completado'} />
                         <svg
                           className={`w-3 h-3 text-ink-faint transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                           fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -224,14 +241,17 @@ const Sidebar = ({ onNewChat, collapsed, onToggleCollapse, conversations = [], c
                   return (
                     <>
                       {projects.length > 0 && (
-                        <div className="pt-2 pb-1">
-                          <p className="text-[9px] font-bold text-ink-faint uppercase tracking-wider px-1">Chats sueltos</p>
+                        <div className="pt-3 pb-1.5 mt-1 border-t border-edge-soft">
+                          <p className="text-[9px] font-bold text-ink-faint/50 uppercase tracking-[0.16em] px-1 flex items-center gap-1.5">
+                            <MessageSquare size={10} />
+                            Historial
+                          </p>
                         </div>
                       )}
                       {ungrouped.map(conv => (
                         <div
                           key={conv.id}
-                          className={`relative w-full text-left p-3 rounded-xl transition-all group ${
+                          className={`relative w-full text-left p-2.5 rounded-xl transition-all group ${
                             currentConversationId === conv.id
                               ? 'bg-primary/10 border border-primary/20'
                               : 'hover:bg-subtle border border-transparent'
@@ -240,7 +260,7 @@ const Sidebar = ({ onNewChat, collapsed, onToggleCollapse, conversations = [], c
                           <button onClick={() => onLoadConversation?.(conv.id)} className="w-full text-left">
                             <div className="flex items-start justify-between gap-2 pr-6">
                               <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                <p className={`text-sm font-semibold truncate ${
+                                <p className={`text-xs font-semibold truncate ${
                                   currentConversationId === conv.id ? 'text-primary' : 'text-ink group-hover:text-ink'
                                 }`}>
                                   {conv.title}

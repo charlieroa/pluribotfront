@@ -11,9 +11,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom'],
           workspace: ['@webcontainer/api', 'highlight.js', 'jszip'],
-          flow: ['@xyflow/react'],
         },
       },
     },

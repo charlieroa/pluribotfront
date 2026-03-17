@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Pencil, PanelLeftClose, PanelLeftOpen, Settings, X } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
+import { MessageCircle, Pencil, PanelLeftClose, PanelLeftOpen, X, Save, Check, Loader2, Package, Layers3, Globe, Film, FileText } from 'lucide-react'
 import type { AdminTab } from './components/admin/AdminDashboard'
 import { agents } from './data/agents'
 import { quickActions } from './data/quickActions'
@@ -10,21 +10,25 @@ import type { Deliverable } from './types'
 import Sidebar from './components/layout/Sidebar'
 import Header from './components/layout/Header'
 import ChatView from './components/chat/ChatView'
-import TaskTimeline from './components/tasks/TaskTimeline'
+import ProjectTasksView from './components/tasks/ProjectTasksView'
 import SettingsView from './components/settings/SettingsView'
 import MarketplaceView from './components/marketplace/MarketplaceView'
 import WorkspacePanel from './components/workspace/WorkspacePanel'
-import WorkflowEditor from './components/workflow/WorkflowEditor'
+const WorkflowEditor = lazy(lazyWithReload(() => import('./components/workflow/WorkflowEditor'), 'workflow-editor'))
 import EditPanel from './components/workspace/EditPanel'
+import ImageEditor from './components/workspace/ImageEditor'
 import DevSettingsPanel from './components/workspace/DevSettingsPanel'
+import UnsplashModal from './components/workspace/UnsplashModal'
+import { ensureBridgeScriptInWebContainer } from './components/workspace/WebContainerPreview'
 import AdminDashboard from './components/admin/AdminDashboard'
 import ProjectView from './components/projects/ProjectView'
 import LandingPage from './components/landing/LandingPage'
 import LandingPageV2 from './components/landing/LandingPageV2'
 import DocsPage from './components/docs/DocsPage'
-import SectionNavigator from './components/workspace/SectionNavigator'
+import _SectionNavigator from './components/workspace/SectionNavigator'
 import type { DetectedSection } from './components/workspace/SectionNavigator'
 import type { SelectedElement } from './components/workspace/VisualEditToolbar'
+import { lazyWithReload } from './utils/lazyWithReload'
 
 const App = () => {
   const pathname = typeof window !== 'undefined' ? window.location.pathname.toLowerCase() : '/'
@@ -37,13 +41,12 @@ const App = () => {
   // Core state — chat is always the main view
   const [showAdmin, setShowAdmin] = useState(false)
   const [adminSubTab, setAdminSubTab] = useState<AdminTab>('users')
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [activeDeliverable, setActiveDeliverable] = useState<Deliverable | null>(null)
   const [projectMode, setProjectMode] = useState<{ projectId: string; projectName: string } | null>(null)
   const [projectRefreshKey, setProjectRefreshKey] = useState(0)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true) // Start collapsed, will expand if user has history
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [sidePanelTab, setSidePanelTab] = useState<'chat' | 'edit' | 'settings'>('chat')
+  const [sidePanelTab, setSidePanelTab] = useState<'chat' | 'resources' | 'edit' | 'settings'>('chat')
   const [chatPanelVisible, setChatPanelVisible] = useState(true)
 
   // Drawer/modal overlays
@@ -51,11 +54,17 @@ const App = () => {
   const [showTasks, setShowTasks] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
+  // Image editor state (Ideogram-style)
+  const [imageEditorUrl, setImageEditorUrl] = useState<string | null>(null)
+
   // Visual edit state
   const [editMode, setEditMode] = useState(false)
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null)
   const [selectedLogo, setSelectedLogo] = useState<{ index: number; src: string; style: string } | null>(null)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [devUnsplashOpen, setDevUnsplashOpen] = useState(false)
+  const [pendingEditsCount, setPendingEditsCount] = useState(0)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   // Section navigator state
   const [detectedSections, setDetectedSections] = useState<DetectedSection[]>([])
@@ -64,13 +73,87 @@ const App = () => {
     (window as any).__selectedLogoForRefine = selectedLogo
   }, [selectedLogo])
 
+  // Listen for messages from WebContainer iframes (dev projects)
+  const editModeRef = useRef(editMode)
+  editModeRef.current = editMode
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'element-selected') {
+        setSelectedElement({
+          tag: e.data.tag,
+          text: e.data.text,
+          isImage: e.data.isImage,
+          imageSrc: e.data.imageSrc,
+          rect: e.data.rect,
+          classes: e.data.classes,
+          elementLabel: e.data.elementLabel,
+        })
+        setSidePanelTab('edit')
+      }
+      if (e.data?.type === 'element-deselected') {
+        setSelectedElement(null)
+      }
+      // Bridge script loaded/reloaded (e.g. after Vite HMR) — re-send edit mode state
+      if (e.data?.type === 'plury-bridge-ready' && editModeRef.current) {
+        const source = e.source as Window | null
+        if (source) {
+          source.postMessage({ type: 'toggle-edit-mode', enabled: true }, '*')
+        }
+      }
+      // Track pending edit count from bridge
+      if (e.data?.type === 'plury-has-edits') {
+        setPendingEditsCount(e.data.count || 0)
+        setSaveStatus('idle')
+      }
+      // Receive collected edits for save
+      if (e.data?.type === 'visual-edits-response') {
+        saveVisualEdits(e.data.edits, e.data.theme)
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  // Save visual edits to backend
+  const saveVisualEdits = useCallback(async (edits: any[], theme: any) => {
+    if (!activeDeliverable) return
+    setSaveStatus('saving')
+    try {
+      const resp = await fetch(`/api/deploy/${activeDeliverable.id}/visual-overrides`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme, edits }),
+      })
+      if (resp.ok) {
+        setSaveStatus('saved')
+        setPendingEditsCount(0)
+        setTimeout(() => setSaveStatus('idle'), 3000)
+      } else {
+        setSaveStatus('idle')
+      }
+    } catch {
+      setSaveStatus('idle')
+    }
+  }, [activeDeliverable])
+
+  const handleSaveEdits = useCallback(() => {
+    // Ask bridge script for collected edits
+    document.querySelectorAll('iframe').forEach(f =>
+      f.contentWindow?.postMessage({ type: 'get-visual-edits' }, '*')
+    )
+  }, [])
+
   // Workflow editor state
   const [workflowOpen, setWorkflowOpen] = useState(false)
   const [workflowPrompt, setWorkflowPrompt] = useState('')
 
+  const suppressDeliverableRef = useRef(!!localStorage.getItem('plury_active_conv'))
+  useEffect(() => { if (suppressDeliverableRef.current) setTimeout(() => { suppressDeliverableRef.current = false }, 3000) }, [])
+
   const handleDeliverable = (d: Deliverable) => {
+    // Don't auto-open canvas when restoring conversation on page reload
+    if (suppressDeliverableRef.current) return
     if (projectMode) {
-      // In project mode, don't auto-open each deliverable — just refresh the hub
       setProjectRefreshKey(k => k + 1)
       return
     }
@@ -81,9 +164,40 @@ const App = () => {
 
   const handleProjectCreated = (project: { id: string; name: string }) => {
     setProjectMode({ projectId: project.id, projectName: project.name })
-    setActiveProjectId(null) // don't use the standalone view
     setSidebarCollapsed(true)
     setChatPanelVisible(window.innerWidth >= 768)
+  }
+
+  const handleOpenProject = (projectId: string) => {
+    const project = chat.projects.find(item => item.id === projectId)
+    const latestProjectConversation = chat.conversations
+      .filter(conv => conv.projectId === projectId)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
+
+    setProjectMode({
+      projectId,
+      projectName: project?.name || 'Proyecto',
+    })
+    setShowAdmin(false)
+    setMobileMenuOpen(false)
+    setActiveDeliverable(null)
+    setWorkflowOpen(false)
+    setWorkflowPrompt('')
+    setShowTasks(false)
+    setSidebarCollapsed(true)
+    setChatPanelVisible(window.innerWidth >= 768)
+    setSidePanelTab('chat')
+
+    if (latestProjectConversation) {
+      chat.loadConversation(latestProjectConversation.id)
+      return
+    }
+
+    chat.resetChat()
+    setProjectMode({
+      projectId,
+      projectName: project?.name || 'Proyecto',
+    })
   }
 
   const [workflowJustOpened, setWorkflowJustOpened] = useState(false)
@@ -98,6 +212,51 @@ const App = () => {
 
   const chat = useChat({ onDeliverable: handleDeliverable, onOpenWorkflow: handleOpenWorkflow, isAuthenticated, onCreditUpdate: updateCreditBalance, onProjectCreated: handleProjectCreated })
   useSpecialists()
+
+  const conversationResources = (() => {
+    const seen = new Set<string>()
+    const deliverables = chat.kanbanTasks
+      .filter(task => task.deliverable)
+      .map(task => task.deliverable!)
+      .filter(item => {
+        if (seen.has(item.id)) return false
+        seen.add(item.id)
+        return true
+      })
+
+    const byLabel = {
+      apps: [] as Deliverable[],
+      brand: [] as Deliverable[],
+      video: [] as Deliverable[],
+      content: [] as Deliverable[],
+      visual: [] as Deliverable[],
+    }
+
+    for (const item of deliverables) {
+      const title = item.title.toLowerCase()
+      if (item.botType === 'brand' || title.includes('logo') || title.includes('marca') || title.includes('branding') || title.includes('identidad')) {
+        byLabel.brand.push(item)
+      } else if (item.botType === 'video') {
+        byLabel.video.push(item)
+      } else if (item.botType === 'dev' || (item.botType === 'web' && (title.includes('landing') || title.includes('pagina') || title.includes('página') || title.includes('web') || title.includes('sitio') || title.includes('app') || title.includes('sistema')))) {
+        byLabel.apps.push(item)
+      } else if (item.type === 'copy') {
+        byLabel.content.push(item)
+      } else {
+        byLabel.visual.push(item)
+      }
+    }
+
+    return [
+      { id: 'brand', title: 'Marca y logos', icon: Layers3, items: byLabel.brand },
+      { id: 'apps', title: 'Webs y sistemas', icon: Globe, items: byLabel.apps },
+      { id: 'video', title: 'Videos', icon: Film, items: byLabel.video },
+      { id: 'visual', title: 'Piezas visuales', icon: Package, items: byLabel.visual },
+      { id: 'content', title: 'Contenido', icon: FileText, items: byLabel.content },
+    ].filter(group => group.items.length > 0)
+  })()
+  const totalTaskCount = chat.kanbanTasks.length
+  const activeTaskCount = chat.kanbanTasks.filter(task => task.status !== 'done').length
 
   // Auto-expand sidebar when user has conversation history (only on first load)
   const sidebarAutoExpanded = useRef(false)
@@ -137,6 +296,15 @@ const App = () => {
     }
   }, [isImageOnlyDeliverable, sidePanelTab])
 
+  // Disable visual edit mode when leaving the Edit tab (for dev projects)
+  useEffect(() => {
+    if (sidePanelTab !== 'edit' && isDevDeliverable) {
+      setEditMode(false)
+      setSelectedElement(null)
+      document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'toggle-edit-mode', enabled: false }, '*'))
+    }
+  }, [sidePanelTab, isDevDeliverable])
+
   useEffect(() => {
     if (isAuthenticated && !pendingPromptSent.current) {
       const pending = localStorage.getItem('plury_pending_prompt')
@@ -161,18 +329,42 @@ const App = () => {
     setShowTasks(false)
   }
 
+  const handleOpenTasksView = () => {
+    setShowTasks(true)
+    setShowAdmin(false)
+    setWorkflowOpen(false)
+    setChatPanelVisible(true)
+  }
+
+  const currentConversationTitle = chat.conversations.find(conv => conv.id === chat.conversationId)?.title ?? null
+
+  const openDeliverableFromResource = (item: Deliverable) => {
+    setActiveDeliverable(item)
+    setSelectedImageUrl(null)
+    setSidebarCollapsed(true)
+    setChatPanelVisible(true)
+    const imgs = item.type === 'design' ? item.content.match(/<img[^>]+src=["'][^"']*\/uploads\/[^"']+\.(?:png|jpg|jpeg|webp)["']/gi) : null
+    const tLower = item.title.toLowerCase()
+    const isImgOnly = imgs && imgs.length > 0 && !(tLower.includes('landing') || tLower.includes('pagina') || tLower.includes('página') || tLower.includes('web') || tLower.includes('sitio') || tLower.includes('app'))
+    if (isImgOnly) {
+      setSidePanelTab('chat')
+    } else if (item.type === 'design' || item.type === 'copy') {
+      setSidePanelTab('edit')
+    }
+  }
+
   const handleNewChat = () => {
     chat.resetChat()
     setActiveDeliverable(null)
     setWorkflowOpen(false)
     setWorkflowPrompt('')
+    setShowTasks(false)
     setSidebarCollapsed(false)
     setChatPanelVisible(true)
     setEditMode(false)
     setSelectedElement(null)
     setSidePanelTab('chat')
     setShowAdmin(false)
-    setActiveProjectId(null)
     setProjectMode(null)
   }
 
@@ -188,8 +380,14 @@ const App = () => {
     kanban: 'Crea un board de tareas tipo Kanban con filtros y prioridades',
   }
 
+  const platformTemplatePrompts: Record<string, string> = {
+    delivery: 'Crea una app de delivery con restaurantes, menu, carrito, pedidos y tracking simulado',
+    chatflow: 'Crea una plataforma de chatflow con builder visual, nodos, ejecuciones y logs',
+    mobility: 'Crea una plataforma tipo Uber simple con conductores, pasajeros, viajes, dispatch y tracking simulado',
+  }
+
   const handleLoadTemplate = (templateId: string) => {
-    const prompt = templatePrompts[templateId] || `Crea un proyecto tipo ${templateId}`
+    const prompt = templatePrompts[templateId] || platformTemplatePrompts[templateId] || `Crea un proyecto tipo ${templateId}`
     chat.setInputText(prompt)
   }
 
@@ -200,11 +398,14 @@ const App = () => {
 
   const handleLoadConversation = (convId: string) => {
     chat.loadConversation(convId)
-    setActiveDeliverable(null)
+    // Don't setActiveDeliverable(null) here — loadConversation auto-restores
+    // the last deliverable via onDeliverable callback. Clearing it here
+    // causes a race where the restored deliverable gets immediately nullified.
     setSidebarCollapsed(false)
     setChatPanelVisible(true)
     setShowAdmin(false)
-    setActiveProjectId(null)
+    setProjectMode(null)
+    setShowTasks(false)
   }
 
   const chatViewProps = {
@@ -215,7 +416,26 @@ const App = () => {
     isCoordinating: chat.isCoordinating,
     inputText: chat.inputText,
     setInputText: chat.setInputText,
-    onSubmit: chat.handleSendMessage,
+    onSubmit: async (e: React.FormEvent, imageFile?: File) => {
+      // Any image upload → go to editor (like Ideogram)
+      if (imageFile) {
+        e.preventDefault()
+        try {
+          const formData = new FormData()
+          formData.append('image', imageFile)
+          const res = await fetch('/api/upload', { method: 'POST', body: formData })
+          if (res.ok) {
+            const { url } = await res.json()
+            setImageEditorUrl(url)
+            chat.setInputText('')
+          }
+        } catch (err) {
+          console.error('[App] Upload for editor failed:', err)
+        }
+        return
+      }
+      chat.handleSendMessage(e, imageFile)
+    },
     chatEndRef: chat.chatEndRef,
     onApprove: chat.handleApprove,
     onReject: chat.handleReject,
@@ -241,6 +461,8 @@ const App = () => {
     onApproveStep: chat.handleApproveStep,
     selectedModel: chat.selectedModel,
     onModelChange: chat.setSelectedModel,
+    selectedImageModel: chat.selectedImageModel,
+    onImageModelChange: chat.setSelectedImageModel,
     thinkingSteps: chat.thinkingSteps,
     coordinationAgents: chat.coordinationAgents,
     isRefineMode: chat.isRefineMode,
@@ -272,6 +494,33 @@ const App = () => {
     onAddToProject: chat.addConversationToProject,
     onDismissProjectSuggest: chat.dismissProjectSuggest,
     projects: chat.projects,
+    onEditImage: async (url: string) => {
+      // If external URL (ideogram, etc.), proxy-download to /uploads/ first
+      if (/^https?:\/\//i.test(url) && !url.includes('/uploads/')) {
+        try {
+          const res = await fetch('/api/image/proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            url = data.url
+          }
+        } catch (err) {
+          console.error('[App] Proxy download failed:', err)
+        }
+      }
+      setImageEditorUrl(url)
+      setActiveDeliverable(null)
+      setSidebarCollapsed(true)
+    },
+    onUseAsReference: (url: string) => {
+      chat.setReferenceImageUrl(url)
+      setTimeout(() => window.dispatchEvent(new Event('plury:focus-input')), 100)
+    },
+    referenceImageUrl: chat.referenceImageUrl,
+    onClearReference: () => chat.setReferenceImageUrl(null),
   }
 
   // Docs page (public, no auth required)
@@ -326,9 +575,9 @@ const App = () => {
             onLoadConversation={(id) => { handleLoadConversation(id); setMobileMenuOpen(false) }}
             onDeleteConversation={chat.deleteConversation}
             projects={chat.projects}
-            onOpenProject={(id) => { setActiveProjectId(id); setShowAdmin(false); setMobileMenuOpen(false) }}
+            onOpenProject={handleOpenProject}
             onOpenMarketplace={() => setShowMarketplace(true)}
-            onOpenTasks={() => setShowTasks(true)}
+            onOpenTasks={handleOpenTasksView}
             activeAgents={chat.activeAgents}
           />
         </div>
@@ -341,10 +590,19 @@ const App = () => {
             onNewChat={handleNewChat}
             onOpenSettings={() => setShowSettings(true)}
             onOpenAdmin={() => setShowAdmin(true)}
+            onOpenTasks={handleOpenTasksView}
+            taskCount={totalTaskCount}
+            activeTaskCount={activeTaskCount}
           />
 
           <div className="flex-1 flex overflow-hidden relative">
-            {showAdmin ? (
+            {imageEditorUrl ? (
+              <ImageEditor
+                imageUrl={imageEditorUrl}
+                onClose={() => setImageEditorUrl(null)}
+                onImageEdited={(newUrl) => setImageEditorUrl(newUrl)}
+              />
+            ) : showAdmin ? (
               /* Admin — full view with back button */
               <div className="flex-1 flex flex-col overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 border-b border-edge bg-surface">
@@ -358,21 +616,32 @@ const App = () => {
                 </div>
                 <AdminDashboard activeTab={adminSubTab} onTabChange={setAdminSubTab} />
               </div>
-            ) : activeProjectId ? (
-              <ProjectView
-                projectId={activeProjectId}
-                onBack={() => setActiveProjectId(null)}
-                onOpenDeliverable={(d) => { setActiveDeliverable(d); setSidePanelTab('chat') }}
-                onLoadConversation={(id) => { setActiveProjectId(null); chat.loadConversation(id) }}
+            ) : showTasks ? (
+              <ProjectTasksView
+                projects={chat.projects}
+                currentProjectId={projectMode?.projectId ?? null}
+                currentConversationId={chat.conversationId}
+                currentConversationTitle={currentConversationTitle}
+                currentConversationTasks={chat.kanbanTasks}
+                agents={agents}
+                onBackToChat={() => setShowTasks(false)}
+                onOpenProject={handleOpenProject}
+                onOpenConversation={handleLoadConversation}
+                onOpenDeliverable={handleTaskClick}
+                onFinalizeTask={chat.finalizeTask}
               />
             ) : projectMode && !displayDeliverable && !workflowOpen ? (
               /* ─── Project Mode: Chat sidebar + Project Hub ─── */
               <>
                 {chatPanelVisible && (
                   <div className="absolute inset-0 z-30 md:relative md:inset-auto md:z-auto w-full md:w-[320px] md:min-w-[320px] flex-shrink-0 flex flex-col border-r border-edge bg-surface overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-2.5 border-b border-edge">
-                      <MessageCircle size={13} className="text-primary" />
-                      <span className="text-[11px] font-semibold text-ink flex-1">Chat</span>
+                    <div className="flex items-center gap-2 px-3 py-2.5 border-b border-edge bg-primary/5">
+                      <div className="w-5 h-5 rounded-md bg-primary/15 flex items-center justify-center">
+                        <MessageCircle size={11} className="text-primary" />
+                      </div>
+                      <span className="text-[11px] font-semibold text-ink flex-1 truncate">
+                        {projectMode?.projectName || 'Proyecto'}
+                      </span>
                       <button
                         onClick={() => setChatPanelVisible(false)}
                         className="px-1 py-0.5 text-ink-faint hover:text-ink transition-colors"
@@ -398,7 +667,7 @@ const App = () => {
                   activeAgents={chat.coordinationAgents}
                   onBack={() => setProjectMode(null)}
                   onOpenDeliverable={(d) => { setActiveDeliverable(d); setSidePanelTab('chat') }}
-                  onLoadConversation={(id) => { setProjectMode(null); chat.loadConversation(id) }}
+                  onLoadConversation={(id) => { chat.loadConversation(id); setChatPanelVisible(true) }}
                 />
               </>
             ) : (displayDeliverable || workflowOpen) ? (
@@ -420,18 +689,22 @@ const App = () => {
                       >
                         <MessageCircle size={13} /> Chat
                       </button>
-                      {isDevDeliverable ? (
-                        <button
-                          onClick={() => setSidePanelTab('settings')}
-                          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
-                            sidePanelTab === 'settings'
-                              ? 'text-ink border-b-2 border-amber-500 bg-surface'
-                              : 'text-ink-faint hover:text-ink bg-subtle/30'
-                          }`}
-                        >
-                          <Settings size={13} /> Ajustes
-                        </button>
-                      ) : !isImageOnlyDeliverable ? (
+                      <button
+                        onClick={() => setSidePanelTab('resources')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
+                          sidePanelTab === 'resources'
+                            ? 'text-ink border-b-2 border-violet-500 bg-surface'
+                            : 'text-ink-faint hover:text-ink bg-subtle/30'
+                        }`}
+                      >
+                        <Layers3 size={13} /> Recursos
+                        {(conversationResources.length > 0 || activeTaskCount > 0) && (
+                          <span className="text-[9px] font-bold bg-violet-500/15 text-violet-600 px-1 py-0.5 rounded-full">
+                            {conversationResources.reduce((total, group) => total + group.items.length, 0) || activeTaskCount}
+                          </span>
+                        )}
+                      </button>
+                      {!isImageOnlyDeliverable ? (
                         <button
                           onClick={() => setSidePanelTab('edit')}
                           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
@@ -454,41 +727,250 @@ const App = () => {
 
                     {sidePanelTab === 'chat' || isImageOnlyDeliverable ? (
                       <ChatView {...chatViewProps} />
-                    ) : sidePanelTab === 'settings' && isDevDeliverable ? (
-                      <DevSettingsPanel
-                        deliverable={displayDeliverable!}
-                        iframeRef={null}
-                        conversationId={chat.conversationId ?? undefined}
-                      />
+                    ) : sidePanelTab === 'resources' ? (
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+                        {(() => {
+                          if (conversationResources.length === 0 && chat.kanbanTasks.length === 0) {
+                            return (
+                              <div className="text-center py-12">
+                                <Layers3 size={32} className="mx-auto text-ink-faint/20 mb-3" />
+                                <p className="text-xs text-ink-faint">Aun no hay recursos creados en este chat</p>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <>
+                              <div className="rounded-2xl border border-violet-500/15 bg-violet-500/5 px-3 py-3">
+                                <p className="text-[11px] font-semibold text-violet-700 mb-1">Recursos del chat</p>
+                                <p className="text-xs text-ink-faint">
+                                  Aqui ves lo que se planifico, lo que se esta ejecutando y lo que ya fue entregado en esta conversacion.
+                                </p>
+                              </div>
+                              {chat.kanbanTasks.length > 0 && (
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="rounded-xl border border-slate-500/15 bg-slate-500/5 px-3 py-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Planeado</p>
+                                    <p className="mt-1 text-lg font-bold text-ink">{chat.kanbanTasks.filter(task => task.status === 'todo').length}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 px-3 py-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600">Ejecutando</p>
+                                    <p className="mt-1 text-lg font-bold text-ink">{chat.kanbanTasks.filter(task => task.status === 'doing').length}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-3 py-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Entregado</p>
+                                    <p className="mt-1 text-lg font-bold text-ink">{chat.kanbanTasks.filter(task => task.status === 'done').length}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {chat.kanbanTasks.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Actividad</p>
+                                  <div className="space-y-1.5">
+                                    {chat.kanbanTasks.slice().sort((a, b) => {
+                                      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
+                                      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
+                                      return db - da
+                                    }).map(task => (
+                                      <div key={task.id} className="rounded-xl border border-edge bg-surface-alt px-3 py-2.5">
+                                        <div className="flex items-center gap-2.5">
+                                          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'doing' ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`} />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-xs font-semibold text-ink truncate">{task.title}</p>
+                                            <p className="text-[10px] text-ink-faint truncate">{task.agent}</p>
+                                          </div>
+                                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${task.status === 'done' ? 'text-emerald-600 bg-emerald-500/10' : task.status === 'doing' ? 'text-amber-600 bg-amber-500/10' : 'text-slate-600 bg-slate-500/10'}`}>
+                                            {task.status === 'done' ? 'Entregado' : task.status === 'doing' ? 'Ejecutando' : 'Planeado'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {conversationResources.map(group => {
+                                const Icon = group.icon
+                                return (
+                                <div key={group.id}>
+                                  <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">{group.title}</p>
+                                  <div className="space-y-1.5">
+                                    {group.items.map(item => (
+                                      <button
+                                        key={item.id}
+                                        onClick={() => openDeliverableFromResource(item)}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-edge hover:border-primary/30 bg-surface-alt hover:bg-subtle transition-all text-left"
+                                      >
+                                        <div className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 bg-gradient-to-br from-violet-500 to-fuchsia-500">
+                                          <Icon size={12} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-xs font-semibold text-ink truncate">{item.title}</p>
+                                          <p className="text-[10px] text-ink-faint truncate">{item.agent}</p>
+                                        </div>
+                                        <span className="text-[10px] font-semibold text-violet-600 bg-violet-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">Abrir</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )})}
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ) : false ? (
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+                        {conversationResources.length === 0 ? (
+                          <div className="text-center py-12">
+                            <Layers3 size={32} className="mx-auto text-ink-faint/20 mb-3" />
+                            <p className="text-xs text-ink-faint">Aun no hay recursos creados en este chat</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="rounded-2xl border border-violet-500/15 bg-violet-500/5 px-3 py-3">
+                              <p className="text-[11px] font-semibold text-violet-700 mb-1">Recursos en desarrollo</p>
+                              <p className="text-xs text-ink-faint">
+                                Aqui se va guardando lo que nace en esta conversacion: logos, webs, sistemas, videos y piezas para publicidad.
+                              </p>
+                            </div>
+                            {conversationResources.map(group => {
+                              const Icon = group.icon
+                              return (
+                                <div key={group.id}>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-7 h-7 rounded-lg bg-violet-500/10 text-violet-600 flex items-center justify-center">
+                                      <Icon size={14} />
+                                    </div>
+                                    <div>
+                                      <p className="text-[12px] font-semibold text-ink">{group.title}</p>
+                                      <p className="text-[10px] text-ink-faint">{group.items.length} recurso{group.items.length === 1 ? '' : 's'}</p>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {group.items.map(item => (
+                                      <button
+                                        key={item.id}
+                                        onClick={() => {
+                                          setActiveDeliverable(item)
+                                          setSelectedImageUrl(null)
+                                          setSidebarCollapsed(true)
+                                          setChatPanelVisible(true)
+                                          const imgs = item.type === 'design' ? item.content.match(/<img[^>]+src=["'][^"']*\/uploads\/[^"']+\.(?:png|jpg|jpeg|webp)["']/gi) : null
+                                          const tLower = item.title.toLowerCase()
+                                          const isImgOnly = imgs && imgs.length > 0 && !(tLower.includes('landing') || tLower.includes('pagina') || tLower.includes('página') || tLower.includes('web') || tLower.includes('sitio') || tLower.includes('app'))
+                                          if (isImgOnly) {
+                                            setSidePanelTab('chat')
+                                          } else if (item.type === 'design' || item.type === 'copy') {
+                                            setSidePanelTab('edit')
+                                          }
+                                        }}
+                                        className="w-full rounded-xl border border-edge bg-surface-alt hover:bg-subtle hover:border-primary/25 transition-all px-3 py-2.5 text-left"
+                                      >
+                                        <div className="flex items-center gap-2.5">
+                                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/90 to-fuchsia-500/90 text-white flex items-center justify-center flex-shrink-0">
+                                            <Icon size={14} />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-xs font-semibold text-ink truncate">{item.title}</p>
+                                            <p className="text-[10px] text-ink-faint truncate">
+                                              {item.agent} · {item.botType || item.type}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </>
+                        )}
+                      </div>
                     ) : (
-                      <EditPanel
-                        editMode={editMode}
-                        onToggleEditMode={setEditMode}
-                        selectedElement={selectedElement}
-                        deliverable={displayDeliverable!}
-                        selectedLogo={selectedLogo}
-                        onSendMessage={(text) => {
-                          chat.setInputText(text)
-                          setSidePanelTab('chat')
-                        }}
-                        onEditText={() => {}}
-                        onChangeImage={() => {
-                          window.dispatchEvent(new CustomEvent('open-unsplash-modal'))
-                        }}
-                        onApplyStyle={(styles) => {
-                          window.dispatchEvent(new CustomEvent('apply-style-to-iframe', { detail: styles }))
-                        }}
-                        onReplaceImage={(url, alt) => {
-                          window.dispatchEvent(new CustomEvent('replace-image-in-iframe', { detail: { url, alt } }))
-                        }}
-                        detectedSections={detectedSections}
-                        onHighlightSection={(sectionId) => {
-                          window.dispatchEvent(new CustomEvent('highlight-section', { detail: sectionId }))
-                        }}
-                        onUpdateSectionProp={(sectionId, prop, value) => {
-                          window.dispatchEvent(new CustomEvent('update-section-prop', { detail: { sectionId, prop, value } }))
-                        }}
-                      />
+                      <div className="flex-1 flex flex-col overflow-hidden">
+                        {/* Dev projects: show theme settings + visual editor in one scrollable panel */}
+                        {isDevDeliverable && (
+                          <>
+                            <DevSettingsPanel
+                              deliverable={displayDeliverable!}
+                              iframeRef={null}
+                              conversationId={chat.conversationId ?? undefined}
+                            />
+                            {/* Save button — visible when there are pending edits or theme changes */}
+                            <div className="px-3 pb-2 border-b border-edge flex-shrink-0">
+                              <button
+                                onClick={handleSaveEdits}
+                                disabled={saveStatus === 'saving'}
+                                className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg transition-all ${
+                                  saveStatus === 'saved'
+                                    ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                                    : saveStatus === 'saving'
+                                      ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
+                                      : pendingEditsCount > 0
+                                        ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm'
+                                        : 'bg-subtle text-ink hover:bg-edge border border-edge'
+                                }`}
+                              >
+                                {saveStatus === 'saving' ? (
+                                  <><Loader2 size={14} className="animate-spin" /> Guardando...</>
+                                ) : saveStatus === 'saved' ? (
+                                  <><Check size={14} /> Guardado{displayDeliverable?.publishSlug ? ' y publicado' : ''}</>
+                                ) : (
+                                  <><Save size={14} /> Guardar cambios{pendingEditsCount > 0 ? ` (${pendingEditsCount})` : ''}</>
+                                )}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        <EditPanel
+                          editMode={editMode}
+                          onToggleEditMode={async (enabled) => {
+                            setEditMode(enabled)
+                            if (isDevDeliverable) {
+                              if (enabled) {
+                                await ensureBridgeScriptInWebContainer()
+                              }
+                              // Send toggle — if bridge just reloaded via HMR, the plury-bridge-ready handler will re-send
+                              document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'toggle-edit-mode', enabled }, '*'))
+                            }
+                          }}
+                          selectedElement={selectedElement}
+                          deliverable={displayDeliverable!}
+                          selectedLogo={selectedLogo}
+                          onSendMessage={(text) => {
+                            chat.setInputText(text)
+                            setSidePanelTab('chat')
+                          }}
+                          onEditText={() => {}}
+                          onChangeImage={() => {
+                            if (isDevDeliverable) {
+                              setDevUnsplashOpen(true)
+                            } else {
+                              window.dispatchEvent(new CustomEvent('open-unsplash-modal'))
+                            }
+                          }}
+                          onApplyStyle={(styles) => {
+                            if (isDevDeliverable) {
+                              document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'apply-style', styles }, '*'))
+                            } else {
+                              window.dispatchEvent(new CustomEvent('apply-style-to-iframe', { detail: styles }))
+                            }
+                          }}
+                          onReplaceImage={(url, alt) => {
+                            if (isDevDeliverable) {
+                              document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'replace-image', url, alt }, '*'))
+                            } else {
+                              window.dispatchEvent(new CustomEvent('replace-image-in-iframe', { detail: { url, alt } }))
+                            }
+                          }}
+                          detectedSections={detectedSections}
+                          onHighlightSection={(sectionId) => {
+                            window.dispatchEvent(new CustomEvent('highlight-section', { detail: sectionId }))
+                          }}
+                          onUpdateSectionProp={(sectionId, prop, value) => {
+                            window.dispatchEvent(new CustomEvent('update-section-prop', { detail: { sectionId, prop, value } }))
+                          }}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
@@ -505,11 +987,13 @@ const App = () => {
 
                 <div className="flex-1 flex min-w-0 bg-page">
                   {workflowOpen ? (
+                    <Suspense fallback={<div className="flex-1 flex items-center justify-center text-ink-faint text-sm">Cargando editor...</div>}>
                     <WorkflowEditor
                       initialPrompt={workflowPrompt}
                       onClose={() => { setWorkflowOpen(false); setWorkflowPrompt(''); setChatPanelVisible(true) }}
                       onShowChat={() => setChatPanelVisible(true)}
                     />
+                    </Suspense>
                   ) : displayDeliverable ? (
                     <WorkspacePanel
                       deliverable={displayDeliverable}
@@ -558,24 +1042,6 @@ const App = () => {
         </div>
       )}
 
-      {/* Tasks Drawer */}
-      {showTasks && (
-        <div className="fixed inset-0 z-[60] flex">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowTasks(false)} />
-          <div className="relative ml-auto w-full max-w-4xl bg-surface shadow-2xl flex flex-col animate-[slideInRight_0.2s_ease-out]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
-              <h2 className="text-lg font-bold text-ink">Tareas</h2>
-              <button onClick={() => setShowTasks(false)} className="p-1.5 text-ink-faint hover:text-ink rounded-lg hover:bg-subtle transition-all">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <TaskTimeline tasks={chat.kanbanTasks} agents={agents} onTaskClick={handleTaskClick} onFinalizeTask={chat.finalizeTask} />
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
@@ -594,6 +1060,16 @@ const App = () => {
           </div>
         </div>
       )}
+      {/* Unsplash modal for dev projects (visual editor) */}
+      <UnsplashModal
+        isOpen={devUnsplashOpen}
+        onClose={() => setDevUnsplashOpen(false)}
+        onSelect={(url, alt) => {
+          document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'replace-image', url, alt }, '*'))
+          setSelectedElement(null)
+          setDevUnsplashOpen(false)
+        }}
+      />
     </>
   )
 }

@@ -1,11 +1,17 @@
-// Provider health check service — validates Anthropic API key and tracks status
-
 import Anthropic from '@anthropic-ai/sdk'
 
 export type ProviderStatus = 'active' | 'no_key' | 'invalid_key' | 'no_credits' | 'error'
+export type ProviderId =
+  | 'anthropic'
+  | 'ideogram'
+  | 'ltx'
+  | 'meshy'
+  | 'unsplash'
+  | 'meta'
+  | 'stripe'
 
 export interface ProviderHealth {
-  provider: 'anthropic'
+  provider: ProviderId
   status: ProviderStatus
   label: string
   message: string
@@ -17,27 +23,32 @@ interface HealthCache {
   checkedAt: number
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000
 let healthCache: HealthCache | null = null
 
-// Force refresh on next call
 export function invalidateHealthCache(): void {
   healthCache = null
 }
 
-// Get cached or fresh health check results
 export async function getProviderHealthStatus(): Promise<ProviderHealth[]> {
   if (healthCache && Date.now() - healthCache.checkedAt < CACHE_TTL_MS) {
     return healthCache.results
   }
 
-  const results = await Promise.all([checkAnthropic()])
+  const results = await Promise.all([
+    checkAnthropic(),
+    checkEnvProvider('ideogram', 'Ideogram', ['IDEOGRAM_API_KEY']),
+    checkEnvProvider('ltx', 'LTX Video', ['LTX_API_KEY']),
+    checkEnvProvider('meshy', 'Meshy', ['MESHY_API_KEY']),
+    checkEnvProvider('unsplash', 'Unsplash', ['UNSPLASH_ACCESS_KEY']),
+    checkEnvProvider('meta', 'Meta Ads', ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET']),
+    checkStripe(),
+  ])
 
   healthCache = { results, checkedAt: Date.now() }
   return results
 }
 
-// Get list of disabled providers (no_key, invalid_key, no_credits, error)
 export async function getDisabledProviders(): Promise<Set<string>> {
   const health = await getProviderHealthStatus()
   const disabled = new Set<string>()
@@ -49,13 +60,68 @@ export async function getDisabledProviders(): Promise<Set<string>> {
   return disabled
 }
 
-// Check if a specific provider is available
 export async function isProviderAvailable(provider: 'anthropic'): Promise<boolean> {
   const disabled = await getDisabledProviders()
   return !disabled.has(provider)
 }
 
-// ─── Anthropic check ───
+function checkEnvProvider(
+  provider: Exclude<ProviderId, 'anthropic' | 'stripe'>,
+  label: string,
+  envKeys: string[]
+): ProviderHealth {
+  const missing = envKeys.filter(key => !process.env[key])
+  if (missing.length > 0) {
+    return {
+      provider,
+      label,
+      status: 'no_key',
+      message: `Faltan variables: ${missing.join(', ')}`,
+      checkedAt: new Date().toISOString(),
+    }
+  }
+
+  return {
+    provider,
+    label,
+    status: 'active',
+    message: 'Configurada en servidor',
+    checkedAt: new Date().toISOString(),
+  }
+}
+
+function checkStripe(): ProviderHealth {
+  const hasSecret = !!process.env.STRIPE_SECRET_KEY
+  const hasWebhook = !!process.env.STRIPE_WEBHOOK_SECRET
+
+  if (!hasSecret && !hasWebhook) {
+    return {
+      provider: 'stripe',
+      label: 'Stripe',
+      status: 'no_key',
+      message: 'Faltan STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET',
+      checkedAt: new Date().toISOString(),
+    }
+  }
+
+  if (!hasSecret || !hasWebhook) {
+    return {
+      provider: 'stripe',
+      label: 'Stripe',
+      status: 'error',
+      message: !hasSecret ? 'Falta STRIPE_SECRET_KEY' : 'Falta STRIPE_WEBHOOK_SECRET',
+      checkedAt: new Date().toISOString(),
+    }
+  }
+
+  return {
+    provider: 'stripe',
+    label: 'Stripe',
+    status: 'active',
+    message: 'Checkout y webhooks configurados',
+    checkedAt: new Date().toISOString(),
+  }
+}
 
 async function checkAnthropic(): Promise<ProviderHealth> {
   const apiKey = process.env.ANTHROPIC_API_KEY

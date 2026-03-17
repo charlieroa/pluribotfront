@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type FormEvent, type DragEvent } from 'react'
-import { ArrowUp, ChevronDown, Sparkles, Paperclip, X, Square } from 'lucide-react'
-import { AVAILABLE_MODELS } from '../../types'
+import { ArrowUp, ChevronDown, Sparkles, Paperclip, X, Square, Image } from 'lucide-react'
+import { AVAILABLE_MODELS, AVAILABLE_IMAGE_MODELS } from '../../types'
 
 interface ChatInputProps {
   inputText: string
@@ -10,17 +10,23 @@ interface ChatInputProps {
   onAbort?: () => void
   selectedModel?: string
   onModelChange?: (model: string) => void
+  selectedImageModel?: string
+  onImageModelChange?: (model: string) => void
+  referenceImageUrl?: string | null
+  onClearReference?: () => void
   refineMode?: boolean
   refineAgentName?: string
   disabledProviders?: string[]
 }
 
-const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort, selectedModel, onModelChange, refineMode, refineAgentName, disabledProviders = [] }: ChatInputProps) => {
+const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort, selectedModel, onModelChange, selectedImageModel, onImageModelChange, referenceImageUrl, onClearReference, refineMode, refineAgentName, disabledProviders = [] }: ChatInputProps) => {
   const [showModelMenu, setShowModelMenu] = useState(false)
+  const [showImageModelMenu, setShowImageModelMenu] = useState(false)
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const imageMenuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -34,6 +40,9 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort,
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowModelMenu(false)
+      }
+      if (imageMenuRef.current && !imageMenuRef.current.contains(e.target as Node)) {
+        setShowImageModelMenu(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -97,6 +106,13 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort,
     return currentModel?.label ?? currentModel?.name ?? 'Auto'
   }
 
+  const isImageAuto = selectedImageModel === 'auto' || !selectedImageModel
+  const currentImageModel = AVAILABLE_IMAGE_MODELS.find(m => m.id === selectedImageModel)
+  const getImageDisplayLabel = () => {
+    if (isImageAuto) return 'Auto'
+    return currentImageModel?.label ?? 'Auto'
+  }
+
   return (
     <div className="p-3 md:p-4 bg-surface">
       <form
@@ -106,15 +122,26 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort,
         onDrop={handleDrop}
         className={`bg-subtle rounded-3xl border transition-colors ${isDragging ? 'border-primary bg-primary-soft' : 'border-edge focus-within:border-ink-faint/30'}`}
       >
-        {/* Image preview */}
-        {imagePreview && (
-          <div className="px-5 pt-4">
-            <div className="relative inline-block">
-              <img src={imagePreview} alt="Preview" className="h-14 w-14 object-cover rounded-xl border border-edge" />
-              <button type="button" onClick={clearImage} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors">
-                <X size={10} />
-              </button>
-            </div>
+        {/* Image preview (uploaded or reference) */}
+        {(imagePreview || referenceImageUrl) && (
+          <div className="px-5 pt-4 flex gap-2">
+            {referenceImageUrl && (
+              <div className="relative inline-block">
+                <img src={referenceImageUrl} alt="Referencia" className="h-14 w-14 object-cover rounded-xl border-2 border-violet-400" />
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold bg-violet-500 text-white px-1.5 py-0.5 rounded-full whitespace-nowrap">REF</span>
+                <button type="button" onClick={onClearReference} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
+            {imagePreview && (
+              <div className="relative inline-block">
+                <img src={imagePreview} alt="Preview" className="h-14 w-14 object-cover rounded-xl border border-edge" />
+                <button type="button" onClick={clearImage} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors">
+                  <X size={10} />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -186,6 +213,55 @@ const ChatInput = ({ inputText, setInputText, isCoordinating, onSubmit, onAbort,
                       onClick={() => { onModelChange?.(model.id); setShowModelMenu(false) }}
                       className={`w-full text-left px-4 py-2.5 text-xs transition-colors ${
                         model.id === selectedModel ? 'bg-primary/10 text-primary font-bold' : 'text-ink hover:bg-subtle font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold">{model.label}</p>
+                        <span className="text-[9px] text-ink-faint font-mono">{model.name}</span>
+                      </div>
+                      <p className="text-[10px] text-ink-faint mt-0.5">{model.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Image model selector */}
+            <div className="relative" ref={imageMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowImageModelMenu(!showImageModelMenu)}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-ink-faint hover:text-ink rounded-full hover:bg-surface transition-colors"
+              >
+                <Image size={12} className={isImageAuto ? 'text-ink-faint' : 'text-violet-500'} />
+                {getImageDisplayLabel()}
+                <ChevronDown size={11} />
+              </button>
+
+              {showImageModelMenu && (
+                <div className="absolute bottom-full left-0 mb-2 bg-surface border border-edge rounded-2xl shadow-xl overflow-hidden z-50 min-w-[220px] animate-[fadeUp_0.15s_ease-out]">
+                  <div className="px-4 py-2 text-[10px] font-semibold text-ink-faint uppercase tracking-wider">Modelo de imagen</div>
+                  <button
+                    type="button"
+                    onClick={() => { onImageModelChange?.('auto'); setShowImageModelMenu(false) }}
+                    className={`w-full text-left px-4 py-2.5 text-xs transition-colors flex items-center gap-2 ${
+                      isImageAuto ? 'bg-violet-500/10 text-violet-600 font-bold' : 'text-ink hover:bg-subtle font-medium'
+                    }`}
+                  >
+                    <Sparkles size={14} className={isImageAuto ? 'text-violet-500' : 'text-ink-faint'} />
+                    <div>
+                      <p className="font-semibold">Auto</p>
+                      <p className="text-[10px] text-ink-faint mt-0.5">Ideogram por defecto</p>
+                    </div>
+                  </button>
+                  <div className="border-t border-edge mx-3 my-0.5" />
+                  {AVAILABLE_IMAGE_MODELS.map(model => (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => { onImageModelChange?.(model.id); setShowImageModelMenu(false) }}
+                      className={`w-full text-left px-4 py-2.5 text-xs transition-colors ${
+                        model.id === selectedImageModel ? 'bg-violet-500/10 text-violet-600 font-bold' : 'text-ink hover:bg-subtle font-medium'
                       }`}
                     >
                       <div className="flex items-center justify-between">

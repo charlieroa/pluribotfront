@@ -15,6 +15,7 @@ const API_BASE = '/api'
 const agentNames: Record<string, string> = {
   seo: 'Lupa',
   web: 'Pixel',
+  voxel: 'Voxel',
   ads: 'Metric',
   dev: 'Code',
   base: 'Plury',
@@ -23,6 +24,7 @@ const agentNames: Record<string, string> = {
 const agentColors: Record<string, string> = {
   seo: '#3b82f6',
   web: '#a78bfa',
+  voxel: '#06b6d4',
   ads: '#10b981',
   dev: '#f59e0b',
   base: '#6366f1',
@@ -232,6 +234,13 @@ const creditPackages: CreditPackage[] = [
   { id: 'pack-5000', name: '5,000 Créditos', credits: 5000, price: 199, popular: false },
 ]
 
+function readHashQueryParams(): URLSearchParams {
+  const hash = window.location.hash || ''
+  const queryIndex = hash.indexOf('?')
+  if (queryIndex === -1) return new URLSearchParams()
+  return new URLSearchParams(hash.slice(queryIndex + 1))
+}
+
 const PlanSection = () => {
   const { user, changePlan, updateCreditBalance } = useAuth()
   const [creditUsage, setCreditUsage] = useState<CreditUsageData | null>(null)
@@ -240,6 +249,7 @@ const PlanSection = () => {
   const [purchasing, setPurchasing] = useState<string | null>(null)
   const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null)
   const [purchaseError, setPurchaseError] = useState<string | null>(null)
+  const [billingStatus, setBillingStatus] = useState<{ stripeConfigured: boolean; recentCheckouts: Array<{ id: string; purpose: string; status: string; amount: number; currency: string; createdAt: string }> } | null>(null)
 
   // Senior state
   const [subscription, setSubscription] = useState<SeniorSubscription | null>(null)
@@ -279,6 +289,34 @@ const PlanSection = () => {
       }
     }
     fetchUsage()
+  }, [])
+
+  useEffect(() => {
+    const params = readHashQueryParams()
+    const billing = params.get('billing')
+    const plan = params.get('plan')
+
+    if (billing === 'success') setPurchaseSuccess('Pago confirmado. Estamos actualizando tus créditos.')
+    else if (billing === 'cancel') setPurchaseError('La compra de créditos fue cancelada.')
+
+    if (plan === 'success') setPurchaseSuccess('Suscripción confirmada. Tu plan se actualizará en breve.')
+    else if (plan === 'cancel') setPurchaseError('El cambio de plan fue cancelado.')
+  }, [])
+
+  useEffect(() => {
+    const fetchBillingStatus = async () => {
+      try {
+        const token = localStorage.getItem('plury_token')
+        if (!token) return
+        const res = await fetch(`${API_BASE}/billing/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) setBillingStatus(await res.json())
+      } catch (err) {
+        console.error('[Settings] Error fetching billing status:', err)
+      }
+    }
+    fetchBillingStatus()
   }, [])
 
   const getSeniorHeaders = () => {
@@ -401,11 +439,16 @@ const PlanSection = () => {
         throw new Error(data.error || 'Error al comprar créditos')
       }
       const data = await res.json()
-      // Update balance in auth context and local state
-      updateCreditBalance(data.newBalance)
-      setCreditUsage(prev => prev ? { ...prev, balance: data.newBalance } : prev)
-      setPurchaseSuccess(`+${data.package.credits.toLocaleString('es-CO')} créditos agregados`)
-      setTimeout(() => setPurchaseSuccess(null), 4000)
+      if (data.requiresRedirect && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+        return
+      }
+      if (typeof data.newBalance === 'number') {
+        updateCreditBalance(data.newBalance)
+        setCreditUsage(prev => prev ? { ...prev, balance: data.newBalance } : prev)
+        setPurchaseSuccess(`+${data.package.credits.toLocaleString('es-CO')} créditos agregados`)
+        setTimeout(() => setPurchaseSuccess(null), 4000)
+      }
     } catch (err) {
       setPurchaseError(err instanceof Error ? err.message : 'Error al procesar la compra')
       setTimeout(() => setPurchaseError(null), 4000)
@@ -534,6 +577,39 @@ const PlanSection = () => {
         )}
 
       </div>
+
+      {billingStatus && (
+        <div className="bg-surface border border-edge rounded-2xl p-6">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="font-bold text-ink">Estado comercial</h3>
+              <p className="text-xs text-ink-faint">Checkout, suscripción y operaciones recientes</p>
+            </div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${billingStatus.stripeConfigured ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+              {billingStatus.stripeConfigured ? 'Stripe activo' : 'Stripe pendiente'}
+            </span>
+          </div>
+
+          {billingStatus.recentCheckouts?.length ? (
+            <div className="space-y-2">
+              {billingStatus.recentCheckouts.slice(0, 5).map(item => (
+                <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-edge-soft bg-subtle p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{item.purpose === 'credit_purchase' ? 'Compra de créditos' : 'Suscripción de plan'}</p>
+                    <p className="text-[11px] text-ink-faint">{new Date(item.createdAt).toLocaleString('es-CO')}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-ink">${(item.amount / 100).toLocaleString('es-CO')} {item.currency.toUpperCase()}</p>
+                    <p className="text-[11px] text-ink-faint">{item.status}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-ink-faint">Aún no hay operaciones comerciales registradas.</p>
+          )}
+        </div>
+      )}
 
       {/* Plan Comparison */}
       <div className="bg-surface border border-edge rounded-2xl p-6">

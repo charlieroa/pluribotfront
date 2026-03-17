@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Palette, Type, Building, FileText } from 'lucide-react'
+import { Palette, Type } from 'lucide-react'
 import type { Deliverable } from '../../types'
 
 interface DevSettingsPanelProps {
@@ -26,7 +26,7 @@ const GOOGLE_FONTS = [
   'Manrope',
 ]
 
-const DevSettingsPanel = ({ deliverable, iframeRef, conversationId: _conversationId }: DevSettingsPanelProps) => {
+const DevSettingsPanel = ({ deliverable, iframeRef }: DevSettingsPanelProps) => {
   // Color state
   const [primaryColor, setPrimaryColor] = useState('#1e293b')
   const [secondaryColor, setSecondaryColor] = useState('#f1f5f9')
@@ -36,37 +36,12 @@ const DevSettingsPanel = ({ deliverable, iframeRef, conversationId: _conversatio
   // Font state
   const [fontFamily, setFontFamily] = useState('Poppins')
 
-  // Branding state
-  const [brandName, setBrandName] = useState('')
-  const [brandTagline, setBrandTagline] = useState('')
-  const [brandLogo, setBrandLogo] = useState('')
-  const [brandCta, setBrandCta] = useState('')
-
-
-  // Parse current deliverable HTML for existing values
+  // Parse current deliverable for existing font
   useEffect(() => {
     const html = deliverable.content
-    // Extract brand values from data attributes
-    const nameMatch = html.match(/data-brand-name[^>]*>([^<]+)</)
-    if (nameMatch) setBrandName(nameMatch[1])
-    const taglineMatch = html.match(/data-brand-tagline[^>]*>([^<]+)</)
-    if (taglineMatch) setBrandTagline(taglineMatch[1])
-    const ctaMatch = html.match(/data-brand-cta[^>]*>([^<]+)</)
-    if (ctaMatch) setBrandCta(ctaMatch[1])
-    const logoMatch = html.match(/data-brand-logo[^>]*src="([^"]+)"/)
-    if (logoMatch) setBrandLogo(logoMatch[1])
-
-    // Extract font from Google Fonts link
     const fontMatch = html.match(/fonts\.googleapis\.com\/css2\?family=([^:&]+)/)
     if (fontMatch) setFontFamily(decodeURIComponent(fontMatch[1]).replace(/\+/g, ' '))
-
-    // Extract primary color from tailwind config
-    const primaryMatch = html.match(/primary:\s*\{\s*DEFAULT:\s*['"]([^'"]+)['"]/)
-    if (primaryMatch) {
-      // It's HSL, just keep current default
-    }
   }, [deliverable.id])
-
 
   const applyTheme = useCallback(() => {
     const theme = {
@@ -77,18 +52,12 @@ const DevSettingsPanel = ({ deliverable, iframeRef, conversationId: _conversatio
         background: bgColor,
       },
       fontFamily,
-      brand: {
-        name: brandName,
-        tagline: brandTagline,
-        logo: brandLogo,
-        cta: brandCta,
-      },
     }
 
     // Dispatch custom event for ProjectWorkspace to pick up (multi-file projects)
     window.dispatchEvent(new CustomEvent('dev-theme-update', { detail: theme }))
 
-    // Also send postMessage for single-file HTML iframes
+    // Also send postMessage for iframes
     const message = { type: 'apply-theme', theme }
     if (iframeRef?.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(message, '*')
@@ -98,7 +67,7 @@ const DevSettingsPanel = ({ deliverable, iframeRef, conversationId: _conversatio
         iframe.contentWindow?.postMessage(message, '*')
       })
     }
-  }, [primaryColor, secondaryColor, accentColor, bgColor, fontFamily, brandName, brandTagline, brandLogo, brandCta, iframeRef])
+  }, [primaryColor, secondaryColor, accentColor, bgColor, fontFamily, iframeRef])
 
   // Auto-apply on any change
   useEffect(() => {
@@ -107,94 +76,53 @@ const DevSettingsPanel = ({ deliverable, iframeRef, conversationId: _conversatio
   }, [applyTheme])
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar">
-      <div className="p-4 space-y-6">
-        {/* Colors */}
+    <div className="flex-shrink-0 border-b border-edge">
+      <div className="p-3 space-y-3">
+        {/* Colors — compact inline row */}
         <section>
-          <h3 className="flex items-center gap-2 text-xs font-bold text-ink mb-3">
-            <Palette size={14} className="text-amber-500" />
+          <h3 className="flex items-center gap-2 text-[11px] font-bold text-ink mb-2">
+            <Palette size={13} className="text-blue-500" />
             Colores
           </h3>
-          <div className="grid grid-cols-2 gap-3">
-            <ColorPicker label="Primary" value={primaryColor} onChange={setPrimaryColor} />
-            <ColorPicker label="Secondary" value={secondaryColor} onChange={setSecondaryColor} />
-            <ColorPicker label="Accent" value={accentColor} onChange={setAccentColor} />
-            <ColorPicker label="Background" value={bgColor} onChange={setBgColor} />
+          <div className="flex items-center gap-2">
+            <ColorDot label="Pri" value={primaryColor} onChange={setPrimaryColor} />
+            <ColorDot label="Sec" value={secondaryColor} onChange={setSecondaryColor} />
+            <ColorDot label="Acc" value={accentColor} onChange={setAccentColor} />
+            <ColorDot label="Bg" value={bgColor} onChange={setBgColor} />
           </div>
         </section>
 
-        {/* Font */}
+        {/* Font — compact select */}
         <section>
-          <h3 className="flex items-center gap-2 text-xs font-bold text-ink mb-3">
-            <Type size={14} className="text-amber-500" />
+          <h3 className="flex items-center gap-2 text-[11px] font-bold text-ink mb-2">
+            <Type size={13} className="text-blue-500" />
             Tipografia
           </h3>
           <select
             value={fontFamily}
             onChange={(e) => setFontFamily(e.target.value)}
-            className="w-full px-3 py-2 text-sm bg-subtle border border-edge rounded-lg text-ink focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            className="w-full px-2.5 py-1.5 text-xs bg-subtle border border-edge rounded-lg text-ink focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           >
             {GOOGLE_FONTS.map(f => (
               <option key={f} value={f}>{f}</option>
             ))}
           </select>
         </section>
-
-        {/* Branding */}
-        <section>
-          <h3 className="flex items-center gap-2 text-xs font-bold text-ink mb-3">
-            <Building size={14} className="text-amber-500" />
-            Branding
-          </h3>
-          <div className="space-y-2">
-            <BrandInput label="Nombre empresa" value={brandName} onChange={setBrandName} placeholder="Mi Empresa" />
-            <BrandInput label="Tagline" value={brandTagline} onChange={setBrandTagline} placeholder="Tu slogan aqui" />
-            <BrandInput label="URL Logo" value={brandLogo} onChange={setBrandLogo} placeholder="https://..." />
-            <BrandInput label="Texto CTA" value={brandCta} onChange={setBrandCta} placeholder="Empezar ahora" />
-          </div>
-        </section>
-
-        {/* Info */}
-        <div className="text-[10px] text-ink-faint bg-subtle/50 p-3 rounded-lg">
-          <FileText size={12} className="inline mr-1" />
-          Los cambios de colores, fuentes y branding se aplican al instante sin consumir creditos de IA.
-        </div>
       </div>
     </div>
   )
 }
 
-const ColorPicker = ({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) => (
-  <div className="flex items-center gap-2">
+const ColorDot = ({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) => (
+  <label className="flex flex-col items-center gap-1 cursor-pointer group flex-1">
     <input
       type="color"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-8 h-8 rounded-md border border-edge cursor-pointer bg-transparent p-0"
+      className="w-7 h-7 rounded-full border-2 border-edge cursor-pointer bg-transparent p-0 group-hover:border-blue-400 transition-colors"
     />
-    <div className="flex-1 min-w-0">
-      <p className="text-[10px] font-medium text-ink-faint">{label}</p>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full text-[11px] font-mono text-ink bg-transparent border-none outline-none p-0"
-      />
-    </div>
-  </div>
-)
-
-const BrandInput = ({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) => (
-  <div>
-    <label className="text-[10px] font-medium text-ink-faint mb-0.5 block">{label}</label>
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full px-3 py-1.5 text-xs bg-subtle border border-edge rounded-lg text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-    />
-  </div>
+    <span className="text-[9px] font-medium text-ink-faint">{label}</span>
+  </label>
 )
 
 export default DevSettingsPanel

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Book, Key, Rocket, Webhook, Code2, Palette, Gauge, AlertTriangle, ChevronRight, Copy, Check, ArrowLeft, Zap } from 'lucide-react'
+import { Book, Key, Rocket, Webhook, Code2, Palette, Gauge, AlertTriangle, Copy, Check, ArrowLeft, Zap } from 'lucide-react'
 
 const NAV_SECTIONS = [
   { id: 'quickstart', label: 'Quickstart', icon: <Rocket size={14} /> },

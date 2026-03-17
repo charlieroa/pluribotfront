@@ -13,14 +13,122 @@ import { executeToolCall } from './tools/executor.js'
 import { getNextVersionInfo } from './deliverable-versioning.js'
 import { parseProjectFilesFromText } from './project-files.js'
 import { DEV_API_CLIENT } from '../config/dev-api-client.js'
+import { writeProjectFiles, readAllProjectFiles } from './project-storage.js'
+import { trackFiles } from './project-file-tracker.js'
+import { readAndEncodeImage } from './image-utils.js'
+import { buildVisualTaskBrief } from './visual-task-brief.js'
 const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
   seo: 'report',
   brand: 'design',
   web: 'design',
+  voxel: 'design',
   social: 'design',
   ads: 'copy',
   video: 'video',
   dev: 'code',
+}
+
+function getRefineLoadingStep(agentId: string): string {
+  if (agentId === 'dev') return 'Revisando tus cambios y reconstruyendo el proyecto sobre la version actual.'
+  if (agentId === 'web') return 'Aplicando ajustes visuales y reorganizando la propuesta.'
+  if (agentId === 'brand') return 'Refinando identidad visual, estilo y direccion creativa.'
+  if (agentId === 'video') return 'Reordenando escenas, ritmo y narrativa visual.'
+  return 'Aplicando tus indicaciones sobre la ultima entrega.'
+}
+
+function classifyProjectAssetCategory(title: string, botType: string, type: string): string {
+  const tl = title.toLowerCase()
+  const isBranding = ['logo', 'marca', 'brand', 'paleta', 'identidad', 'logotipo', 'isotipo'].some(k => tl.includes(k))
+  const isGraphicPiece = ['flyer', 'flayer', 'banner', 'post', 'story', 'storie', 'carrusel', 'afiche', 'volante', 'pieza grafica'].some(k => tl.includes(k))
+  if (isBranding) return 'logo'
+  if (isGraphicPiece && type === 'design') return 'graphic'
+  if (type === 'video') return 'video'
+  if (type === 'code') return 'app'
+  if (type === 'report') return 'seo'
+  if (botType === 'ads') return 'ads'
+  if (botType === 'content') return 'copy'
+  if (type === 'design') return 'web'
+  return 'other'
+}
+
+function isLogoLikeTask(text: string): boolean {
+  const lower = text.toLowerCase()
+  return ['logo', 'marca', 'brand', 'paleta', 'identidad', 'logotipo', 'isotipo', 'imagotipo', 'monograma'].some(k => lower.includes(k))
+}
+
+function extractImageUrlFromToolResult(result: string): string | null {
+  try {
+    const parsed = JSON.parse(result) as { success?: boolean; url?: string }
+    return parsed.success && parsed.url ? parsed.url : null
+  } catch {
+    return null
+  }
+}
+
+function buildVisualFallbackHtml(title: string, imageUrls: string[], isLogo: boolean): string {
+  const safeTitle = title.replace(/[<&>"]/g, '')
+  const grid = imageUrls.map((url, index) => `
+    <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="mb-3 flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Opcion ${index + 1}</span>
+        <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">${isLogo ? 'Logo' : 'Pieza visual'}</span>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-3">
+        <img src="${url}" alt="Opcion ${index + 1}" class="h-72 w-full object-contain ${isLogo ? 'bg-white' : 'object-cover'}" />
+      </div>
+    </article>
+  `).join('\n')
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${safeTitle}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-950">
+  <main class="mx-auto max-w-7xl px-6 py-8">
+    <header class="mb-8 rounded-[32px] bg-white px-6 py-6 shadow-sm ring-1 ring-slate-200">
+      <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Refinado visual</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight">${safeTitle}</h1>
+      <p class="mt-3 text-sm text-slate-600">${isLogo ? 'Estas son las variantes refinadas del logo.' : 'Estas son las variantes refinadas de la pieza visual.'}</p>
+    </header>
+    <section class="grid gap-5 md:grid-cols-2 xl:grid-cols-2">
+      ${grid}
+    </section>
+  </main>
+</body>
+</html>`
+}
+
+async function syncProjectAsset(conversationId: string, deliverableId: string, instanceId: string | undefined, title: string, botType: string, type: string): Promise<void> {
+  try {
+    const conv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { projectId: true } })
+    if (!conv?.projectId) return
+    const category = classifyProjectAssetCategory(title, botType, type)
+    const existing = instanceId
+      ? await prisma.projectAsset.findFirst({
+          where: {
+            projectId: conv.projectId,
+            conversationId,
+            deliverable: { instanceId },
+          },
+        })
+      : null
+    if (existing) {
+      await prisma.projectAsset.update({
+        where: { id: existing.id },
+        data: { deliverableId, category, name: title },
+      })
+      return
+    }
+    await prisma.projectAsset.create({
+      data: { projectId: conv.projectId, conversationId, deliverableId, category, name: title },
+    })
+  } catch (err) {
+    console.error('[ProjectAsset] Refine sync failed:', err)
+  }
 }
 
 // Refine a completed step by re-running the agent with user feedback
@@ -36,7 +144,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
     agentId: agentConfig.id,
     agentName: agentConfig.name,
     instanceId: step.instanceId,
-    step: 'Refinando con tus indicaciones...',
+    step: getRefineLoadingStep(agentConfig.id),
   })
 
   // Build context from dependencies
@@ -57,13 +165,26 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
 
   const isDevAgent = agentConfig.id === 'dev'
 
+  const activeReferenceNote = plan.imageUrl
+    ? `\n\nIMAGEN DE REFERENCIA ACTIVA: usa la imagen adjunta en este refinamiento como la base visual exacta de la opcion elegida. No vuelvas a la referencia anterior ni mezcles otras variantes.`
+    : ''
+
   const refinePrompt = isDevAgent
-    ? `El cliente ha revisado tu proyecto y pide los siguientes cambios:\n\n${userFeedback}\n\nMODO EXTENSION: solo incluye los archivos NUEVOS o MODIFICADOS en tu respuesta JSON. Mantene el mismo formato: array de {path, content}. No incluyas archivos que no cambian.`
-    : `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
+    ? `El cliente ha revisado tu proyecto y pide los siguientes cambios:\n\n${userFeedback}${activeReferenceNote}\n\nMODO EXTENSION: solo incluye los archivos NUEVOS o MODIFICADOS en tu respuesta JSON. Mantene el mismo formato: array de {path, content}. No incluyas archivos que no cambian.`
+    : `El cliente ha revisado tu propuesta y pide los siguientes cambios:\n\n${userFeedback}${activeReferenceNote}\n\nGenera una nueva version completa incorporando estos cambios. Recuerda: responde SOLO con el HTML completo, sin texto adicional.`
 
   // Build conversation: original task → previous output → refinement request
+  const baseTaskContent = `${step.task}${contextBlock}${agentConfig.id === 'web' ? buildVisualTaskBrief(`${step.task}\n${userFeedback}`, { hasReferenceImage: !!plan.imageUrl, isRefinement: true }) : ''}`
+  const baseTaskMessage: LLMMessage = { role: 'user' as const, content: baseTaskContent }
+  if (plan.imageUrl) {
+    const encoded = await readAndEncodeImage(plan.imageUrl)
+    if (encoded) {
+      baseTaskMessage.images = [{ type: 'image', source: encoded.source, mediaType: encoded.mediaType }]
+    }
+  }
+
   const messages: LLMMessage[] = [
-    { role: 'user' as const, content: `${step.task}${contextBlock}` },
+    baseTaskMessage,
     { role: 'assistant' as const, content: previousOutput },
     { role: 'user' as const, content: refinePrompt },
   ]
@@ -85,6 +206,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   let agentFullText = ''
   let agentUsage: LLMUsage = { inputTokens: 0, outputTokens: 0 }
   let refineCreditsCost = 0
+  const toolImageUrls: string[] = []
 
   const refineCallbacks = {
     onToken: (token: string) => {
@@ -124,7 +246,12 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
           instanceId: step.instanceId,
           step: `Ejecutando herramienta: ${toolCall.name}...`,
         })
-        return await executeToolCall(toolCall, conversationId, agentConfig, userId, step.instanceId)
+        const result = await executeToolCall(toolCall, conversationId, agentConfig, userId, step.instanceId)
+        const imageUrl = (toolCall.name === 'generate_image' || toolCall.name === 'edit_image' || toolCall.name === 'reframe_image')
+          ? extractImageUrlFromToolResult(result)
+          : null
+        if (imageUrl) toolImageUrls.push(imageUrl)
+        return result
       },
     })
   } else {
@@ -144,25 +271,40 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
   if (isDevAgent) {
     try {
       let newFiles = parseProjectFilesFromText(agentFullText).files
-
-      // Merge with previous deliverable (extension mode)
-      const prevDeliverable = await prisma.deliverable.findFirst({
-        where: { conversationId, instanceId: step.instanceId },
-        orderBy: { createdAt: 'desc' },
+      broadcast(conversationId, {
+        type: 'agent_thinking',
+        agentId: agentConfig.id,
+        agentName: agentConfig.name,
+        instanceId: step.instanceId,
+        step: 'Integrando cambios, modulos y archivos afectados.',
       })
-      if (prevDeliverable) {
-        try {
-          const prevFiles = JSON.parse(prevDeliverable.content)
-          if (Array.isArray(prevFiles)) {
-            const newFilePaths = new Set(newFiles.map((f: any) => f.path))
-            const merged = [
-              ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
-              ...newFiles,
-            ]
-            console.log(`[${agentConfig.name}:${step.instanceId}] Refine merge: ${newFiles.length} new/modified + ${prevFiles.length} existing = ${merged.length} total`)
-            newFiles = merged
-          }
-        } catch { /* ignore */ }
+
+      // Merge with previous files — try disk first, fallback to legacy JSON
+      let prevFiles: { path: string; content: string }[] = []
+      const diskFiles = await readAllProjectFiles(conversationId)
+      if (diskFiles.length > 0) {
+        prevFiles = diskFiles
+        console.log(`[${agentConfig.name}:${step.instanceId}] Refine merge: loaded ${prevFiles.length} files from disk`)
+      } else {
+        const prevDeliverable = await prisma.deliverable.findFirst({
+          where: { conversationId, instanceId: step.instanceId },
+          orderBy: { createdAt: 'desc' },
+        })
+        if (prevDeliverable) {
+          try {
+            const parsed = JSON.parse(prevDeliverable.content)
+            if (Array.isArray(parsed)) prevFiles = parsed
+          } catch { /* ignore */ }
+        }
+      }
+      if (prevFiles.length > 0) {
+        const newFilePaths = new Set(newFiles.map((f: any) => f.path))
+        const merged = [
+          ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
+          ...newFiles,
+        ]
+        console.log(`[${agentConfig.name}:${step.instanceId}] Refine merge: ${newFiles.length} new/modified + ${prevFiles.length} existing = ${merged.length} total`)
+        newFiles = merged
       }
 
       // Auto-inject API client SDK with real config
@@ -203,7 +345,10 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
     }
   } else {
     // Non-dev agents: HTML processing
-    const htmlBlock = extractHtmlBlock(agentFullText)
+    let htmlBlock = extractHtmlBlock(agentFullText)
+    if (!htmlBlock && toolImageUrls.length > 0 && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
+      htmlBlock = buildVisualFallbackHtml(deliverableTitle, toolImageUrls, isLogoLikeTask(step.task))
+    }
     let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
 
     // Inject error-catching script and visual editor for visual agents
@@ -213,7 +358,7 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
       deliverableContentRaw = deliverableContentRaw.replace('</body>', `${VISUAL_EDITOR_SCRIPT}\n</body>`)
 
       // Inject logo selection script for brand agent
-      if (agentConfig.id === 'brand') {
+      if (agentConfig.id === 'brand' || (agentConfig.id === 'web' && isLogoLikeTask(step.task))) {
         deliverableContentRaw = deliverableContentRaw.replace('</body>', `${LOGO_SELECTION_SCRIPT}\n</body>`)
       }
     }
@@ -244,6 +389,27 @@ export async function refineStep(plan: ExecutingPlan, step: OrchestratorStep, us
       parentId: refineVersionInfo.parentId,
     },
   })
+
+  await syncProjectAsset(conversationId, deliverable.id, step.instanceId, deliverableTitle, deliverable.botType, deliverableType)
+
+  // Persist dev agent files to disk and track in DB
+  if (isDevAgent && deliverableContent.startsWith('[')) {
+    try {
+      const finalFiles = JSON.parse(deliverableContent) as { path: string; content: string }[]
+      broadcast(conversationId, {
+        type: 'agent_thinking',
+        agentId: agentConfig.id,
+        agentName: agentConfig.name,
+        instanceId: step.instanceId,
+        step: 'Guardando la version refinada y preparando el workspace.',
+      })
+      await writeProjectFiles(conversationId, finalFiles)
+      await trackFiles(conversationId, deliverableId, finalFiles)
+      console.log(`[${agentConfig.name}:${step.instanceId}] Refine: persisted ${finalFiles.length} files to disk and DB`)
+    } catch (storageErr) {
+      console.error(`[${agentConfig.name}:${step.instanceId}] Refine file persistence error (non-fatal):`, storageErr)
+    }
+  }
 
   // Update kanban task to point to latest version
   const refineKanban = await prisma.kanbanTask.findFirst({

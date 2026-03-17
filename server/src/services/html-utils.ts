@@ -51,8 +51,44 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
   var selectedEl = null;
   var hoverEl = null;
   var overlay = null;
+  var overlayLabel = null;
+  var selectedOverlay = null;
+  var selectedLabel = null;
   var undoStack = [];
   var redoStack = [];
+
+  // Element type classification for labels and colors
+  function getElementInfo(el) {
+    if (!el) return { label: '', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    var tag = el.tagName;
+    if (tag === 'IMG') return { label: 'Imagen', color: '#a855f7', bg: 'rgba(168,85,247,0.08)' };
+    if (tag === 'VIDEO') return { label: 'Video', color: '#a855f7', bg: 'rgba(168,85,247,0.08)' };
+    if (tag === 'SVG' || tag === 'svg' || (el.closest && el.closest('svg'))) return { label: 'SVG', color: '#a855f7', bg: 'rgba(168,85,247,0.08)' };
+    if (tag === 'NAV') return { label: 'Navegacion', color: '#10b981', bg: 'rgba(16,185,129,0.06)' };
+    if (tag === 'HEADER') return { label: 'Header', color: '#10b981', bg: 'rgba(16,185,129,0.06)' };
+    if (tag === 'FOOTER') return { label: 'Footer', color: '#10b981', bg: 'rgba(16,185,129,0.06)' };
+    if (tag === 'SECTION') return { label: 'Seccion', color: '#10b981', bg: 'rgba(16,185,129,0.06)' };
+    if (tag === 'MAIN') return { label: 'Principal', color: '#10b981', bg: 'rgba(16,185,129,0.06)' };
+    if (tag === 'H1') return { label: 'Titulo H1', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'H2') return { label: 'Titulo H2', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'H3') return { label: 'Titulo H3', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'H4' || tag === 'H5' || tag === 'H6') return { label: 'Titulo', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'P') return { label: 'Parrafo', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'SPAN') return { label: 'Texto', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'A') return { label: 'Enlace', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' };
+    if (tag === 'BUTTON') return { label: 'Boton', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' };
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return { label: 'Campo', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' };
+    if (tag === 'UL' || tag === 'OL') return { label: 'Lista', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'LI') return { label: 'Item', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)' };
+    if (tag === 'DIV') {
+      var cls = (el.className || '').toLowerCase();
+      if (cls.includes('hero') || cls.includes('banner')) return { label: 'Hero', color: '#10b981', bg: 'rgba(16,185,129,0.06)' };
+      if (cls.includes('card')) return { label: 'Tarjeta', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' };
+      if (cls.includes('btn') || cls.includes('button')) return { label: 'Boton', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' };
+      return { label: 'Bloque', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' };
+    }
+    return { label: tag.toLowerCase(), color: '#6366f1', bg: 'rgba(99,102,241,0.08)' };
+  }
 
   function saveState() {
     undoStack.push(document.body.innerHTML);
@@ -86,14 +122,14 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
   // Find the deepest (most specific) visible element at a given point
   function findDeepestElement(x, y) {
     var el = document.elementFromPoint(x, y);
-    if (!el || el === overlay) return null;
+    if (!el || el === overlay || el === overlayLabel || el === selectedOverlay || el === selectedLabel) return null;
     var found = el;
     while (true) {
       var children = found.children;
       var deeper = null;
       for (var i = 0; i < children.length; i++) {
         var child = children[i];
-        if (child === overlay || child.tagName === 'SCRIPT') continue;
+        if (child === overlay || child === overlayLabel || child === selectedOverlay || child === selectedLabel || child.tagName === 'SCRIPT') continue;
         var r = child.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
         if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
@@ -123,7 +159,7 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
         return;
       }
       var deep = findDeepestElement(e.clientX, e.clientY);
-      if (deep && deep !== overlay) {
+      if (deep && deep !== overlay && deep !== selectedOverlay) {
         selectElement(deep);
       }
       return;
@@ -157,6 +193,7 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
   window.addEventListener('message', function(e) {
     if (e.data.type === 'toggle-edit-mode') {
       editMode = e.data.enabled;
+      document.body.style.cursor = editMode ? 'crosshair' : '';
       if (!editMode) cleanup();
     }
     if (e.data.type === 'replace-image' && selectedEl && selectedEl.tagName === 'IMG') {
@@ -167,7 +204,14 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
     }
     if (e.data.type === 'apply-style' && selectedEl) {
       saveState();
-      Object.assign(selectedEl.style, e.data.styles);
+      var styles = e.data.styles;
+      for (var prop in styles) {
+        if (styles.hasOwnProperty(prop)) {
+          // Convert camelCase to kebab-case for setProperty
+          var kebab = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+          selectedEl.style.setProperty(kebab, styles[prop], 'important');
+        }
+      }
       notifyContentUpdate();
     }
     if (e.data.type === 'delete-element' && selectedEl) {
@@ -187,19 +231,19 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
     }
     if (e.data.type === 'move-element-up' && selectedEl) {
       var prev = selectedEl.previousElementSibling;
-      if (prev && prev !== overlay) {
+      if (prev && prev !== overlay && prev !== selectedOverlay) {
         saveState();
         selectedEl.parentNode.insertBefore(selectedEl, prev);
-        showOverlay(selectedEl);
+        showSelectedOverlay(selectedEl);
         notifyContentUpdate();
       }
     }
     if (e.data.type === 'move-element-down' && selectedEl) {
       var next = selectedEl.nextElementSibling;
-      if (next && next !== overlay) {
+      if (next && next !== overlay && next !== selectedOverlay) {
         saveState();
         selectedEl.parentNode.insertBefore(next, selectedEl);
-        showOverlay(selectedEl);
+        showSelectedOverlay(selectedEl);
         notifyContentUpdate();
       }
     }
@@ -210,6 +254,15 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
       cleanup();
       notifyContentUpdate();
       window.parent.postMessage({ type: 'element-deselected' }, '*');
+    }
+    if (e.data.type === 'inject-font') {
+      var fontName = e.data.fontName;
+      if (fontName && !document.querySelector('link[href*="' + fontName + '"]')) {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=' + fontName + ':wght@300;400;500;600;700;800;900&display=swap';
+        document.head.appendChild(link);
+      }
     }
     if (e.data.type === 'undo') { undo(); }
     if (e.data.type === 'redo') { redo(); }
@@ -235,15 +288,28 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
       notifyContentUpdate();
       window.parent.postMessage({ type: 'element-deselected' }, '*');
     }
+    if (e.key === 'Escape' && selectedEl) {
+      selectedEl = null;
+      if (selectedOverlay) selectedOverlay.style.display = 'none';
+      if (selectedLabel) selectedLabel.style.display = 'none';
+      window.parent.postMessage({ type: 'element-deselected' }, '*');
+    }
   });
 
   document.addEventListener('mousemove', function(e) {
     if (!editMode) return;
     var el = findDeepestElement(e.clientX, e.clientY);
-    if (el && el !== hoverEl && el !== overlay) {
+    if (el && el !== hoverEl && el !== overlay && el !== selectedOverlay) {
       hoverEl = el;
-      showOverlay(el);
+      showHoverOverlay(el);
     }
+  });
+
+  document.addEventListener('mouseleave', function() {
+    if (!editMode) return;
+    if (overlay) overlay.style.display = 'none';
+    if (overlayLabel) overlayLabel.style.display = 'none';
+    hoverEl = null;
   });
 
   document.addEventListener('dblclick', function(e) {
@@ -252,9 +318,15 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
     if (el.tagName === 'IMG' || el.tagName === 'SCRIPT') return;
     saveState();
     el.contentEditable = 'true';
+    el.style.outline = '2px solid #3b82f6';
+    el.style.outlineOffset = '-2px';
+    el.style.cursor = 'text';
     el.focus();
     el.addEventListener('blur', function handler() {
       el.contentEditable = 'false';
+      el.style.outline = '';
+      el.style.outlineOffset = '';
+      el.style.cursor = '';
       el.removeEventListener('blur', handler);
       notifyContentUpdate();
     });
@@ -262,9 +334,10 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
 
   function selectElement(el) {
     selectedEl = el;
-    showOverlay(el);
+    showSelectedOverlay(el);
     var rect = el.getBoundingClientRect();
     var isSvg = el.tagName === 'svg' || el.tagName === 'SVG' || (el.closest && el.closest('svg'));
+    var info = getElementInfo(el);
     window.parent.postMessage({
       type: 'element-selected',
       tag: el.tagName.toLowerCase(),
@@ -273,29 +346,83 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
       isSvg: !!isSvg,
       imageSrc: el.tagName === 'IMG' ? el.src : null,
       rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      classes: el.className || ''
+      classes: el.className || '',
+      elementLabel: info.label
     }, '*');
   }
 
-  function showOverlay(el) {
+  // Hover overlay — dashed border, subtle
+  function showHoverOverlay(el) {
+    if (el === selectedEl) return;
     if (!overlay) {
       overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;pointer-events:none;border:2px solid #3b82f6;border-radius:4px;z-index:99999;transition:all 0.15s ease;';
+      overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:99998;transition:all 0.1s ease;box-sizing:border-box;';
       document.body.appendChild(overlay);
     }
+    if (!overlayLabel) {
+      overlayLabel = document.createElement('div');
+      overlayLabel.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:600;padding:1px 6px;border-radius:0 0 4px 0;white-space:nowrap;transition:all 0.1s ease;';
+      document.body.appendChild(overlayLabel);
+    }
+    var info = getElementInfo(el);
     var r = el.getBoundingClientRect();
     overlay.style.top = r.top + 'px';
     overlay.style.left = r.left + 'px';
     overlay.style.width = r.width + 'px';
     overlay.style.height = r.height + 'px';
+    overlay.style.border = '1.5px dashed ' + info.color;
+    overlay.style.background = info.bg;
+    overlay.style.borderRadius = '3px';
     overlay.style.display = 'block';
+    overlayLabel.textContent = info.label;
+    overlayLabel.style.top = Math.max(0, r.top) + 'px';
+    overlayLabel.style.left = r.left + 'px';
+    overlayLabel.style.background = info.color;
+    overlayLabel.style.color = '#fff';
+    overlayLabel.style.display = 'block';
+  }
+
+  // Selected overlay — solid border, prominent
+  function showSelectedOverlay(el) {
+    if (!selectedOverlay) {
+      selectedOverlay = document.createElement('div');
+      selectedOverlay.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;box-sizing:border-box;';
+      document.body.appendChild(selectedOverlay);
+    }
+    if (!selectedLabel) {
+      selectedLabel = document.createElement('div');
+      selectedLabel.style.cssText = 'position:fixed;pointer-events:none;z-index:100000;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;font-weight:700;padding:2px 8px;border-radius:0 0 4px 0;white-space:nowrap;letter-spacing:0.02em;';
+      document.body.appendChild(selectedLabel);
+    }
+    var info = getElementInfo(el);
+    var r = el.getBoundingClientRect();
+    selectedOverlay.style.top = r.top + 'px';
+    selectedOverlay.style.left = r.left + 'px';
+    selectedOverlay.style.width = r.width + 'px';
+    selectedOverlay.style.height = r.height + 'px';
+    selectedOverlay.style.border = '2px solid ' + info.color;
+    selectedOverlay.style.background = 'transparent';
+    selectedOverlay.style.borderRadius = '3px';
+    selectedOverlay.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.8), inset 0 0 0 1px rgba(255,255,255,0.3)';
+    selectedOverlay.style.display = 'block';
+    var dims = Math.round(r.width) + ' x ' + Math.round(r.height);
+    selectedLabel.innerHTML = info.label + ' <span style="opacity:0.7;font-weight:400;margin-left:4px">' + dims + '</span>';
+    selectedLabel.style.top = Math.max(0, r.top) + 'px';
+    selectedLabel.style.left = r.left + 'px';
+    selectedLabel.style.background = info.color;
+    selectedLabel.style.color = '#fff';
+    selectedLabel.style.display = 'block';
   }
 
   function cleanup() {
     if (overlay) overlay.style.display = 'none';
+    if (overlayLabel) overlayLabel.style.display = 'none';
+    if (selectedOverlay) selectedOverlay.style.display = 'none';
+    if (selectedLabel) selectedLabel.style.display = 'none';
     if (selectedEl) selectedEl.contentEditable = 'false';
     selectedEl = null;
     hoverEl = null;
+    document.body.style.cursor = '';
   }
 
   function notifyContentUpdate() {
@@ -352,7 +479,8 @@ export const VISUAL_EDITOR_SCRIPT = `<script>
       var el = document.querySelector('[data-plury-section="' + e.data.sectionId + '"]');
       if (el) {
         saveState();
-        el.style[e.data.prop] = e.data.value;
+        var kebab = e.data.prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+        el.style.setProperty(kebab, e.data.value, 'important');
         notifyContentUpdate();
       }
     }
@@ -1087,4 +1215,94 @@ export function wrapTextAsHtml(text: string, agentName: string, agentRole: strin
   </div>
 </body>
 </html>`
+}
+
+/**
+ * Generate HTML (style + script) to inject visual overrides into a deployed page.
+ * Overrides are persisted as JSON: { theme, edits[] }
+ */
+export function generateVisualOverridesHtml(overridesJson: string): string {
+  try {
+    const overrides = JSON.parse(overridesJson) as {
+      theme?: { fontFamily?: string; colors?: Record<string, any> }
+      edits?: Array<{ type: string; selector: string; styles?: Record<string, string>; text?: string; src?: string }>
+    }
+    const { theme, edits } = overrides
+
+    let css = ''
+    const jsLines: string[] = []
+
+    // Theme CSS
+    if (theme?.fontFamily) {
+      const fontName = theme.fontFamily.replace(/ /g, '+')
+      css += `@import url('https://fonts.googleapis.com/css2?family=${fontName}:wght@300;400;500;600;700;800;900&display=swap');\n`
+      css += `*, *::before, *::after { font-family: "${theme.fontFamily}", system-ui, -apple-system, sans-serif !important; }\n`
+    }
+    if (theme?.colors) {
+      const c = theme.colors
+      if (c.primary?.DEFAULT) {
+        css += `[class*="bg-primary"] { background-color: ${c.primary.DEFAULT} !important; }\n`
+        css += `[class*="text-primary"] { color: ${c.primary.DEFAULT} !important; }\n`
+        css += `[class*="border-primary"] { border-color: ${c.primary.DEFAULT} !important; }\n`
+      }
+      if (c.secondary?.DEFAULT) {
+        css += `[class*="bg-secondary"] { background-color: ${c.secondary.DEFAULT} !important; }\n`
+        css += `[class*="text-secondary"] { color: ${c.secondary.DEFAULT} !important; }\n`
+      }
+      if (c.accent?.DEFAULT) {
+        css += `[class*="bg-accent"] { background-color: ${c.accent.DEFAULT} !important; }\n`
+        css += `[class*="text-accent"] { color: ${c.accent.DEFAULT} !important; }\n`
+      }
+      if (c.background) {
+        css += `.bg-background, [class*="bg-background"] { background-color: ${c.background} !important; }\n`
+      }
+    }
+
+    // Element-level edits
+    for (const edit of edits ?? []) {
+      if (edit.type === 'style' && edit.styles) {
+        const props = Object.entries(edit.styles)
+          .map(([k, v]) => {
+            const kebab = k.replace(/([A-Z])/g, '-$1').toLowerCase()
+            return `${kebab}: ${v} !important`
+          })
+          .join('; ')
+        css += `${edit.selector} { ${props}; }\n`
+      }
+      if (edit.type === 'text' && edit.text !== undefined) {
+        const escaped = JSON.stringify(edit.text)
+        const selEscaped = JSON.stringify(edit.selector)
+        jsLines.push(`var el = document.querySelector(${selEscaped}); if (el) el.textContent = ${escaped};`)
+      }
+      if (edit.type === 'image' && edit.src) {
+        const selEscaped = JSON.stringify(edit.selector)
+        const srcEscaped = JSON.stringify(edit.src)
+        jsLines.push(`var el = document.querySelector(${selEscaped}); if (el) el.src = ${srcEscaped};`)
+      }
+    }
+
+    let html = ''
+    if (css) html += `<style id="plury-visual-overrides">${css}</style>\n`
+    if (jsLines.length > 0) {
+      html += `<script>document.addEventListener('DOMContentLoaded', function() {\n${jsLines.join('\n')}\n});</script>\n`
+    }
+    return html
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Inject visual overrides into an HTML string (for deploy/subdomain serving).
+ */
+export function injectVisualOverrides(html: string, overridesJson: string | null | undefined): string {
+  if (!overridesJson) return html
+  const overrideHtml = generateVisualOverridesHtml(overridesJson)
+  if (!overrideHtml) return html
+  // Remove any existing overrides first
+  const cleaned = html.replace(/<style id="plury-visual-overrides">[\s\S]*?<\/style>\n?/g, '')
+  if (cleaned.includes('</head>')) {
+    return cleaned.replace('</head>', `${overrideHtml}</head>`)
+  }
+  return cleaned + overrideHtml
 }

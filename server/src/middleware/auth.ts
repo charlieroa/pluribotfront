@@ -16,64 +16,62 @@ declare global {
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+function getRequestToken(req: Request): string | null {
   const header = req.headers.authorization
-  if (!header?.startsWith('Bearer ')) {
+  if (header?.startsWith('Bearer ')) {
+    return header.slice(7)
+  }
+
+  return typeof req.query.token === 'string' ? req.query.token : null
+}
+
+export function resolveAuthFromRequest(req: Request): AuthPayload | null {
+  const token = getRequestToken(req)
+  if (!token) return null
+
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload
+  } catch {
+    return null
+  }
+}
+
+export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const payload = resolveAuthFromRequest(req)
+  if (!payload) {
     res.status(401).json({ error: 'Token requerido' })
     return
   }
 
-  const token = header.slice(7)
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload
-    req.auth = payload
-    next()
-  } catch {
-    res.status(401).json({ error: 'Token inválido' })
-  }
+  req.auth = payload
+  next()
 }
 
-// Role-based access control - must be used after authMiddleware
 export function requireRole(...roles: string[]) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // First run authMiddleware logic
-    const header = req.headers.authorization
-    if (!header?.startsWith('Bearer ')) {
+    const payload = resolveAuthFromRequest(req)
+    if (!payload) {
       res.status(401).json({ error: 'Token requerido' })
       return
     }
 
-    const token = header.slice(7)
-    try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload
-      req.auth = payload
-    } catch {
-      res.status(401).json({ error: 'Token inválido' })
-      return
-    }
+    req.auth = payload
 
-    // Check role in DB
-    const user = await prisma.user.findUnique({ where: { id: req.auth!.userId } })
+    const user = await prisma.user.findUnique({ where: { id: req.auth.userId } })
     if (!user || !roles.includes(user.role)) {
       res.status(403).json({ error: 'Sin permisos' })
       return
     }
+
     req.userRole = user.role
     next()
   }
 }
 
-// Optional auth - doesn't block if no token, but attaches user if present
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
-  const header = req.headers.authorization
-  if (header?.startsWith('Bearer ')) {
-    const token = header.slice(7)
-    try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload
-      req.auth = payload
-    } catch {
-      // Ignore invalid tokens in optional mode
-    }
+  const payload = resolveAuthFromRequest(req)
+  if (payload) {
+    req.auth = payload
   }
   next()
 }

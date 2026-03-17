@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Globe, Trash2, Eye, EyeOff, ExternalLink, Search, RefreshCw, Camera } from 'lucide-react'
 
+const FALLBACK_THUMB = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><rect width="320" height="180" fill="%23111827"/><rect x="18" y="18" width="284" height="144" rx="16" fill="%231f2937"/><circle cx="58" cy="56" r="10" fill="%236b7280"/><rect x="80" y="48" width="120" height="14" rx="7" fill="%23374151"/><rect x="32" y="88" width="256" height="10" rx="5" fill="%23374151"/><rect x="32" y="108" width="180" height="10" rx="5" fill="%23374151"/><rect x="32" y="128" width="220" height="10" rx="5" fill="%23374151"/></svg>'
+
 interface PublishedSite {
   id: string
   title: string
@@ -77,8 +79,15 @@ const PublishedSection = () => {
       if (res.ok) {
         setSites(prev => prev.filter(s => s.id !== id))
         setConfirmDelete(null)
+      } else {
+        const err = await res.json().catch(() => ({ error: res.statusText }))
+        setError(`Error al despublicar: ${err.error || res.statusText}`)
+        setConfirmDelete(null)
       }
-    } catch {}
+    } catch (e) {
+      setError(`Error de red al despublicar: ${e instanceof Error ? e.message : 'desconocido'}`)
+      setConfirmDelete(null)
+    }
   }
 
   const recaptureScreenshot = async (id: string) => {
@@ -156,7 +165,16 @@ const PublishedSection = () => {
               {/* Thumbnail */}
               <div className="w-16 h-12 rounded-lg bg-subtle flex-shrink-0 overflow-hidden">
                 {site.thumbnailUrl ? (
-                  <img src={site.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                  <img
+                    src={site.thumbnailUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget
+                      img.onerror = null
+                      img.src = FALLBACK_THUMB
+                    }}
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <Globe size={16} className="text-ink-faint" />

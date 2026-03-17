@@ -31,8 +31,14 @@ const PricingSection = ({ onRegister }: PricingSectionProps) => {
       <div className="max-w-[1200px] mx-auto">
         <div className="price-anim text-center mb-14">
           <p className="text-[12px] text-[#43f1f2] uppercase tracking-[0.15em] font-semibold mb-3">Precios</p>
-          <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.025em] text-white mb-3">Simple y transparente</h2>
-          <p className="text-[16px] text-zinc-400 max-w-md mx-auto">Empieza gratis. Escala cuando lo necesites. Agrega Senior cuando quieras.</p>
+          <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.025em] text-white mb-3">
+            Empiezas con la plataforma
+            <br />
+            y escalas por necesidad real
+          </h2>
+          <p className="text-[16px] text-zinc-400 max-w-2xl mx-auto">
+            Primero pagas por usar Plury como sistema. Luego subes por volumen, equipo o marca blanca. El respaldo humano se suma aparte cuando hace falta.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -80,10 +86,9 @@ const PricingSection = ({ onRegister }: PricingSectionProps) => {
           })}
         </div>
 
-        {/* Senior add-on callout */}
         <div className="price-anim mt-8 text-center bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
           <p className="text-[14px] text-zinc-300 mb-1">
-            <span className="font-semibold text-white">Senior Add-on</span> — Agrega revision humana a cualquier plan
+            <span className="font-semibold text-white">Senior Add-on</span> · Agrega revision humana a cualquier plan
           </p>
           <p className="text-[12.5px] text-zinc-500">
             Desde <span className="text-white font-semibold">$149/mes</span> · Revision en 24-48h · Developers, disenadores y estrategas reales

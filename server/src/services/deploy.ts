@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { isCodeProject, buildCodeProjectHtml } from './code-to-html.js'
+import { readAllProjectFiles } from './project-storage.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -11,7 +12,7 @@ const DEPLOY_DIR = path.resolve(__dirname, '../../deploys')
  * Deploy a project's HTML to a static file, returning a public URL.
  * Handles both raw HTML (web projects) and JSON file arrays (code projects).
  */
-export async function deployProject(deployId: string, content: string): Promise<string> {
+export async function deployProject(deployId: string, content: string, conversationId?: string): Promise<string> {
   // Ensure deploy directory exists
   if (!fs.existsSync(DEPLOY_DIR)) {
     fs.mkdirSync(DEPLOY_DIR, { recursive: true })
@@ -22,9 +23,15 @@ export async function deployProject(deployId: string, content: string): Promise<
     fs.mkdirSync(projectDir, { recursive: true })
   }
 
-  // If content is a multi-file code project (JSON array), build a self-contained HTML
+  // If content is a v2 manifest, read files from disk
   let htmlContent = content
-  if (isCodeProject(content)) {
+  if (content.startsWith('{"type":"project-v2"') && conversationId) {
+    const files = await readAllProjectFiles(conversationId)
+    if (files.length > 0) {
+      console.log(`[Deploy] v2 manifest — building HTML from ${files.length} disk files for ${deployId}`)
+      htmlContent = buildCodeProjectHtml(JSON.stringify(files))
+    }
+  } else if (isCodeProject(content)) {
     console.log(`[Deploy] Detected code project — building self-contained HTML for ${deployId}`)
     htmlContent = buildCodeProjectHtml(content)
   }

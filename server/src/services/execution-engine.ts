@@ -22,35 +22,217 @@ import { buildDevDesignPackContext } from './dev-design-packs.js'
 import { buildDevCanonicalExamplesContext } from './dev-canonical-examples.js'
 import { DEV_API_CLIENT } from '../config/dev-api-client.js'
 import { sendWebhookIfConfigured } from './webhook.js'
+import { runPrePublishChecks } from './project-validator.js'
 import { getWhitelabelTheme, applyWhitelabelToHtml } from './whitelabel.js'
+import { writeProjectFiles, readAllProjectFiles } from './project-storage.js'
+import { trackFiles } from './project-file-tracker.js'
+import { deployProject } from './deploy.js'
+import { createProjectAppBuildEventsForConversation } from './project-app-events.js'
+import { buildVisualTaskBrief } from './visual-task-brief.js'
 const DELIVERABLE_TYPE_MAP: Record<string, 'report' | 'code' | 'design' | 'copy' | 'video'> = {
   seo: 'report',
   brand: 'design',
   web: 'design',
+  voxel: 'design',
   social: 'design',
   ads: 'copy',
   video: 'video',
   dev: 'code',
 }
+const VIDEO_DIRECT_CHAT_PREFIX = '[VIDEO_DIRECT_CHAT]'
+
+function isDirectChatVideoTask(task: string): boolean {
+  return task.includes(VIDEO_DIRECT_CHAT_PREFIX)
+}
+
+function sanitizeExecutionTask(task: string): string {
+  return task.replace(VIDEO_DIRECT_CHAT_PREFIX, '').trim()
+}
+
+function getAgentLoadingStep(agentId: string, task: string): string {
+  const lower = task.toLowerCase()
+
+  if (agentId === 'dev') {
+    if (/(login|auth|registro|sesion)/.test(lower)) return 'Diseñando acceso, roles y flujo inicial.'
+    if (/(dashboard|panel|admin|backoffice)/.test(lower)) return 'Armando dashboard, navegación y módulos base.'
+    if (/(lms|curso|cursos|academia|leccion|modulo|educacion|capacitacion)/.test(lower)) return 'Construyendo campus, cursos, roadmap de aprendizaje y contenido interactivo.'
+    if (/(tienda|ecommerce|catalogo|checkout|carrito)/.test(lower)) return 'Preparando catálogo, carrito y flujo de compra.'
+    if (/(landing|pagina|sitio web|web)/.test(lower)) return 'Construyendo layout, secciones y jerarquía visual.'
+    return 'Analizando el pedido y construyendo la primera versión funcional.'
+  }
+
+  if (agentId === 'web') return 'Componiendo la dirección visual y la primera propuesta.'
+  if (agentId === 'brand') return 'Explorando identidad visual, formas y estilo de marca.'
+  if (agentId === 'seo') return 'Analizando oportunidad SEO, estructura y prioridades.'
+  if (agentId === 'ads') return 'Preparando campaña, ángulos y mensajes de conversión.'
+  if (agentId === 'video') return 'Armando secuencia, escenas y narrativa visual.'
+  return 'Procesando el encargo y preparando la entrega.'
+}
+
+function classifyProjectAssetCategory(title: string, botType: string, type: string): string {
+  const tl = title.toLowerCase()
+  const isBranding = ['logo', 'marca', 'brand', 'paleta', 'identidad', 'logotipo', 'isotipo'].some(k => tl.includes(k))
+  const isGraphicPiece = ['flyer', 'flayer', 'banner', 'post', 'story', 'storie', 'carrusel', 'afiche', 'volante', 'pieza grafica'].some(k => tl.includes(k))
+  if (isBranding) return 'logo'
+  if (isGraphicPiece && type === 'design') return 'graphic'
+  if (type === 'video') return 'video'
+  if (type === 'code') return 'app'
+  if (type === 'report') return 'seo'
+  if (botType === 'ads') return 'ads'
+  if (botType === 'content') return 'copy'
+  if (type === 'design') return 'web'
+  return 'other'
+}
+
+function isLogoLikeTask(text: string): boolean {
+  const lower = text.toLowerCase()
+  return ['logo', 'marca', 'brand', 'paleta', 'identidad', 'logotipo', 'isotipo', 'imagotipo', 'monograma'].some(k => lower.includes(k))
+}
+
+function extractImageUrlFromToolResult(result: string): string | null {
+  try {
+    const parsed = JSON.parse(result) as { success?: boolean; url?: string }
+    return parsed.success && parsed.url ? parsed.url : null
+  } catch {
+    return null
+  }
+}
+
+function buildVisualFallbackHtml(title: string, imageUrls: string[], isLogo: boolean): string {
+  const safeTitle = title.replace(/[<&>"]/g, '')
+  const grid = imageUrls.map((url, index) => `
+    <article class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="mb-3 flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Opcion ${index + 1}</span>
+        <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">${isLogo ? 'Logo' : 'Pieza visual'}</span>
+      </div>
+      <div class="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 p-3">
+        <img src="${url}" alt="Opcion ${index + 1}" class="h-72 w-full object-contain ${isLogo ? 'bg-white' : 'object-cover'}" />
+      </div>
+    </article>
+  `).join('\n')
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${safeTitle}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-950">
+  <main class="mx-auto max-w-7xl px-6 py-8">
+    <header class="mb-8 rounded-[32px] bg-white px-6 py-6 shadow-sm ring-1 ring-slate-200">
+      <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Entrega visual</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight">${safeTitle}</h1>
+      <p class="mt-3 text-sm text-slate-600">${isLogo ? 'Elige una opcion y la refinamos desde este mismo chat.' : 'Estas son las opciones generadas. Puedes elegir una y pedir cambios.'}</p>
+    </header>
+    <section class="grid gap-5 md:grid-cols-2 xl:grid-cols-2">
+      ${grid}
+    </section>
+  </main>
+</body>
+</html>`
+}
 
 // Auto-register project asset when a deliverable is created within a project
-async function autoRegisterProjectAsset(conversationId: string, deliverableId: string, title: string, botType: string, type: string): Promise<void> {
+async function autoRegisterProjectAsset(conversationId: string, deliverableId: string, instanceId: string | undefined, title: string, botType: string, type: string): Promise<void> {
   try {
     const conv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { projectId: true } })
     if (!conv?.projectId) return
-    const tl = title.toLowerCase()
-    const isBranding = ['logo', 'marca', 'brand', 'paleta', 'identidad', 'logotipo', 'isotipo'].some(k => tl.includes(k))
-    let category = 'other'
-    if (isBranding) category = 'logo'
-    else if (type === 'video') category = 'video'
-    else if (type === 'code') category = 'app'
-    else if (type === 'report') category = 'seo'
-    else if (botType === 'ads') category = 'ads'
-    else if (botType === 'content') category = 'copy'
-    else if (type === 'design') category = 'web'
+    const category = classifyProjectAssetCategory(title, botType, type)
+    const existing = instanceId
+      ? await prisma.projectAsset.findFirst({
+          where: {
+            projectId: conv.projectId,
+            conversationId,
+            deliverable: { instanceId },
+          },
+        })
+      : null
+    if (existing) {
+      await prisma.projectAsset.update({
+        where: { id: existing.id },
+        data: { deliverableId, category, name: title },
+      })
+      console.log(`[ProjectAsset] Updated: ${category} â€” "${title}" for project ${conv.projectId}`)
+      return
+    }
     await prisma.projectAsset.create({ data: { projectId: conv.projectId, conversationId, deliverableId, category, name: title } })
     console.log(`[ProjectAsset] Auto-registered: ${category} — "${title}" for project ${conv.projectId}`)
   } catch (err) { console.error('[ProjectAsset] Auto-register failed:', err) }
+}
+
+// Auto-redeploy: when all phases complete, update any published slug to point to the final deliverable
+async function autoRedeployFinalPhase(conversationId: string, plan: ExecutingPlan): Promise<void> {
+  try {
+    // Check if this plan had multiple dev phases (sequential dev steps with dependsOn)
+    const devSteps = plan.steps.filter(s => s.agentId === 'dev')
+    if (devSteps.length < 2) return // not a multi-phase project
+
+    // Find the LAST dev step (final phase)
+    const lastDevStep = devSteps[devSteps.length - 1]
+    const finalDeliverable = await prisma.deliverable.findFirst({
+      where: { conversationId, instanceId: lastDevStep.instanceId, type: 'code' },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!finalDeliverable) return
+
+    // Check if ANY earlier dev deliverable was already published
+    const earlierDevSteps = devSteps.slice(0, -1)
+    const earlierInstanceIds = earlierDevSteps.map(s => s.instanceId)
+    const publishedEarlier = await prisma.deliverable.findFirst({
+      where: {
+        conversationId,
+        instanceId: { in: earlierInstanceIds },
+        publishSlug: { not: null },
+      },
+    })
+
+    if (publishedEarlier && publishedEarlier.publishSlug) {
+      // Move the slug from the earlier phase to the final phase
+      const slug = publishedEarlier.publishSlug
+      await prisma.deliverable.update({
+        where: { id: publishedEarlier.id },
+        data: { publishSlug: null, publishedAt: null },
+      })
+      await prisma.deliverable.update({
+        where: { id: finalDeliverable.id },
+        data: { publishSlug: slug, publishedAt: new Date(), isPublic: publishedEarlier.isPublic },
+      })
+
+      // Re-deploy the HTML with the final phase content
+      await deployProject(finalDeliverable.id, finalDeliverable.content!, conversationId)
+      console.log(`[AutoRedeploy] Moved slug "${slug}" from phase ${publishedEarlier.instanceId} to final phase ${lastDevStep.instanceId} (deliverable ${finalDeliverable.id})`)
+    }
+  } catch (err) {
+    console.error('[AutoRedeploy] Error:', err)
+  }
+}
+
+async function loadStableProjectFiles(conversationId: string, instanceId?: string): Promise<{ path: string; content: string }[]> {
+  const diskFiles = await readAllProjectFiles(conversationId)
+  if (diskFiles.length > 0) {
+    return diskFiles
+  }
+
+  const deliverable = await prisma.deliverable.findFirst({
+    where: {
+      conversationId,
+      type: 'code',
+      ...(instanceId ? { instanceId } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (!deliverable) return []
+
+  try {
+    const parsed = JSON.parse(deliverable.content)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 // Helper: create a 'todo' kanban task for a plan step
@@ -186,6 +368,7 @@ export async function executeCurrentGroup(plan: ExecutingPlan): Promise<void> {
 
   if (!group) {
     // All groups done
+    autoRedeployFinalPhase(conversationId, plan).catch(console.error)
     await removeExecutingPlan(conversationId)
     broadcast(conversationId, { type: 'coordination_end' })
     sendWebhookIfConfigured(conversationId).catch(console.error)
@@ -231,7 +414,8 @@ export async function executeCurrentGroup(plan: ExecutingPlan): Promise<void> {
   const totalCount = plan.steps.length
 
   if (!nextGroup) {
-    // Last group
+    // Last group — auto-redeploy final phase if multi-phase project was published
+    autoRedeployFinalPhase(conversationId, plan).catch(console.error)
     if (visualSteps.length > 0) {
       // Broadcast step_complete for EACH visual step (supports multiple parallel projects)
       for (const vs of visualSteps) {
@@ -253,6 +437,7 @@ export async function executeCurrentGroup(plan: ExecutingPlan): Promise<void> {
     }
 
     // Non-visual last group → end
+    autoRedeployFinalPhase(conversationId, plan).catch(console.error)
     await removeExecutingPlan(conversationId)
     broadcast(conversationId, { type: 'coordination_end' })
     sendWebhookIfConfigured(conversationId).catch(console.error)
@@ -310,6 +495,8 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
   const { conversationId, userId, modelOverride } = plan
 
   const agentConfig = getAgentConfig(step.agentId)
+  const effectiveTask = sanitizeExecutionTask(step.task)
+  const isDirectChatVideo = step.agentId === 'video' && isDirectChatVideoTask(step.task)
   if (!agentConfig) {
     console.warn(`[executeSingleStep] Agent config not found for ${step.agentId}`)
     return
@@ -327,7 +514,7 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
   }
 
   // ─── Video: open workflow editor instead of executing agent ───
-  if (step.agentId === 'video') {
+  if (step.agentId === 'video' && !isDirectChatVideo) {
     // Mark kanban task as done
     const videoTask = await prisma.kanbanTask.findFirst({
       where: { conversationId, instanceId: step.instanceId },
@@ -350,10 +537,10 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
     }
 
     // Send SSE event to open the workflow editor with the prompt
-    console.log(`[Video] Broadcasting open_workflow for ${conversationId}, prompt: "${step.task.substring(0, 60)}..."`)
+    console.log(`[Video] Broadcasting open_workflow for ${conversationId}, prompt: "${effectiveTask.substring(0, 60)}..."`)
     broadcast(conversationId, {
       type: 'open_workflow',
-      prompt: step.task,
+      prompt: effectiveTask,
       agentId: step.agentId,
       instanceId: step.instanceId,
     })
@@ -430,11 +617,20 @@ export async function executeSingleStep(plan: ExecutingPlan, step: OrchestratorS
         // Dev-to-dev dependency: pass the project files for extension mode
         if (agentConfig.id === 'dev' && depStep.agentId === 'dev') {
           try {
-            const prevDeliverable = await prisma.deliverable.findFirst({
-              where: { conversationId, instanceId: depInstanceId },
-              orderBy: { createdAt: 'desc' },
-            })
-            if (prevDeliverable) {
+            // Try disk first, fallback to legacy JSON in deliverable.content
+            let previousFiles = await readAllProjectFiles(conversationId)
+            let previousContent: string
+            if (previousFiles.length > 0) {
+              previousContent = JSON.stringify(previousFiles)
+              console.log(`[${agentConfig.name}:${step.instanceId}] Extension mode: loaded ${previousFiles.length} files from disk`)
+            } else {
+              const prevDeliverable = await prisma.deliverable.findFirst({
+                where: { conversationId, instanceId: depInstanceId },
+                orderBy: { createdAt: 'desc' },
+              })
+              previousContent = prevDeliverable?.content ?? '[]'
+            }
+            if (previousContent && previousContent !== '[]') {
               devExtensionMode = true
               contextBlock += `\n\n--- MODO EXTENSION: ARCHIVOS DEL PROYECTO EXISTENTE (${depInstanceId}) ---
 Debes tomar estos archivos como base y AGREGAR/MODIFICAR solo lo necesario.
@@ -442,7 +638,7 @@ NO reescribas archivos que no necesiten cambios. Solo incluye en tu respuesta lo
 El proyecto ya tiene la estructura de archivos listada abajo funcionando.
 
 ARCHIVOS EXISTENTES:
-${prevDeliverable.content}
+${previousContent}
 --- FIN ARCHIVOS EXISTENTES ---`
               broadcast(conversationId, {
                 type: 'agent_thinking',
@@ -473,11 +669,22 @@ ${prevDeliverable.content}
 
   // Auto-detect extension mode for follow-up messages (same instanceId as existing deliverable)
   if (agentConfig.id === 'dev' && !devExtensionMode) {
-    const existingDeliverable = await prisma.deliverable.findFirst({
-      where: { conversationId, instanceId: step.instanceId, type: 'code' },
-      orderBy: { createdAt: 'desc' },
-    })
-    if (existingDeliverable) {
+    // Try disk first, fallback to legacy JSON in deliverable.content
+    let previousFiles = await readAllProjectFiles(conversationId)
+    let previousContent: string | null = null
+    if (previousFiles.length > 0) {
+      previousContent = JSON.stringify(previousFiles)
+      console.log(`[${agentConfig.name}:${step.instanceId}] Auto-extension mode: loaded ${previousFiles.length} files from disk`)
+    } else {
+      const existingDeliverable = await prisma.deliverable.findFirst({
+        where: { conversationId, instanceId: step.instanceId, type: 'code' },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (existingDeliverable) {
+        previousContent = existingDeliverable.content
+      }
+    }
+    if (previousContent) {
       devExtensionMode = true
       contextBlock += `\n\n--- MODO EXTENSION: ARCHIVOS DEL PROYECTO EXISTENTE (${step.instanceId}) ---
 Debes tomar estos archivos como base y AGREGAR/MODIFICAR solo lo necesario.
@@ -485,7 +692,7 @@ NO reescribas archivos que no necesiten cambios. Solo incluye en tu respuesta lo
 El proyecto ya tiene la estructura de archivos listada abajo funcionando.
 
 ARCHIVOS EXISTENTES:
-${existingDeliverable.content}
+${previousContent}
 --- FIN ARCHIVOS EXISTENTES ---`
       broadcast(conversationId, {
         type: 'agent_thinking',
@@ -500,10 +707,10 @@ ${existingDeliverable.content}
 
   let backendContext = ''
   const devTemplateContext = agentConfig.id === 'dev'
-    ? buildDevTemplateContext(step.task)
+    ? buildDevTemplateContext(effectiveTask)
     : ''
   const devDesignPackContext = agentConfig.id === 'dev'
-    ? buildDevDesignPackContext(step.task)
+    ? buildDevDesignPackContext(effectiveTask)
     : ''
   const devCanonicalExamplesContext = agentConfig.id === 'dev'
     ? buildDevCanonicalExamplesContext()
@@ -511,7 +718,10 @@ ${existingDeliverable.content}
 
   // Append image URL to task so agents can reference it in tool calls (e.g. remove_background)
   const imageContext = plan.imageUrl ? `\n\n[Imagen adjunta por el usuario: ${plan.imageUrl}]` : ''
-  const taskPrompt = `${step.task}${devTemplateContext}${devDesignPackContext}${devCanonicalExamplesContext}${contextBlock}${backendContext}${imageContext}`
+  const visualTaskBrief = agentConfig.id === 'web'
+    ? buildVisualTaskBrief(effectiveTask, { hasReferenceImage: !!plan.imageUrl })
+    : ''
+  const taskPrompt = `${effectiveTask}${visualTaskBrief}${devTemplateContext}${devDesignPackContext}${devCanonicalExamplesContext}${contextBlock}${backendContext}${imageContext}`
 
   // History limit: enough context for cache hits (cache reads cost 0.1x)
   const historyLimit = 20
@@ -557,7 +767,7 @@ ${existingDeliverable.content}
     agentId: agentConfig.id,
     agentName: agentConfig.name,
     instanceId: step.instanceId,
-    step: 'Generando respuesta...',
+    step: getAgentLoadingStep(agentConfig.id, effectiveTask),
   })
 
   // Visual agents (Nova, Pixel, Spark, Reel) work silently — no token streaming
@@ -582,20 +792,30 @@ ${existingDeliverable.content}
     agentId: agentConfig.id,
     agentName: agentConfig.name,
     instanceId: step.instanceId,
-    task: step.task,
+    task: effectiveTask,
     model: agentModelConfig.model,
   })
+
+  // If [IMAGE_MODEL] tag present (in task OR in conversation history), inject a directive
+  const allText = effectiveTask + ' ' + messages.map(m => m.content).join(' ')
+  const imageModelTagMatch = allText.match(/\[IMAGE_MODEL:\s*(\S+)\]/)
+  let effectiveSystemPrompt = agentConfig.systemPrompt
+  if (imageModelTagMatch && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
+    effectiveSystemPrompt += `\n\n═══════════════════════════════════════════\nMODO GENERACION DIRECTA — OBLIGATORIO\n═══════════════════════════════════════════\nEl usuario selecciono un modelo de imagen especifico (${imageModelTagMatch[1]}). Reglas estrictas:\n1. Genera INMEDIATAMENTE usando generate_image con imageModel: "${imageModelTagMatch[1]}"\n2. NO pidas informacion, NO hagas preguntas — inventa detalles faltantes\n3. Genera EXACTAMENTE 3 imagenes con estilos diferentes (3 llamadas a generate_image)\n4. NO generes HTML\n5. Tu respuesta de texto debe ser ULTRA BREVE: maximo 1-2 lineas. Las imagenes hablan solas.\n6. Si el mensaje contiene "[Imagen de referencia: URL]", DEBES pasar esa URL como referenceImageUrl en CADA llamada a generate_image. Esto hara que Gemini use esa imagen como base visual para generar variaciones.`
+  }
+
   const provider = getProvider(agentModelConfig)
   let agentFullText = ''
   let agentUsage: LLMUsage = { inputTokens: 0, outputTokens: 0 }
   let agentCreditsCost = 0
+  const toolImageUrls: string[] = []
 
   const agentTools = agentConfig.tools
   if (agentTools.length > 0) {
     const { getToolDefinitions } = await import('./tools/executor.js')
     const toolDefs = await getToolDefinitions(agentTools, userId)
 
-    await provider.streamWithTools(agentConfig.systemPrompt, messages, toolDefs, {
+    await provider.streamWithTools(effectiveSystemPrompt, messages, toolDefs, {
       onToken: (token) => {
         if (!isVisualAgent) {
           broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
@@ -625,11 +845,24 @@ ${existingDeliverable.content}
           instanceId: step.instanceId,
           step: `Ejecutando herramienta: ${toolCall.name}...`,
         })
-        return await executeToolCall(toolCall, conversationId, agentConfig, userId, step.instanceId)
+        // Auto-inject referenceImageUrl into generate_image if user provided one and agent didn't
+        if (toolCall.name === 'generate_image' && !toolCall.input.referenceImageUrl) {
+          const refMatch = allText.match(/\[Imagen de referencia:\s*(https?:\/\/[^\]\s]+|\/uploads\/[^\]\s]+)\]/)
+          if (refMatch) {
+            toolCall.input.referenceImageUrl = refMatch[1]
+            console.log(`[${agentConfig.name}:${step.instanceId}] Auto-injected referenceImageUrl: ${refMatch[1]}`)
+          }
+        }
+        const result = await executeToolCall(toolCall, conversationId, agentConfig, userId, step.instanceId)
+        const imageUrl = (toolCall.name === 'generate_image' || toolCall.name === 'edit_image' || toolCall.name === 'reframe_image')
+          ? extractImageUrlFromToolResult(result)
+          : null
+        if (imageUrl) toolImageUrls.push(imageUrl)
+        return result
       },
     })
   } else {
-    await provider.stream(agentConfig.systemPrompt, messages, {
+    await provider.stream(effectiveSystemPrompt, messages, {
       onToken: (token) => {
         if (!isVisualAgent) {
           broadcast(conversationId, { type: 'token', content: token, agentId: agentConfig.id, instanceId: step.instanceId })
@@ -654,6 +887,49 @@ ${existingDeliverable.content}
     })
   }
 
+  if (!agentFullText.trim()) {
+    console.warn(`[${agentConfig.name}:${step.instanceId}] Empty response after execution, skipping deliverable creation`)
+
+    if (existingTask) {
+      await prisma.kanbanTask.update({
+        where: { id: existingTask.id },
+        data: { status: 'todo' },
+      })
+      broadcast(conversationId, {
+        type: 'kanban_update',
+        task: {
+          id: existingTask.id,
+          title: existingTask.title,
+          agent: existingTask.agent,
+          status: 'todo' as const,
+          botType: existingTask.botType,
+          instanceId: step.instanceId,
+          createdAt: existingTask.createdAt.toISOString(),
+        },
+      })
+    }
+
+    const failureMsg = await prisma.message.create({
+      data: {
+        id: uuid(),
+        conversationId,
+        sender: 'Sistema',
+        text: `${agentConfig.name} no pudo generar una entrega valida en este intento. Intenta de nuevo o ajusta el prompt.`,
+        type: 'agent',
+        botType: 'system',
+      },
+    })
+
+    broadcast(conversationId, {
+      type: 'agent_end',
+      agentId: 'system',
+      instanceId: step.instanceId,
+      messageId: failureMsg.id,
+      fullText: failureMsg.text,
+    })
+    return
+  }
+
   // Create deliverable
   console.log(`[${agentConfig.name}:${step.instanceId}] Response length: ${agentFullText.length} chars`)
 
@@ -661,62 +937,79 @@ ${existingDeliverable.content}
   if (agentConfig.id === 'dev') {
     console.log(`[${agentConfig.name}:${step.instanceId}] DEV V2 mode — parsing multi-file JSON output`)
     let projectJson = agentFullText.trim()
+    let prePublishValidation: Awaited<ReturnType<typeof runPrePublishChecks>> | undefined
+    let previewStable = true
     try {
+      broadcast(conversationId, {
+        type: 'agent_thinking',
+        agentId: agentConfig.id,
+        agentName: agentConfig.name,
+        instanceId: step.instanceId,
+        step: 'Ordenando archivos, imports y modulos del proyecto.',
+      })
       let files = parseProjectFilesFromText(projectJson).files
 
       // Extension mode: merge new/modified files with the previous deliverable's files
       if (devExtensionMode) {
-        // Try dependsOn-based merge first (multi-step plans)
+        // Try disk first for previous files, fallback to DB JSON
+        let prevFiles: { path: string; content: string }[] = []
+        const diskFiles = await readAllProjectFiles(conversationId)
         let merged = false
-        if (step.dependsOn) {
-          for (const depInstanceId of step.dependsOn) {
-            const depStep = plan.steps.find(s => s.instanceId === depInstanceId)
-            if (depStep?.agentId === 'dev') {
-              const prevDeliverable = await prisma.deliverable.findFirst({
-                where: { conversationId, instanceId: depInstanceId },
-                orderBy: { createdAt: 'desc' },
-              })
-              if (prevDeliverable) {
-                try {
-                  const prevFiles = JSON.parse(prevDeliverable.content)
-                  if (Array.isArray(prevFiles)) {
-                    const newFilePaths = new Set((files as any[]).map((f: any) => f.path))
-                    files = [
-                      ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
-                      ...files,
-                    ]
-                    console.log(`[${agentConfig.name}:${step.instanceId}] Extension mode (dependsOn): merged ${newFilePaths.size} new/modified files with ${prevFiles.length} existing (total: ${(files as any[]).length})`)
-                    merged = true
+
+        if (diskFiles.length > 0) {
+          prevFiles = diskFiles
+          console.log(`[${agentConfig.name}:${step.instanceId}] Extension merge: loaded ${prevFiles.length} files from disk`)
+        } else {
+          // Try dependsOn-based merge first (multi-step plans)
+          if (step.dependsOn) {
+            for (const depInstanceId of step.dependsOn) {
+              const depStep = plan.steps.find(s => s.instanceId === depInstanceId)
+              if (depStep?.agentId === 'dev') {
+                const prevDeliverable = await prisma.deliverable.findFirst({
+                  where: { conversationId, instanceId: depInstanceId },
+                  orderBy: { createdAt: 'desc' },
+                })
+                if (prevDeliverable) {
+                  try {
+                    const parsed = JSON.parse(prevDeliverable.content)
+                    if (Array.isArray(parsed)) {
+                      prevFiles = parsed
+                      merged = true
+                    }
+                  } catch {
+                    console.warn(`[${agentConfig.name}:${step.instanceId}] Could not parse previous deliverable for merge`)
                   }
-                } catch {
-                  console.warn(`[${agentConfig.name}:${step.instanceId}] Could not parse previous deliverable for merge`)
                 }
+              }
+            }
+          }
+
+          // Fallback: conversation-level merge (follow-up messages reusing same instanceId)
+          if (!merged) {
+            const prevDeliverable = await prisma.deliverable.findFirst({
+              where: { conversationId, instanceId: step.instanceId, type: 'code' },
+              orderBy: { createdAt: 'desc' },
+            })
+            if (prevDeliverable) {
+              try {
+                const parsed = JSON.parse(prevDeliverable.content)
+                if (Array.isArray(parsed)) {
+                  prevFiles = parsed
+                }
+              } catch {
+                console.warn(`[${agentConfig.name}:${step.instanceId}] Could not parse previous deliverable for follow-up merge`)
               }
             }
           }
         }
 
-        // Fallback: conversation-level merge (follow-up messages reusing same instanceId)
-        if (!merged) {
-          const prevDeliverable = await prisma.deliverable.findFirst({
-            where: { conversationId, instanceId: step.instanceId, type: 'code' },
-            orderBy: { createdAt: 'desc' },
-          })
-          if (prevDeliverable) {
-            try {
-              const prevFiles = JSON.parse(prevDeliverable.content)
-              if (Array.isArray(prevFiles)) {
-                const newFilePaths = new Set((files as any[]).map((f: any) => f.path))
-                files = [
-                  ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
-                  ...files,
-                ]
-                console.log(`[${agentConfig.name}:${step.instanceId}] Extension mode (follow-up): merged ${newFilePaths.size} new/modified files with ${prevFiles.length} existing (total: ${(files as any[]).length})`)
-              }
-            } catch {
-              console.warn(`[${agentConfig.name}:${step.instanceId}] Could not parse previous deliverable for follow-up merge`)
-            }
-          }
+        if (prevFiles.length > 0) {
+          const newFilePaths = new Set((files as any[]).map((f: any) => f.path))
+          files = [
+            ...prevFiles.filter((f: any) => !newFilePaths.has(f.path)),
+            ...files,
+          ]
+          console.log(`[${agentConfig.name}:${step.instanceId}] Extension mode: merged ${newFilePaths.size} new/modified files with ${prevFiles.length} existing (total: ${(files as any[]).length})`)
         }
       }
 
@@ -732,6 +1025,82 @@ ${existingDeliverable.content}
         ;(files as any[]).push({ path: 'src/lib/api.js', content: apiClientContent })
       }
       console.log(`[${agentConfig.name}:${step.instanceId}] Injected API client (base: ${apiBase}, projectId: ${conversationId})`)
+
+      const notifyShimContent = `const fallbackToast = (message, type = 'info') => {
+  console[type === 'error' ? 'error' : 'log'](message)
+}
+
+const toast = (message, type = 'info') => {
+  if (typeof window !== 'undefined' && typeof window.__PLURY_SHOW_TOAST__ === 'function') {
+    window.__PLURY_SHOW_TOAST__(message, type)
+    return
+  }
+  fallbackToast(message, type)
+}
+
+const success = (message) => toast(message, 'success')
+const error = (message) => toast(message, 'error')
+const info = (message) => toast(message, 'info')
+
+const confirmAction = async (message, options = {}) => {
+  if (typeof window !== 'undefined' && typeof window.__PLURY_SHOW_CONFIRM__ === 'function') {
+    return await window.__PLURY_SHOW_CONFIRM__(message, options)
+  }
+  toast(message, options.type === 'danger' ? 'error' : 'info')
+  return true
+}
+
+const promptInput = async (message, options = {}) => {
+  if (typeof window !== 'undefined' && typeof window.__PLURY_SHOW_PROMPT__ === 'function') {
+    return await window.__PLURY_SHOW_PROMPT__(message, options)
+  }
+  toast(message, 'info')
+  return options.defaultValue || ''
+}
+
+if (typeof window !== 'undefined') {
+  window.alert = function(message) {
+    info(message)
+  }
+
+  // Legacy fallback: sync browser APIs are blocked — return false to prevent
+  // accidental destructive actions (e.g. deleting without user seeing a dialog).
+  // Projects should use await api.confirm() instead for proper modal UX.
+  window.confirm = function(message) {
+    error('⚠ Accion bloqueada: usa api.confirm() para confirmar acciones')
+    return false
+  }
+
+  window.prompt = function(message, defaultValue) {
+    info(message)
+    return defaultValue || ''
+  }
+}
+
+export { toast, success, error, info, confirmAction, promptInput }
+export default { toast, success, error, info, confirmAction, promptInput }
+`
+      const notifyFileIndex = (files as any[]).findIndex((f: any) => f.path === 'src/lib/notify.js')
+      if (notifyFileIndex >= 0) {
+        ;(files as any[])[notifyFileIndex].content = notifyShimContent
+      } else {
+        ;(files as any[]).push({ path: 'src/lib/notify.js', content: notifyShimContent })
+      }
+
+      const mainEntryCandidates = ['src/main.jsx', 'src/main.tsx', 'src/main.js', 'src/main.ts']
+      for (const entryPath of mainEntryCandidates) {
+        const entryFile = (files as any[]).find((f: any) => f.path === entryPath)
+        if (!entryFile || typeof entryFile.content !== 'string') continue
+        if (!entryFile.content.includes("import './lib/notify'") && !entryFile.content.includes('import "./lib/notify"')) {
+          entryFile.content = `import './lib/notify'\n${entryFile.content}`
+        }
+        break
+      }
+
+      for (const f of files as any[]) {
+        if (!f.content || typeof f.content !== 'string') continue
+        f.content = f.content.replace(/\balert\s*\(/g, 'window.alert(')
+      }
 
       // Auto-fix api import paths: LLM often generates wrong relative depth
       for (const f of files as any[]) {
@@ -752,7 +1121,29 @@ ${existingDeliverable.content}
       }
 
       console.log(`[${agentConfig.name}:${step.instanceId}] Parsed ${files.length} project files: ${files.map((f: any) => f.path).join(', ')}`)
-      projectJson = JSON.stringify(files)
+
+      // Run pre-publish validation checks
+      broadcast(conversationId, {
+        type: 'agent_thinking',
+        agentId: agentConfig.id,
+        agentName: agentConfig.name,
+        instanceId: step.instanceId,
+        step: 'Validando estructura, imports y estabilidad del preview.',
+      })
+      prePublishValidation = await runPrePublishChecks(files as { path: string; content: string }[])
+      if (!prePublishValidation.passed) {
+        console.warn(`[${agentConfig.name}:${step.instanceId}] Validation failed:`, prePublishValidation.checks.filter(c => c.status === 'fail').map(c => c.message).join(', '))
+        const stableFiles = await loadStableProjectFiles(conversationId, step.dependsOn?.[step.dependsOn.length - 1] ?? step.instanceId)
+        if (stableFiles.length > 0) {
+          projectJson = JSON.stringify(stableFiles)
+          console.warn(`[${agentConfig.name}:${step.instanceId}] Keeping the previous stable preview while this phase is repaired`)
+        } else {
+          previewStable = false
+          projectJson = JSON.stringify(files)
+        }
+      } else {
+        projectJson = JSON.stringify(files)
+      }
     } catch (err) {
       console.error(`[${agentConfig.name}:${step.instanceId}] Failed to parse multi-file JSON:`, err)
       // For dev v2, don't fall through to HTML — send error to user
@@ -762,7 +1153,7 @@ ${existingDeliverable.content}
 
     if (projectJson.startsWith('[')) {
       const deliverableType = 'code' as const
-      const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 60)}`
+      const deliverableTitle = `${agentConfig.name}: ${effectiveTask.slice(0, 60)}`
 
       const versionInfo = await getNextVersionInfo(conversationId, step.instanceId)
       const deliverableId = uuid()
@@ -780,8 +1171,37 @@ ${existingDeliverable.content}
           parentId: versionInfo.parentId,
         },
       })
+      await autoRegisterProjectAsset(conversationId, deliverable.id, step.instanceId, deliverableTitle, deliverable.botType, deliverableType)
 
+      createProjectAppBuildEventsForConversation(conversationId, {
+        deliverableId: deliverable.id,
+        instanceId: step.instanceId,
+        title: deliverable.title,
+        version: versionInfo.version,
+        validationPassed: prePublishValidation?.passed ?? null,
+        previewStable,
+      }).catch(err => console.error('[ProjectAppEvent] build emit failed:', err))
 
+      // Persist files to disk and track in DB
+      try {
+        const finalFiles = JSON.parse(projectJson) as { path: string; content: string }[]
+        if (prePublishValidation?.passed !== false) {
+          broadcast(conversationId, {
+            type: 'agent_thinking',
+            agentId: agentConfig.id,
+            agentName: agentConfig.name,
+            instanceId: step.instanceId,
+            step: 'Guardando archivos y preparando el workspace visual.',
+          })
+          await writeProjectFiles(conversationId, finalFiles)
+          await trackFiles(conversationId, deliverableId, finalFiles)
+          console.log(`[${agentConfig.name}:${step.instanceId}] Persisted ${finalFiles.length} files to disk and DB`)
+        } else {
+          console.warn(`[${agentConfig.name}:${step.instanceId}] Skipped persistence because the generated phase is not stable yet`)
+        }
+      } catch (storageErr) {
+        console.error(`[${agentConfig.name}:${step.instanceId}] File persistence error (non-fatal):`, storageErr)
+      }
 
       broadcast(conversationId, {
         type: 'deliverable',
@@ -794,7 +1214,11 @@ ${existingDeliverable.content}
           botType: deliverable.botType,
           version: versionInfo.version,
           versionCount: versionInfo.version,
+          validationPassed: prePublishValidation?.passed,
+          previewStable,
         },
+        validation: prePublishValidation,
+        previewStable,
       })
 
       // Update kanban task
@@ -878,8 +1302,99 @@ ${existingDeliverable.content}
     }
   }
 
+  // Detect if user requested a specific image model via [IMAGE_MODEL: xxx] tag (check task + history)
+  const allTextForImageModel = effectiveTask + ' ' + messages.map(m => m.content).join(' ')
+  const imageModelMatch2 = allTextForImageModel.match(/\[IMAGE_MODEL:\s*(\S+)\]/)
+  const requestedImageModel = imageModelMatch2?.[1] || null
+
+  // When user selected ANY image model, send images inline in chat (not canvas)
+  console.log(`[${agentConfig.name}:${step.instanceId}] Image mode check: toolImages=${toolImageUrls.length}, isVisual=${VISUAL_AGENT_IDS.includes(agentConfig.id)}, requestedModel=${requestedImageModel}, hasHtml=${!!extractHtmlBlock(agentFullText)}`)
+  if (toolImageUrls.length > 0 && VISUAL_AGENT_IDS.includes(agentConfig.id) && (requestedImageModel || !extractHtmlBlock(agentFullText))) {
+    const cdnBase = process.env.CDN_BASE_URL || `http://localhost:${process.env.PORT ?? '3002'}`
+    const imageMarkdown = toolImageUrls.map((url, i) => {
+      const fullUrl = url.startsWith('/') ? `${cdnBase}${url}` : url
+      return `![Imagen ${i + 1}](${fullUrl})`
+    }).join('\n\n')
+    // Strip HTML tags from agent text to get clean chat text
+    const chatText = agentFullText.replace(/<[^>]*>/g, '').replace(/\s{3,}/g, '\n\n').trim()
+    const fullChatText = (chatText ? chatText + '\n\n' : '') + imageMarkdown
+    console.log(`[${agentConfig.name}:${step.instanceId}] Sending ${toolImageUrls.length} images inline in chat (imageModel: ${requestedImageModel || 'default'})`)
+
+    const chatMsg = await prisma.message.create({
+      data: {
+        id: uuid(),
+        conversationId,
+        sender: agentConfig.name,
+        text: fullChatText,
+        type: 'agent',
+        botType: agentConfig.botType,
+      },
+    })
+
+    broadcast(conversationId, {
+      type: 'agent_end',
+      agentId: agentConfig.id,
+      instanceId: step.instanceId,
+      messageId: chatMsg.id,
+      fullText: fullChatText,
+      model: agentModelConfig.model,
+      inputTokens: agentUsage.inputTokens,
+      outputTokens: agentUsage.outputTokens,
+      creditsCost: agentCreditsCost,
+    })
+
+    if (existingTask) {
+      await prisma.kanbanTask.update({ where: { id: existingTask.id }, data: { status: 'done' } })
+      broadcast(conversationId, {
+        type: 'kanban_update',
+        task: { id: existingTask.id, title: existingTask.title, agent: existingTask.agent, status: 'done' as const, botType: existingTask.botType, instanceId: step.instanceId },
+      })
+    }
+    return
+  }
+
   let htmlBlock = extractHtmlBlock(agentFullText)
+  if (!htmlBlock && toolImageUrls.length > 0 && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
+    htmlBlock = buildVisualFallbackHtml(`${agentConfig.name}: ${effectiveTask.slice(0, 60)}`, toolImageUrls, isLogoLikeTask(effectiveTask))
+    console.log(`[${agentConfig.name}:${step.instanceId}] Built visual fallback HTML from ${toolImageUrls.length} tool images`)
+  }
   console.log(`[${agentConfig.name}:${step.instanceId}] HTML block: ${htmlBlock ? `YES (${htmlBlock.length} chars)` : 'NO - using text wrapper'}`)
+
+  // Visual agent returned only text (no HTML, no images) → send as chat message, not deliverable
+  if (!htmlBlock && toolImageUrls.length === 0 && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
+    console.log(`[${agentConfig.name}:${step.instanceId}] Text-only response from visual agent → sending as chat message`)
+    const chatMsg = await prisma.message.create({
+      data: {
+        id: uuid(),
+        conversationId,
+        sender: agentConfig.name,
+        text: agentFullText,
+        type: 'agent',
+        botType: agentConfig.botType,
+      },
+    })
+
+    broadcast(conversationId, {
+      type: 'agent_end',
+      agentId: agentConfig.id,
+      instanceId: step.instanceId,
+      messageId: chatMsg.id,
+      fullText: agentFullText,
+      model: agentModelConfig.model,
+      inputTokens: agentUsage.inputTokens,
+      outputTokens: agentUsage.outputTokens,
+      creditsCost: agentCreditsCost,
+    })
+
+    if (existingTask) {
+      await prisma.kanbanTask.update({ where: { id: existingTask.id }, data: { status: 'done' } })
+      broadcast(conversationId, {
+        type: 'kanban_update',
+        task: { id: existingTask.id, title: existingTask.title, agent: existingTask.agent, status: 'done' as const, botType: existingTask.botType, instanceId: step.instanceId },
+      })
+    }
+    return
+  }
 
   // Auto-fix validation errors for visual agents: 1 retry max, then sanitize
   if (htmlBlock && VISUAL_AGENT_IDS.includes(agentConfig.id)) {
@@ -953,7 +1468,7 @@ ${existingDeliverable.content}
   }
 
   const deliverableType = DELIVERABLE_TYPE_MAP[agentConfig.id] ?? 'report'
-  const deliverableTitle = `${agentConfig.name}: ${step.task.slice(0, 60)}`
+  const deliverableTitle = `${agentConfig.name}: ${effectiveTask.slice(0, 60)}`
 
   let deliverableContentRaw = htmlBlock ?? wrapTextAsHtml(agentFullText, agentConfig.name, agentConfig.role)
 
@@ -967,7 +1482,7 @@ ${existingDeliverable.content}
     deliverableContentRaw = deliverableContentRaw.replace('</body>', `${VISUAL_EDITOR_SCRIPT}\n</body>`)
 
     // Inject logo selection script for brand agent (logo deliverables)
-    if (agentConfig.id === 'brand') {
+    if (agentConfig.id === 'brand' || (agentConfig.id === 'web' && isLogoLikeTask(effectiveTask))) {
       deliverableContentRaw = deliverableContentRaw.replace('</body>', `${LOGO_SELECTION_SCRIPT}\n</body>`)
     }
   }
@@ -999,6 +1514,7 @@ ${existingDeliverable.content}
       parentId: versionInfo.parentId,
     },
   })
+  await autoRegisterProjectAsset(conversationId, deliverable.id, step.instanceId, deliverableTitle, deliverable.botType, deliverableType)
 
   broadcast(conversationId, {
     type: 'deliverable',

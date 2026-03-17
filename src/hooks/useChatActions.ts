@@ -1,4 +1,4 @@
-import { useState, useCallback, type FormEvent } from 'react'
+import { useState, useCallback, useEffect, type FormEvent } from 'react'
 import type { Message } from '../types'
 import type { StepApproval } from './usePlanFlow'
 
@@ -32,7 +32,7 @@ function getAuthHeaders(): Record<string, string> {
 
 interface ChatActionsDeps {
   conversationId: string | null
-  setConversationId: React.Dispatch<React.SetStateAction<string | null>>
+  setConversationId: (id: string | null) => void
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   setShowWelcome: React.Dispatch<React.SetStateAction<boolean>>
   setActiveAgents: React.Dispatch<React.SetStateAction<{ agentId: string; agentName: string; instanceId: string; task: string; status: 'working' | 'waiting' | 'done'; model?: string }[]>>
@@ -59,6 +59,10 @@ export interface UseChatActionsReturn {
   setInputText: React.Dispatch<React.SetStateAction<string>>
   selectedModel: string
   setSelectedModel: React.Dispatch<React.SetStateAction<string>>
+  selectedImageModel: string
+  setSelectedImageModel: React.Dispatch<React.SetStateAction<string>>
+  referenceImageUrl: string | null
+  setReferenceImageUrl: (url: string | null) => void
   handleSendMessage: (e: FormEvent, imageFile?: File) => Promise<void>
   handleAbort: () => Promise<void>
   sendRefineMessage: (text: string) => Promise<void>
@@ -77,8 +81,16 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
 
   const [inputText, setInputText] = useState('')
   const [selectedModel, setSelectedModel] = useState<string>('auto')
+  const [selectedImageModel, setSelectedImageModel] = useState<string>('auto')
+  const [referenceImageUrl, setReferenceImageUrlState] = useState<string | null>(null)
+  const setReferenceImageUrl = useCallback((url: string | null) => {
+    setReferenceImageUrlState(url);
+    (window as any).__pluryRefImage = url
+  }, [])
+  // Sync on mount
+  useEffect(() => { (window as any).__pluryRefImage = referenceImageUrl }, [])
 
-  const isRefineMode = !!(pendingStepApproval && ['web', 'video', 'dev'].includes(pendingStepApproval.agentId))
+  const isRefineMode = !!(pendingStepApproval && ['web', 'brand', 'video', 'dev'].includes(pendingStepApproval.agentId))
 
   const handleAbort = useCallback(async () => {
     if (!conversationId) return
@@ -102,7 +114,8 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
 
   const handleSendMessage = useCallback(async (e: FormEvent, imageFile?: File) => {
     e.preventDefault()
-    if (!inputText.trim()) return
+    const refUrl: string | null = (window as any).__pluryRefImage || null
+    if (!inputText.trim() && !refUrl && !imageFile) return
 
     // Refine mode
     if (isRefineMode && pendingStepApproval && conversationId) {
@@ -124,6 +137,10 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
 
       setIsRefining(true)
       setRefiningAgentName(targetApproval.agentName)
+      setThinkingSteps([])
+      setActiveAgents([])
+      setStreamingText('')
+      setStreamingAgent(null)
       // Remove the refined approval from the list, keep others
       setPendingStepApprovals(prev => prev.filter(a => a.instanceId !== targetApproval.instanceId))
       // Set the next available approval as active, or null
@@ -134,10 +151,14 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
       try {
         // Include selected logo info if available
         const logoInfo = (window as any).__selectedLogoForRefine
+        const imageInfo = (window as any).__selectedImageForRefine
         const refineBody: Record<string, unknown> = { conversationId, text: msgText, instanceId: targetApproval.instanceId }
         if (logoInfo) {
           refineBody.selectedLogoIndex = logoInfo.index
           refineBody.selectedLogoSrc = logoInfo.src
+        }
+        if (imageInfo?.src) {
+          refineBody.selectedImageSrc = imageInfo.src
         }
 
         const res = await fetch(`${API_BASE}/chat/refine-step`, {
@@ -148,6 +169,7 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
         if (res.ok) {
           const data = await res.json()
           setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.messageId } : m))
+          ;(window as any).__selectedImageForRefine = null
         }
       } catch (err) {
         console.error('[Chat] Refine error:', err)
@@ -158,7 +180,8 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
     // Normal flow
     if (isCoordinating || pendingApproval) return
 
-    const msgText = inputText.trim()
+    const rawText = inputText.trim()
+    const msgText = rawText || (refUrl ? 'Genera 3 variaciones usando esta imagen como referencia' : '')
     const tempId = `temp-${Date.now()}`
 
     let uploadedImageUrl: string | undefined
@@ -176,9 +199,10 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
       }
     }
 
-    const userMsg: Message = { id: tempId, sender: 'Tu', text: msgText, type: 'user', imageUrl: uploadedImageUrl }
+    const userMsg: Message = { id: tempId, sender: 'Tu', text: msgText, type: 'user', imageUrl: uploadedImageUrl || refUrl || undefined }
     setMessages(prev => [...prev, userMsg])
     setInputText('')
+    setReferenceImageUrl(null)
     setShowWelcome(false)
     setActiveAgents([])
 
@@ -201,7 +225,7 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
       const res = await fetch(`${API_BASE}/chat/send`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ conversationId: convId, text: msgText, ...(selectedModel !== 'auto' ? { modelOverride: selectedModel } : {}), ...(uploadedImageUrl ? { imageUrl: uploadedImageUrl } : {}) }),
+        body: JSON.stringify({ conversationId: convId, text: msgText + (refUrl ? `\n\n[Imagen de referencia: ${refUrl}]` : '') + (selectedImageModel !== 'auto' ? `\n\n[IMAGE_MODEL: ${selectedImageModel}]` : ''), ...(selectedModel !== 'auto' ? { modelOverride: selectedModel } : {}), ...(uploadedImageUrl || refUrl ? { imageUrl: uploadedImageUrl || refUrl } : {}) }),
       })
 
       if (!res.ok) {
@@ -234,7 +258,7 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
         botType: 'base',
       }])
     }
-  }, [inputText, isRefineMode, pendingStepApproval, conversationId, isCoordinating, pendingApproval, selectedModel, setMessages, setInputText, setShowWelcome, setActiveAgents, setIsRefining, setRefiningAgentName, setPendingStepApproval, setConversationId, connectSSE, closeSSE, fetchConversations])
+  }, [inputText, isRefineMode, pendingStepApproval, conversationId, isCoordinating, pendingApproval, selectedModel, selectedImageModel, referenceImageUrl, setMessages, setInputText, setShowWelcome, setActiveAgents, setIsRefining, setRefiningAgentName, setPendingStepApproval, setConversationId, connectSSE, closeSSE, fetchConversations])
 
   const sendRefineMessage = useCallback(async (text: string) => {
     if (!conversationId) return
@@ -256,6 +280,8 @@ export function useChatActions(deps: ChatActionsDeps): UseChatActionsReturn {
   return {
     inputText, setInputText,
     selectedModel, setSelectedModel,
+    selectedImageModel, setSelectedImageModel,
+    referenceImageUrl, setReferenceImageUrl,
     handleSendMessage,
     handleAbort,
     sendRefineMessage,

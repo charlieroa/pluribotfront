@@ -256,8 +256,8 @@ export function buildCodeProjectHtml(content: string): string {
       // export { X } — just remove
       if (/^export\s+\{/.test(trimmed)) continue
 
-      // export function/const/let/var/class
-      if (/^export\s+(function|const|let|var|class)\s/.test(trimmed)) {
+      // export function/const/let/var/class/async
+      if (/^export\s+(async\s+)?(function|const|let|var|class)\s/.test(trimmed)) {
         processed.push(line.replace(/^(\s*)export\s+/, '$1'))
         continue
       }

@@ -1,14 +1,10 @@
 import { useState } from 'react'
 import LandingNavbar from './LandingNavbar'
 import HeroSection from './HeroSection'
-import CompaniesBar from './CompaniesBar'
 import CommunityCarousel from './CommunityCarousel'
 import HowItWorksSection from './HowItWorksSection'
 import FeaturesSection from './FeaturesSection'
 import SeniorSection from './SeniorSection'
-import AgencySection from './AgencySection'
-import TestimonialsSection from './TestimonialsSection'
-import ShowcaseSection from './ShowcaseSection'
 import PricingSection from './PricingSection'
 import CtaSection from './CtaSection'
 import LandingFooter from './LandingFooter'
@@ -50,14 +46,10 @@ const LandingPage = () => {
       <div id="landing-scroll" className="h-screen overflow-y-auto scroll-smooth">
         <LandingNavbar onLogin={openLogin} onRegister={openRegister} />
         <HeroSection onPromptClick={handlePromptClick} />
-        <CompaniesBar />
-        <CommunityCarousel onShowGallery={() => setShowGallery(true)} />
-        <HowItWorksSection />
         <FeaturesSection />
+        <HowItWorksSection />
+        <CommunityCarousel onShowGallery={() => setShowGallery(true)} />
         <SeniorSection onRegister={openRegister} />
-        <AgencySection onRegister={openRegister} />
-        <TestimonialsSection />
-        <ShowcaseSection />
         <PricingSection onRegister={openRegister} />
         <CtaSection onRegister={openRegister} />
         <LandingFooter />

@@ -242,21 +242,30 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
         let attachment: Message['attachment'] = undefined
 
         if (pendingDeliverable) {
+          const deliverableHasIssues = pendingDeliverable.botType === 'dev' && pendingDeliverable.validationPassed === false
           const htmlIdx = (data.fullText as string).indexOf('```html')
           if (htmlIdx > 0) {
             msgText = (data.fullText as string).substring(0, htmlIdx).trim()
           } else {
-            msgText = `${agentName} completo su trabajo.`
+            msgText = deliverableHasIssues
+              ? 'Se detectaron problemas en esta fase. Mantuvimos visible la ultima version estable mientras se corrige el resultado.'
+              : `${agentName} completo su trabajo.`
           }
 
-          // For design deliverables (Pixel), extract image URLs and show inline
-          if (pendingDeliverable.type === 'design' && pendingDeliverable.content) {
-            // Match any image with /uploads/ path (generated images, stock photos, etc.)
-            const imgRegex = /<img[^>]+src=["']([^"']*\/uploads\/[^"']+)["']/g
+          if (deliverableHasIssues || pendingDeliverable.previewStable === false) {
+            attachment = undefined
+          } else if (pendingDeliverable.type === 'design' && pendingDeliverable.content) {
+            // For design deliverables (Pixel), extract image URLs and show inline
+            // Match generated images from /uploads/, Ideogram CDN, or other providers
+            const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi
             const imageUrls: string[] = []
             let match
             while ((match = imgRegex.exec(pendingDeliverable.content)) !== null) {
-              imageUrls.push(match[1])
+              const url = match[1]
+              // Only include actual generated/uploaded images, skip icons/placeholders/CDN libs
+              if (url.includes('/uploads/') || url.includes('ideogram.ai/') || url.includes('replicate.')) {
+                imageUrls.push(url)
+              }
             }
 
             if (imageUrls.length > 0) {
@@ -268,18 +277,20 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
                 deliverable: pendingDeliverable,
               }
             } else {
+              const pType = pendingDeliverable.type as string
               attachment = {
                 type: 'preview',
                 title: pendingDeliverable.title,
-                content: 'Ver resultado en el canvas',
+                content: pType === 'code' ? 'Proyecto listo' : pType === 'video' ? 'Video generado' : pType === 'design' ? 'Propuesta visual' : 'Ver resultado',
                 deliverable: pendingDeliverable,
               }
             }
           } else {
+            const pType = pendingDeliverable.type as string
             attachment = {
               type: 'preview',
               title: pendingDeliverable.title,
-              content: 'Ver resultado en el canvas',
+              content: pType === 'code' ? 'Proyecto listo' : pType === 'video' ? 'Video generado' : pType === 'design' ? 'Propuesta visual' : 'Ver resultado',
               deliverable: pendingDeliverable,
             }
           }
@@ -302,6 +313,10 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
         setThinkingSteps([])
         setIsRefining(false)
         setRefiningAgentName(null)
+        if (pendingDeliverable) {
+          setQuickReplies([])
+          setProjectSuggest(null)
+        }
         setActiveAgents(prev =>
           prev.map(a => a.instanceId === key ? { ...a, status: 'done' as const } : a)
         )
@@ -379,20 +394,6 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
           setTimeout(() => setCompletionFlash(false), 3000)
         }
 
-        if (hasNext) {
-          // Auto-continue to next agent after a short delay
-          setTimeout(async () => {
-            try {
-              await fetch(`${API_BASE}/chat/approve-step`, {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify({ conversationId: stepConvId, approved: true }),
-              })
-            } catch (err) {
-              console.error('[Chat] Auto-approve step error:', err)
-            }
-          }, 1500)
-        }
         break
       }
 
@@ -422,15 +423,23 @@ export function usePlanFlow(deps: PlanFlowDeps): UsePlanFlowReturn {
 
       case 'deliverable':
         if (data.deliverable) {
-          const del = data.deliverable as Deliverable
+          const del = {
+            ...(data.deliverable as Deliverable),
+            validationPassed: data.validation ? !!(data.validation as { passed?: boolean }).passed : undefined,
+            previewStable: data.previewStable as boolean | undefined,
+          } as Deliverable
           latestDeliverableRef.current = del
+          setQuickReplies([])
+          setProjectSuggest(null)
 
           // For design deliverables with generated images, DON'T open workspace panel
           // — they will show inline as image_grid in the agent_end handler
           const hasGeneratedImages = del.type === 'design' && del.content &&
-            /\/uploads\/generated\//.test(del.content)
+            /<img[^>]+src=["'][^"']*(?:\/uploads\/|ideogram\.ai\/|replicate\.)[^"']+["']/i.test(del.content)
 
-          if (!hasGeneratedImages) {
+          const shouldAutoOpen = !hasGeneratedImages && !(del.botType === 'dev' && del.validationPassed === false)
+
+          if (shouldAutoOpen) {
             onDeliverable?.(del)
           }
         }

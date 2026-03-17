@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Globe, Palette, Search, Film, TrendingUp, Code2, Zap, ShoppingBag, MessageSquare } from 'lucide-react'
+import { Layers3, PenTool, MonitorSmartphone, Megaphone, Sparkles, Workflow } from 'lucide-react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
@@ -7,59 +7,41 @@ gsap.registerPlugin(ScrollTrigger)
 
 const features = [
   {
-    icon: Code2,
-    title: 'Webs y apps en segundos',
-    desc: 'Como Lovable o v0, pero en espanol y con todo tu equipo creativo incluido. Genera aplicaciones completas con HTML, CSS, JS y despliegalas al instante.',
+    icon: Layers3,
+    title: 'Branding, contenido y producto unidos',
+    desc: 'La misma idea puede terminar en identidad visual, mensajes, piezas y una web o app sin rehacer el proceso.',
     accent: 'from-[#a78bfa] to-[#8b5cf6]',
     span: true,
   },
   {
-    icon: Palette,
-    title: 'Branding completo',
-    desc: 'Logos, paletas de color, tipografia y manual de marca generados con IA en minutos.',
+    icon: PenTool,
+    title: 'Branding listo para usar',
+    desc: 'Logo, tono, sistema visual y piezas base para darle forma al proyecto desde el principio.',
     accent: 'from-pink-500 to-rose-500',
   },
   {
-    icon: Search,
-    title: 'Auditoria SEO',
-    desc: 'Analisis tecnico, keywords, backlinks y plan de contenido optimizado para rankear.',
+    icon: Sparkles,
+    title: 'Contenido para salir a mercado',
+    desc: 'Copies, anuncios, mensajes y assets para presentar, vender o comunicar lo que estas construyendo.',
     accent: 'from-blue-500 to-cyan-500',
   },
   {
-    icon: TrendingUp,
-    title: 'Campanas de ads',
-    desc: 'Creativos, copy y segmentacion para Meta Ads y Google Ads listos para publicar.',
+    icon: MonitorSmartphone,
+    title: 'Webs y apps dentro del mismo flujo',
+    desc: 'Landing pages, sitios y productos digitales sin cambiar de herramienta ni perder continuidad.',
     accent: 'from-emerald-500 to-green-500',
   },
   {
-    icon: Film,
-    title: 'Video con IA',
-    desc: 'Reels, spots y videos promocionales generados con secuencias de nodos.',
+    icon: Megaphone,
+    title: 'Lanzamiento y distribucion',
+    desc: 'Activos para poner el proyecto afuera: campanas, piezas y entregables listos para publicar.',
     accent: 'from-red-500 to-orange-500',
   },
   {
-    icon: ShoppingBag,
-    title: 'Conexion e-commerce',
-    desc: 'Conecta Shopify, WordPress o WooCommerce. Genera tiendas completas listas para vender.',
+    icon: Workflow,
+    title: 'Un sistema para iterar',
+    desc: 'Cambias, corriges y escalas desde el mismo lugar. Si hace falta, pides respaldo humano sin romper el flujo.',
     accent: 'from-amber-500 to-yellow-500',
-  },
-  {
-    icon: Globe,
-    title: 'Deploy con dominio propio',
-    desc: 'Un click y tu app esta live. Dominio personalizado, SSL y hosting incluido.',
-    accent: 'from-[#a78bfa] to-[#a78bfa]',
-  },
-  {
-    icon: MessageSquare,
-    title: 'Pide por WhatsApp',
-    desc: 'Envia tu pedido por WhatsApp y los agentes trabajan para ti. Recibe resultados directo al chat.',
-    accent: 'from-green-500 to-emerald-500',
-  },
-  {
-    icon: Zap,
-    title: 'Edicion visual en vivo',
-    desc: 'Ajusta colores, textos e imagenes con controles visuales. Preview en tiempo real.',
-    accent: 'from-cyan-500 to-blue-500',
   },
 ]
 
@@ -83,21 +65,23 @@ const FeaturesSection = () => {
     <section ref={sectionRef} id="soluciones" className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
         <div className="feat-anim text-center mb-16">
-          <p className="text-[12px] text-[#a78bfa] uppercase tracking-[0.15em] font-semibold mb-3">Soluciones</p>
+          <p className="text-[12px] text-[#a78bfa] uppercase tracking-[0.15em] font-semibold mb-3">Que es Plury</p>
           <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.03em] text-white mb-4">
-            Todo tu negocio digital en un solo lugar
+            Una plataforma para construir
+            <br />
+            proyectos digitales completos
           </h2>
-          <p className="text-[16px] text-zinc-400 max-w-lg mx-auto">
-            9 capacidades. 7 agentes especializados. Una sola plataforma.
+          <p className="text-[16px] text-zinc-400 max-w-2xl mx-auto">
+            Empiezas con una idea y Plury coordina lo necesario para volverla marca, contenido y producto.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {features.map((feat, i) => {
+          {features.map((feat) => {
             const Icon = feat.icon
             return (
               <div
-                key={i}
+                key={feat.title}
                 className={`feat-anim group bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all cursor-default ${feat.span ? 'sm:col-span-2 lg:col-span-1' : ''}`}
               >
                 <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feat.accent} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>

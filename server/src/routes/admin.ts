@@ -6,7 +6,7 @@ import { requireRole } from '../middleware/auth.js'
 import { broadcast } from '../services/sse.js'
 import { adminGrantCredits, resetCreditsForPlan } from '../services/credit-tracker.js'
 import { plans } from '../config/plans.js'
-import { calculateRealCost, toolApiCosts, getProviderForModel } from '../config/api-costs.js'
+import { calculateRealCost, toolApiCosts, getProviderForModel, toolProviderMap } from '../config/api-costs.js'
 import { getProviderHealthStatus, invalidateHealthCache } from '../services/provider-health.js'
 import { agentConfigs } from '../config/agents.js'
 import { getBudgets, setBudget, clearBudget, calculateRemaining, type BudgetProvider } from '../config/provider-budgets.js'
@@ -65,6 +65,10 @@ router.delete('/api-keys/:id', authMiddleware, async (req, res) => {
 router.get('/conversations/flagged', adminAuth, async (req, res) => {
   try {
     const status = req.query.status as string | undefined
+    const adminUser = await prisma.user.findUnique({
+      where: { id: req.auth!.userId },
+      select: { role: true, organizationId: true },
+    })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {}
@@ -81,12 +85,16 @@ router.get('/conversations/flagged', adminAuth, async (req, res) => {
       where.needsHumanReview = true
     }
 
-    if (req.userRole === 'agent') {
+    if (adminUser?.role === 'agent') {
       where.OR = [
         { assignedAgentId: req.auth!.userId },
         { assignedAgentId: null, needsHumanReview: true },
       ]
       delete where.assignedAgentId
+    }
+
+    if (adminUser?.role !== 'superadmin' && adminUser?.organizationId) {
+      where.user = { organizationId: adminUser.organizationId }
     }
 
     const conversations = await prisma.conversation.findMany({
@@ -651,7 +659,7 @@ router.get('/costs', superadminAuth, async (_req, res) => {
     for (const entry of toolLedgerEntries) {
       // Extract tool name from description (e.g., "Tool: generate_image" or similar)
       const toolMatch = entry.description.match(/(?:Tool|Herramienta):\s*(\w+)/i)
-        ?? entry.description.match(/(generate_image|generate_video|search_stock_photo|search_web|run_code|deploy_site)/i)
+        ?? entry.description.match(/(generate_image|generate_video|generate_3d_model|search_stock_photo|search_web|run_code|deploy_site)/i)
       const toolName = toolMatch ? toolMatch[1] : 'unknown'
 
       if (!toolCosts[toolName]) {
@@ -701,17 +709,26 @@ router.get('/costs', superadminAuth, async (_req, res) => {
     // 7. Calculate budget remaining per provider
     const budgets = getBudgets()
 
-    // Midjourney cost = sum of generate_image tool costs
-    const midjourneyToolData = toolCosts['generate_image']
-    const midjourneyCost = midjourneyToolData ? midjourneyToolData.cost : 0
-
     const budgetStatus: Record<string, { budget: number; used: number; remaining: number; alert: boolean; setAt: string } | null> = {}
     const anthropicCost = byProvider['anthropic']?.cost ?? 0
     const anthropicResult = calculateRemaining(budgets.anthropic, anthropicCost)
     budgetStatus['anthropic'] = anthropicResult ? { ...anthropicResult, budget: budgets.anthropic!.budget, setAt: budgets.anthropic!.setAt } : null
-    // Midjourney budget
-    const mjResult = calculateRemaining(budgets.midjourney, midjourneyCost)
-    budgetStatus['midjourney'] = mjResult ? { ...mjResult, budget: budgets.midjourney!.budget, setAt: budgets.midjourney!.setAt } : null
+
+    const toolCostByProvider: Record<string, number> = {}
+    for (const [toolName, info] of Object.entries(toolCosts)) {
+      const provider = toolProviderMap[toolName]
+      if (!provider) continue
+      toolCostByProvider[provider] = (toolCostByProvider[provider] ?? 0) + info.cost
+    }
+
+    for (const provider of ['ideogram', 'ltx', 'meshy'] as const) {
+      const budget = budgets[provider]
+      const currentCost = toolCostByProvider[provider] ?? 0
+      const result = calculateRemaining(budget, currentCost)
+      budgetStatus[provider] = result && budget
+        ? { ...result, budget: budget.budget, setAt: budget.setAt }
+        : null
+    }
 
     // 8. Cache stats from UsageRecord
     const cacheAgg = await prisma.usageRecord.aggregate({
@@ -804,7 +821,7 @@ router.get('/budgets', superadminAuth, async (_req, res) => {
 router.post('/budgets', superadminAuth, async (req, res) => {
   try {
     const { provider, budget } = req.body as { provider: BudgetProvider; budget: number }
-    if (!provider || !['anthropic', 'midjourney'].includes(provider)) {
+    if (!provider || !['anthropic', 'ideogram', 'ltx', 'meshy'].includes(provider)) {
       res.status(400).json({ error: 'Provider invalido' })
       return
     }
@@ -820,15 +837,18 @@ router.post('/budgets', superadminAuth, async (req, res) => {
     })
 
     let currentCost = 0
-    if (provider === 'midjourney') {
-      // Midjourney cost from tool calls
+    if (provider !== 'anthropic') {
       const toolEntries = await prisma.creditLedger.findMany({
         where: { type: 'tool_consumption' },
         select: { description: true },
       })
-      currentCost = toolEntries.filter(e =>
-        e.description.includes('generate_image')
-      ).length * 0.05
+      currentCost = toolEntries.reduce((sum, entry) => {
+        const toolMatch = entry.description.match(/tool:(\w+)/i)
+          ?? entry.description.match(/(generate_image|generate_video|generate_3d_model|search_stock_photo)/i)
+        const toolName = toolMatch?.[1]
+        if (!toolName || toolProviderMap[toolName] !== provider) return sum
+        return sum + (toolApiCosts[toolName] ?? 0)
+      }, 0)
     } else {
       for (const record of usageByModel) {
         const { calculateRealCost: calc } = await import('../config/api-costs.js')
@@ -846,7 +866,7 @@ router.post('/budgets', superadminAuth, async (req, res) => {
 
 router.delete('/budgets/:provider', superadminAuth, async (req, res) => {
   const provider = req.params.provider as BudgetProvider
-  if (!['anthropic', 'midjourney'].includes(provider)) {
+  if (!['anthropic', 'ideogram', 'ltx', 'meshy'].includes(provider)) {
     res.status(400).json({ error: 'Provider invalido' })
     return
   }
@@ -1045,6 +1065,13 @@ router.post('/provider-status/refresh', authMiddleware, async (_req, res) => {
 
 // ─── Published Sites Management ───
 
+function toAbsoluteAssetUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (/^https?:\/\//i.test(url)) return url
+  const base = process.env.DEPLOY_BASE_URL || `https://${process.env.APP_DOMAIN || 'plury.co'}`
+  return `${base.replace(/\/$/, '')}${url.startsWith('/') ? url : `/${url}`}`
+}
+
 router.get('/published', adminAuth, async (_req, res) => {
   try {
     const sites = await prisma.deliverable.findMany({
@@ -1081,7 +1108,7 @@ router.get('/published', adminAuth, async (_req, res) => {
       url: `https://${s.publishSlug}.plury.co`,
       publishedAt: s.publishedAt,
       isPublic: s.isPublic,
-      thumbnailUrl: s.thumbnailUrl,
+      thumbnailUrl: toAbsoluteAssetUrl(s.thumbnailUrl),
       customDomain: s.customDomain,
       customDomainStatus: s.customDomainStatus,
       createdAt: s.createdAt,
@@ -1161,7 +1188,7 @@ router.post('/published/:id/screenshot', adminAuth, async (req, res) => {
     })
 
     console.log(`[Admin] Screenshot recaptured for ${siteUrl} → ${thumbnailUrl}`)
-    res.json({ thumbnailUrl })
+    res.json({ thumbnailUrl: toAbsoluteAssetUrl(thumbnailUrl) })
   } catch (err) {
     console.error('[Admin] Screenshot recapture error:', err)
     res.status(500).json({ error: 'Error al recapturar screenshot' })

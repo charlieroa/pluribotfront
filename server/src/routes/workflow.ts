@@ -1,5 +1,4 @@
 import { Router } from 'express'
-import { fal } from '@fal-ai/client'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -12,6 +11,7 @@ const __dirname = path.dirname(__filename)
 const router = Router()
 
 const LTX_API_BASE = 'https://api.ltx.video/v1'
+type SupportedAspectRatio = '16:9' | '9:16'
 
 const videosDir = path.resolve(__dirname, '../../uploads/videos')
 if (!fs.existsSync(videosDir)) {
@@ -57,23 +57,26 @@ function toPublicUrl(url: string): string {
   return `${base}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
-function initFal() {
-  const key = process.env.FAL_KEY
-  if (!key) throw new Error('FAL_KEY not configured')
-  fal.config({ credentials: key })
-}
-
-const ASPECT_RATIO_IMAGE: Record<string, string> = {
-  '1:1': 'square_hd',
-  '16:9': 'landscape_16_9',
-  '9:16': 'portrait_16_9',
-  '4:3': 'landscape_4_3',
-  '3:4': 'portrait_4_3',
-}
-
 function clampDuration(value: string): '3' | '5' | '10' {
   if (value === '3' || value === '5' || value === '10') return value
   return '5'
+}
+
+function normalizeLtxAspectRatio(value: string): { requested: string; resolved: SupportedAspectRatio; fallbackApplied: boolean } {
+  if (value === '9:16') return { requested: value, resolved: '9:16', fallbackApplied: false }
+  if (value === '16:9') return { requested: value, resolved: '16:9', fallbackApplied: false }
+  return { requested: value, resolved: '16:9', fallbackApplied: true }
+}
+
+function normalizeLtxResolution(value: SupportedAspectRatio): string {
+  return value === '9:16' ? '1080x1920' : '1920x1080'
+}
+
+function normalizeLtxDuration(value: string | number): 6 | 8 | 10 {
+  const parsed = typeof value === 'number' ? value : parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed <= 6) return 6
+  if (parsed <= 8) return 8
+  return 10
 }
 
 function uid(prefix: string): string {
@@ -266,7 +269,7 @@ function buildWorkflowDraft(message: string) {
       data: {
         title: 'Render',
         format: 'mp4',
-        resolution: '1080p',
+        resolution: aspectRatio === '9:16' ? '1080x1920' : '1920x1080',
         aspectRatio,
       },
     },
@@ -307,41 +310,14 @@ function buildWorkflowDraft(message: string) {
   }
 }
 
-router.post('/generate-image', authMiddleware, async (req, res) => {
-  try {
-    initFal()
-    const { prompt, aspectRatio = '1:1' } = req.body
-
-    const result = await fal.subscribe('fal-ai/flux-2-flex', {
-      input: {
-        prompt,
-        image_size: (ASPECT_RATIO_IMAGE[aspectRatio] || 'square_hd') as 'square_hd',
-      },
-    })
-
-    const imageUrl = (result.data as any)?.images?.[0]?.url
-    if (!imageUrl) return res.status(500).json({ error: 'No image generated' })
-
-    const imageRes = await fetch(imageUrl)
-    const buffer = Buffer.from(await imageRes.arrayBuffer())
-    const filename = `wf-img-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`
-    const storage = getStorageProvider()
-    const url = await storage.upload(buffer, filename, 'image/png')
-
-    res.json({ success: true, url })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error('[Workflow/Image]', msg)
-    res.status(500).json({ error: msg })
-  }
-})
-
 router.post('/text-to-video', authMiddleware, async (req, res) => {
   try {
     const ltxKey = process.env.LTX_API_KEY
     if (!ltxKey) return res.status(500).json({ error: 'LTX_API_KEY not configured' })
 
     const { prompt, aspectRatio = '16:9', duration = '5' } = req.body
+    const normalizedAspect = normalizeLtxAspectRatio(aspectRatio)
+    const normalizedDuration = normalizeLtxDuration(duration)
 
     const ltxRes = await fetch(`${LTX_API_BASE}/text-to-video`, {
       method: 'POST',
@@ -352,8 +328,8 @@ router.post('/text-to-video', authMiddleware, async (req, res) => {
       body: JSON.stringify({
         prompt,
         model: 'ltx-2-3-fast',
-        duration: parseInt(duration, 10),
-        resolution: '1080p',
+        duration: normalizedDuration,
+        resolution: normalizeLtxResolution(normalizedAspect.resolved),
         fps: 24,
         generate_audio: true,
       }),
@@ -369,7 +345,14 @@ router.post('/text-to-video', authMiddleware, async (req, res) => {
     const storage = getStorageProvider()
     const url = await storage.upload(buffer, filename, 'video/mp4')
 
-    res.json({ success: true, url })
+    res.json({
+      success: true,
+      url,
+      aspectRatio: normalizedAspect.resolved,
+      requestedAspectRatio: normalizedAspect.requested,
+      duration: normalizedDuration,
+      ...(normalizedAspect.fallbackApplied ? { note: 'Square video fallback applied as 16:9 for ltx-2-3-fast.' } : {}),
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Workflow/TextToVideo]', msg)
@@ -383,6 +366,8 @@ router.post('/image-to-video', authMiddleware, async (req, res) => {
     if (!ltxKey) return res.status(500).json({ error: 'LTX_API_KEY not configured' })
 
     const { imageUrl, prompt = '', aspectRatio = '16:9', duration = '5' } = req.body
+    const normalizedAspect = normalizeLtxAspectRatio(aspectRatio)
+    const normalizedDuration = normalizeLtxDuration(duration)
 
     if (!imageUrl) return res.status(400).json({ error: 'imageUrl required' })
 
@@ -399,8 +384,8 @@ router.post('/image-to-video', authMiddleware, async (req, res) => {
         prompt,
         image_uri: publicImageUrl,
         model: 'ltx-2-3-fast',
-        duration: parseInt(duration, 10),
-        resolution: '1080p',
+        duration: normalizedDuration,
+        resolution: normalizeLtxResolution(normalizedAspect.resolved),
         fps: 24,
         generate_audio: true,
       }),
@@ -416,7 +401,14 @@ router.post('/image-to-video', authMiddleware, async (req, res) => {
     const storage = getStorageProvider()
     const url = await storage.upload(buffer, filename, 'video/mp4')
 
-    res.json({ success: true, url })
+    res.json({
+      success: true,
+      url,
+      aspectRatio: normalizedAspect.resolved,
+      requestedAspectRatio: normalizedAspect.requested,
+      duration: normalizedDuration,
+      ...(normalizedAspect.fallbackApplied ? { note: 'Square video fallback applied as 16:9 for ltx-2-3-fast.' } : {}),
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[Workflow/ImageToVideo]', msg)

@@ -46,7 +46,7 @@ router.post('/register', async (req, res) => {
   })
 
   // Auto-activate all bots and mark onboarding as done
-  const allBotIds = ['seo', 'web', 'ads', 'video', 'dev']
+  const allBotIds = ['seo', 'web', 'voxel', 'ads', 'video', 'dev']
   await Promise.all([
     prisma.user.update({ where: { id: user.id }, data: { onboardingDone: true } }),
     ...allBotIds.map(botId =>

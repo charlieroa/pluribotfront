@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { LayoutGrid, Navigation, Image, Star, DollarSign, MessageSquare, Zap, Footprints, ChevronDown, Eye, EyeOff, Palette, RefreshCw, Wand2 } from 'lucide-react'
+import { useState } from 'react'
+import { LayoutGrid, Navigation, Image, Star, DollarSign, Zap, Footprints, ChevronDown, Eye, EyeOff, RefreshCw, Wand2 } from 'lucide-react'
 
 export interface DetectedSection {
   id: string

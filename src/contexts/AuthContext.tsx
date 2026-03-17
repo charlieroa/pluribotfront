@@ -12,7 +12,7 @@ interface User {
   creditBalance?: number
 }
 
-const ALL_BOT_IDS = ['seo', 'web', 'ads', 'dev', 'video']
+const ALL_BOT_IDS = ['seo', 'web', 'voxel', 'ads', 'dev', 'video']
 
 interface AuthContextValue {
   user: User | null
@@ -28,7 +28,7 @@ interface AuthContextValue {
   completeOnboarding: (profession: string, botIds: string[]) => Promise<void>
   upgradeToAgency: () => Promise<void>
   downgradeFromAgency: () => Promise<void>
-  changePlan: (planId: string) => Promise<void>
+  changePlan: (planId: string) => Promise<{ redirected?: boolean } | void>
   updateCreditBalance: (balance: number) => void
 }
 
@@ -224,8 +224,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data.error || 'Error al cambiar de plan')
       }
       const data = await res.json()
+      if (data.requiresRedirect && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+        return { redirected: true }
+      }
       setUser(data.user)
       localStorage.setItem('plury_user', JSON.stringify(data.user))
+      return { redirected: false }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       setError(msg)

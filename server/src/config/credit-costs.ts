@@ -13,7 +13,12 @@ const modelCosts: Record<string, ModelCost> = {
 
 const toolCosts: Record<string, number> = {
   generate_image:      10,
+  edit_image:          10,
+  reframe_image:       10,
+  upscale_image:        5,
+  describe_image:       2,
   generate_video:      30,
+  generate_3d_model:   40,
   search_stock_photo:   0,
   search_web:           0,
   run_code:             0,

@@ -3,6 +3,7 @@ import { prisma } from '../db/client.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { resetCreditsForPlan } from '../services/credit-tracker.js'
 import { getPlan } from '../config/plans.js'
+import { createPlanCheckout, isStripeConfigured } from '../services/stripe.js'
 
 const router = Router()
 
@@ -72,7 +73,7 @@ router.post('/onboarding', async (req, res) => {
 
     // Create bot activations
     if (activeBots && activeBots.length > 0) {
-      const allBotIds = ['seo', 'web', 'ads', 'dev', 'video']
+      const allBotIds = ['seo', 'web', 'voxel', 'ads', 'dev', 'video']
       for (const botId of allBotIds) {
         await prisma.userBot.upsert({
           where: { userId_botId: { userId, botId } },
@@ -235,6 +236,23 @@ router.post('/change-plan', async (req, res) => {
     // Already on this plan
     if (user.planId === planId) {
       res.status(400).json({ error: 'Ya estás en este plan' })
+      return
+    }
+
+    if (plan.price > 0 && planId !== 'starter') {
+      if (!isStripeConfigured()) {
+        res.status(503).json({ error: 'Stripe no esta configurado. No es posible cambiar a un plan pago todavia.' })
+        return
+      }
+
+      const checkout = await createPlanCheckout(userId, planId)
+      res.json({
+        success: true,
+        requiresRedirect: true,
+        checkoutId: checkout.checkoutId,
+        checkoutUrl: checkout.checkoutUrl,
+        targetPlanId: planId,
+      })
       return
     }
 

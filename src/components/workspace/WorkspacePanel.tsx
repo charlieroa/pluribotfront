@@ -8,10 +8,12 @@ import 'highlight.js/styles/github-dark.css'
 import type { Deliverable } from '../../types'
 import type { SelectedElement } from './VisualEditToolbar'
 import UnsplashModal from './UnsplashModal'
+import ImageEditor from './ImageEditor'
 import VersionSelector from './VersionSelector'
 import DiffModal from './DiffModal'
 import PublishModal from './PublishModal'
 import GitHubPushModal from './GitHubPushModal'
+import { lazyWithReload } from '../../utils/lazyWithReload'
 
 hljs.registerLanguage('xml', xml)
 hljs.registerLanguage('javascript', javascript)
@@ -87,6 +89,8 @@ const isImageDeliverable = (d: Deliverable): boolean => {
   // If the title hints at a page/web/landing, it's editable HTML, not an image deliverable
   const t = d.title.toLowerCase()
   if (t.includes('landing') || t.includes('pagina') || t.includes('página') || t.includes('web') || t.includes('sitio') || t.includes('app')) return false
+  // Logo boards with multiple options should render as interactive HTML (iframe), not as single image
+  if (images.length >= 3 || t.includes('logo') || t.includes('marca') || t.includes('brand') || t.includes('identidad')) return false
   return true
 }
 
@@ -122,7 +126,7 @@ const isMultiFileProject = (content: string): boolean => {
   }
 }
 
-const LazyProjectWorkspace = lazy(() => import('./ProjectWorkspace'))
+const LazyProjectWorkspace = lazy(lazyWithReload(() => import('./ProjectWorkspace'), 'project-workspace'))
 
 class ProjectWorkspaceErrorBoundary extends Component<{ children: ReactNode; onFallback: () => void }, { hasError: boolean; error: string }> {
   constructor(props: { children: ReactNode; onFallback: () => void }) {
@@ -175,13 +179,18 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
     )
   }
   const isImageOnly = isImageDeliverable(deliverable)
-  // Show only the clicked image, or fall back to first one
-  const allImageUrls = isImageOnly ? extractGeneratedImages(deliverable.content) : []
+  // Extract all generated image URLs (used for image-only view AND for edit button in normal view)
+  const allImageUrls = extractGeneratedImages(deliverable.content)
   const imageUrls = selectedImageUrl ? [selectedImageUrl] : (allImageUrls.length > 0 ? [allImageUrls[0]] : [])
   const [viewMode, setViewMode] = useState<'preview' | 'code' | 'split'>(canPreview ? 'preview' : 'code')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [iframeError, setIframeError] = useState<{ error: string; line: number } | null>(null)
   const [modifiedContent, setModifiedContent] = useState<string | null>(null)
+  // Track content changes during edit mode WITHOUT updating srcDoc (which would reload iframe)
+  const editContentRef = useRef<string | null>(null)
+  const editModeRef = useRef(editMode)
+  editModeRef.current = editMode
+  const [hasEditChanges, setHasEditChanges] = useState(false)
   const [unsplashOpen, setUnsplashOpen] = useState(false)
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
   const [compareVersion, setCompareVersion] = useState<{ version: number; content: string } | null>(null)
@@ -189,6 +198,8 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
   const [deployUrl, setDeployUrl] = useState<string | null>(null)
   const [publishModalOpen, setPublishModalOpen] = useState(false)
   const [githubModalOpen, setGithubModalOpen] = useState(false)
+  const [imageEditorOpen, setImageEditorOpen] = useState(false)
+  const [imageEditorUrl, setImageEditorUrl] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   const currentContent = modifiedContent ?? deliverable.content
@@ -205,8 +216,22 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
     syncEditMode(editMode)
     if (!editMode) {
       onElementSelected?.(null)
+      // Flush any accumulated edit changes to modifiedContent (updates srcDoc once)
+      if (editContentRef.current) {
+        setModifiedContent(editContentRef.current)
+        editContentRef.current = null
+        setHasEditChanges(false)
+      }
     }
   }, [editMode, syncEditMode, onElementSelected])
+
+  // Re-sync edit mode after iframe loads (since srcDoc change reloads iframe, resetting its state)
+  const handleIframeLoad = useCallback(() => {
+    if (editMode) {
+      // Small delay to let the iframe script initialize
+      setTimeout(() => syncEditMode(true), 100)
+    }
+  }, [editMode, syncEditMode])
 
   // Listen for postMessage from iframe
   useEffect(() => {
@@ -222,6 +247,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
           imageSrc: event.data.imageSrc,
           rect: event.data.rect,
           classes: event.data.classes,
+          elementLabel: event.data.elementLabel,
         }
         onElementSelected?.(el)
         onSwitchToEditTab?.()
@@ -230,7 +256,13 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
         onElementSelected?.(null)
       }
       if (event.data?.type === 'content-updated') {
-        setModifiedContent(event.data.html)
+        if (editModeRef.current) {
+          // During edit mode, save content without updating srcDoc (avoids iframe reload)
+          editContentRef.current = event.data.html
+          setHasEditChanges(true)
+        } else {
+          setModifiedContent(event.data.html)
+        }
       }
       if (event.data?.type === 'sections-detected') {
         onSectionsDetected?.(event.data.sections)
@@ -280,6 +312,12 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
         iframeRef.current.contentWindow.postMessage({ type: 'update-section-prop', sectionId, prop, value }, '*')
       }
     }
+    const handleInjectFont = (e: Event) => {
+      const fontName = (e as CustomEvent).detail as string
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'inject-font', fontName }, '*')
+      }
+    }
 
     window.addEventListener('open-unsplash-modal', handleOpenUnsplash)
     window.addEventListener('apply-style-to-iframe', handleApplyStyle)
@@ -287,6 +325,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
     window.addEventListener('editor-action', handleEditorAction)
     window.addEventListener('highlight-section', handleHighlightSection)
     window.addEventListener('update-section-prop', handleUpdateSectionProp)
+    window.addEventListener('inject-font-to-iframe', handleInjectFont)
     return () => {
       window.removeEventListener('open-unsplash-modal', handleOpenUnsplash)
       window.removeEventListener('apply-style-to-iframe', handleApplyStyle)
@@ -294,6 +333,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
       window.removeEventListener('editor-action', handleEditorAction)
       window.removeEventListener('highlight-section', handleHighlightSection)
       window.removeEventListener('update-section-prop', handleUpdateSectionProp)
+      window.removeEventListener('inject-font-to-iframe', handleInjectFont)
     }
   }, [])
 
@@ -301,6 +341,8 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
   useEffect(() => {
     if (editMode) onEditModeChange?.(false)
     setModifiedContent(null)
+    editContentRef.current = null
+    setHasEditChanges(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliverable.id, viewMode])
 
@@ -325,9 +367,12 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
   }
 
   const handleSaveChanges = () => {
-    if (modifiedContent) {
-      deliverable.content = modifiedContent
+    const contentToSave = editContentRef.current || modifiedContent
+    if (contentToSave) {
+      deliverable.content = contentToSave
       setModifiedContent(null)
+      editContentRef.current = null
+      setHasEditChanges(false)
     }
   }
 
@@ -343,7 +388,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
     onElementSelected?.(null)
   }
 
-  const hasChanges = modifiedContent !== null && modifiedContent !== deliverable.content
+  const hasChanges = hasEditChanges || (modifiedContent !== null && modifiedContent !== deliverable.content)
 
   if (isFullscreen && canPreview) {
     return (
@@ -486,8 +531,16 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
       </div>
 
       {/* Content */}
-      {isImageOnly ? (
-        <div className="flex-1 overflow-auto custom-scrollbar bg-[#0a0a1a] flex items-center justify-center p-6">
+      {isImageOnly && imageEditorOpen && imageEditorUrl ? (
+        <ImageEditor
+          imageUrl={imageEditorUrl}
+          onClose={() => setImageEditorOpen(false)}
+          onImageEdited={(newUrl) => {
+            setImageEditorUrl(newUrl)
+          }}
+        />
+      ) : isImageOnly ? (
+        <div className="flex-1 overflow-auto custom-scrollbar bg-[#0a0a1a] flex flex-col items-center justify-center p-6 gap-4">
           <div className="flex flex-col items-center gap-4 max-w-full">
             {imageUrls.map((url, i) => (
               <CanvasImage
@@ -497,6 +550,18 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
               />
             ))}
           </div>
+          {imageUrls.length > 0 && (
+            <button
+              onClick={() => {
+                setImageEditorUrl(imageUrls[0])
+                setImageEditorOpen(true)
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white text-sm font-semibold rounded-xl transition-all"
+            >
+              <Pencil size={14} />
+              Editar imagen
+            </button>
+          )}
         </div>
       ) : canPreview && viewMode === 'split' ? (
         <div className="flex-1 flex overflow-hidden">
@@ -508,6 +573,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
               className="w-full h-full border-0"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
               title={deliverable.title}
+              onLoad={handleIframeLoad}
             />
             {isGenerating && (
               <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-20">
@@ -545,6 +611,7 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
             }`}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             title={deliverable.title}
+            onLoad={handleIframeLoad}
           />
           {/* Generating overlay — keeps previous preview visible underneath */}
           {isGenerating && (
@@ -611,6 +678,18 @@ const WorkspacePanel = ({ deliverable, onClose, editMode = false, onEditModeChan
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-faint hover:text-ink bg-subtle rounded-lg transition-all"
                 >
                   <Download size={14} /> Exportar HTML
+                </button>
+              )}
+              {allImageUrls.length > 0 && (
+                <button
+                  onClick={() => {
+                    const urlToEdit = selectedImageUrl || allImageUrls[0]
+                    setImageEditorUrl(urlToEdit)
+                    setImageEditorOpen(true)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary hover:opacity-90 rounded-lg transition-all"
+                >
+                  <Pencil size={14} /> Editar imagen
                 </button>
               )}
               {hasChanges && (

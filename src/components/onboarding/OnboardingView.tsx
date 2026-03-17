@@ -11,25 +11,26 @@ interface OnboardingViewProps {
 type Profession = 'designer' | 'marketing' | 'developer' | 'entrepreneur' | 'other'
 
 const professions: Array<{ id: Profession; label: string; icon: React.ReactNode; desc: string }> = [
-  { id: 'designer', label: 'Diseñador / Creativo', icon: <Palette size={24} />, desc: 'Diseño gráfico, UX/UI, branding' },
+  { id: 'designer', label: 'Disenador / Creativo', icon: <Palette size={24} />, desc: 'Diseno grafico, UX/UI, branding' },
   { id: 'marketing', label: 'Marketing / CM', icon: <Megaphone size={24} />, desc: 'Redes sociales, publicidad, contenido' },
-  { id: 'developer', label: 'Desarrollador / Tech', icon: <Code size={24} />, desc: 'Programación, automatización, APIs' },
-  { id: 'entrepreneur', label: 'Emprendedor', icon: <Briefcase size={24} />, desc: 'Dueño de negocio, startup, freelance' },
+  { id: 'developer', label: 'Desarrollador / Tech', icon: <Code size={24} />, desc: 'Programacion, automatizacion, APIs' },
+  { id: 'entrepreneur', label: 'Emprendedor', icon: <Briefcase size={24} />, desc: 'Dueno de negocio, startup, freelance' },
   { id: 'other', label: 'Otro', icon: <HelpCircle size={24} />, desc: 'Explorar todas las opciones' },
 ]
 
 const botSuggestions: Record<Profession, string[]> = {
-  designer: ['web', 'video'],
+  designer: ['web', 'voxel', 'video'],
   marketing: ['seo', 'ads', 'web'],
-  developer: ['seo', 'web'],
-  entrepreneur: ['seo', 'web', 'ads', 'video'],
-  other: ['seo', 'web', 'ads', 'video'],
+  developer: ['seo', 'web', 'voxel'],
+  entrepreneur: ['seo', 'web', 'voxel', 'ads', 'video'],
+  other: ['seo', 'web', 'voxel', 'ads', 'video'],
 }
 
 const allBots = [
-  { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorías SEO, keywords y posicionamiento' },
-  { id: 'web', name: 'Pixel', role: 'Diseñador Visual', color: '#a78bfa', desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual' },
-  { id: 'ads', name: 'Metric', role: 'Especialista en Publicidad', color: '#10b981', desc: 'Campañas Meta Ads y Google Ads' },
+  { id: 'seo', name: 'Lupa', role: 'Estratega SEO', color: '#3b82f6', desc: 'Auditorias SEO, keywords y posicionamiento' },
+  { id: 'web', name: 'Pixel', role: 'Disenador Visual', color: '#a78bfa', desc: 'Logos, posts, banners, flyers, moodboards y todo lo visual' },
+  { id: 'voxel', name: 'Voxel', role: 'Artista 3D', color: '#06b6d4', desc: 'Convierte fotos de carros y productos en assets 3D listos para descargar' },
+  { id: 'ads', name: 'Metric', role: 'Especialista en Publicidad', color: '#10b981', desc: 'Campanas Meta Ads y Google Ads' },
   { id: 'video', name: 'Reel', role: 'Creador de video', color: '#ef4444', desc: 'Reels y videos con IA generativa' },
 ]
 
@@ -47,9 +48,9 @@ const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) 
   }
 
   const toggleBot = (botId: string) => {
-    setSelectedBots(prev =>
+    setSelectedBots(prev => (
       prev.includes(botId) ? prev.filter(b => b !== botId) : [...prev, botId]
-    )
+    ))
   }
 
   const handleComplete = async () => {
@@ -68,7 +69,6 @@ const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) 
   return (
     <div className="fixed inset-0 z-40 bg-page flex items-center justify-center overflow-y-auto">
       <div className="w-full max-w-2xl mx-4 py-8">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-[#a78bfa]/30">
             <Bot size={28} className="text-white" />
@@ -77,16 +77,14 @@ const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) 
             Bienvenido{user?.name ? `, ${user.name}` : ''}!
           </h1>
           <p className="text-sm text-ink-faint">
-            {step === 1 ? 'Cuéntanos un poco sobre ti para personalizar tu experiencia' : 'Estos bots están sugeridos para ti. Activa los que quieras.'}
+            {step === 1 ? 'Cuentanos un poco sobre ti para personalizar tu experiencia' : 'Estos bots estan sugeridos para ti. Activa los que quieras.'}
           </p>
-          {/* Step indicator */}
           <div className="flex items-center justify-center gap-2 mt-4">
             <div className={`w-8 h-1 rounded-full transition-all ${step >= 1 ? 'bg-primary' : 'bg-edge'}`} />
             <div className={`w-8 h-1 rounded-full transition-all ${step >= 2 ? 'bg-primary' : 'bg-edge'}`} />
           </div>
         </div>
 
-        {/* Step 1: Profession */}
         {step === 1 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {professions.map(prof => (
@@ -107,7 +105,6 @@ const OnboardingView = ({ onComplete, onOpenMarketplace }: OnboardingViewProps) 
           </div>
         )}
 
-        {/* Step 2: Bot selection */}
         {step === 2 && (
           <div>
             <div className="space-y-3 mb-6">

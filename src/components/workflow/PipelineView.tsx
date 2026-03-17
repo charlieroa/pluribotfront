@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { Background, Controls, ReactFlow, type Edge, type Node } from '@xyflow/react'
+import { Background, ReactFlow, type Edge, type Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Bot, Check, ChevronRight, Loader2, MessageSquareText, Target } from 'lucide-react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
@@ -13,6 +13,9 @@ interface PipelineStep {
   task: string
   userDescription?: string
   dependsOn?: string[]
+  phaseIndex?: number
+  phaseTotal?: number
+  phaseTitle?: string
   status?: 'pending' | 'running' | 'complete' | 'error'
   output?: string
 }
@@ -152,15 +155,37 @@ function CompactPipeline({ steps, activeAgents }: { steps: PipelineStep[]; activ
     return 'pending'
   }
 
+  // Count how many steps share the same agentId to detect phases when explicit metadata is missing
+  const agentCounts = steps.reduce((acc, s) => { acc[s.agentId] = (acc[s.agentId] || 0) + 1; return acc }, {} as Record<string, number>)
+
+  // For multi-phase steps (same agent), track phase number
+  const agentPhaseCounter: Record<string, number> = {}
+
   return (
     <div className="flex items-center gap-1 overflow-x-auto py-2 px-1">
       {steps.map((step, i) => {
         const status = getStatus(step)
         const color = AGENT_COLORS[step.agentId] || DEFAULT_COLOR
+        const isMultiPhase = agentCounts[step.agentId] > 1
+
+        // Track phase number for this agent
+        if (isMultiPhase) {
+          agentPhaseCounter[step.agentId] = (agentPhaseCounter[step.agentId] || 0) + 1
+        }
+        const phaseNum = agentPhaseCounter[step.agentId] || 1
+        const totalPhases = agentCounts[step.agentId] || 1
+
+        // Show phase label instead of repeating agent name
+        const explicitPhaseLabel = step.phaseIndex && step.phaseTotal
+          ? (step.phaseTitle || `Fase ${step.phaseIndex}/${step.phaseTotal}`)
+          : null
+        const label = explicitPhaseLabel
+          || (isMultiPhase ? (step.task || `Fase ${phaseNum}/${totalPhases}`) : (step.agentName || step.agentId))
+
         return (
           <div key={step.instanceId || i} className="flex items-center gap-1 flex-shrink-0">
             <div
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all duration-300 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all duration-300 max-w-[180px] ${
                 status === 'running'
                   ? `${color.border} ${color.bg}`
                   : status === 'complete'
@@ -169,18 +194,18 @@ function CompactPipeline({ steps, activeAgents }: { steps: PipelineStep[]; activ
               }`}
             >
               {status === 'running' ? (
-                <Loader2 size={11} className={`animate-spin ${color.accent}`} />
+                <Loader2 size={11} className={`animate-spin ${color.accent} flex-shrink-0`} />
               ) : status === 'complete' ? (
-                <Check size={11} className="text-emerald-400" />
+                <Check size={11} className="text-emerald-400 flex-shrink-0" />
               ) : (
-                <Bot size={11} className="text-white/30" />
+                <Bot size={11} className="text-white/30 flex-shrink-0" />
               )}
               <span
-                className={`text-[10px] font-medium ${
+                className={`text-[10px] font-medium truncate ${
                   status === 'running' ? color.accent : status === 'complete' ? 'text-emerald-400' : 'text-white/40'
                 }`}
               >
-                {step.agentName || step.agentId}
+                {label}
               </span>
             </div>
             {i < steps.length - 1 && <ChevronRight size={12} className="text-white/15 flex-shrink-0" />}

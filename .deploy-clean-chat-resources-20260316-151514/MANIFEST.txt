@@ -1,0 +1,12 @@
+src/App.tsx
+src/components/chat/WelcomeScreen.tsx
+src/components/chat/ChatView.tsx
+src/components/chat/MessageBubble.tsx
+src/components/projects/ProjectView.tsx
+src/hooks/useChatActions.ts
+src/hooks/usePlanFlow.ts
+src/types/index.ts
+server/src/config/agents.ts
+server/src/routes/chat.ts
+server/src/services/execution-engine.ts
+server/src/services/refinement.ts

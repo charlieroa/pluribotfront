@@ -3,8 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { prisma } from '../db/client.js'
-import { getProjectApiScript } from '../services/html-utils.js'
+import { getProjectApiScript, injectVisualOverrides } from '../services/html-utils.js'
 import { isCodeProject, buildCodeProjectHtml } from '../services/code-to-html.js'
+import { readAllProjectFiles } from '../services/project-storage.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -65,18 +66,21 @@ export function subdomainMiddleware(req: Request, res: Response, next: NextFunct
   }
 
   // Look up the deliverable with its conversation's credentials
+  const includeOpts = {
+    conversation: { select: { id: true, supabaseUrl: true, supabaseAnonKey: true, projectBackendEnabled: true } },
+  }
   const lookup = isCustomDomain
     ? prisma.deliverable.findFirst({
         where: { customDomain: host, customDomainStatus: 'active' },
-        include: { conversation: { select: { id: true, supabaseUrl: true, supabaseAnonKey: true, projectBackendEnabled: true } } },
+        include: includeOpts,
       })
     : prisma.deliverable.findUnique({
         where: { publishSlug: subdomain! },
-        include: { conversation: { select: { id: true, supabaseUrl: true, supabaseAnonKey: true, projectBackendEnabled: true } } },
+        include: includeOpts,
       })
 
   lookup
-    .then(deliverable => {
+    .then(async deliverable => {
       if (!deliverable) {
         res.status(404).type('html').send(NOT_FOUND_HTML)
         return
@@ -98,29 +102,40 @@ export function subdomainMiddleware(req: Request, res: Response, next: NextFunct
         scripts.push(getProjectApiScript(prodBaseUrl, conv.id))
       }
 
-      const injectScripts = (html: string) =>
-        scripts.length > 0 ? html.replace('</head>', `${scripts.join('\n')}\n</head>`) : html
+      const visualOverrides = (deliverable as any).visualOverrides as string | null
+
+      const injectAll = (html: string) => {
+        let result = html
+        if (scripts.length > 0) {
+          result = result.replace('</head>', `${scripts.join('\n')}\n</head>`)
+        }
+        result = injectVisualOverrides(result, visualOverrides)
+        return result
+      }
 
       // Try to serve from disk first
       const htmlPath = path.join(DEPLOY_DIR, deliverable.id, 'index.html')
       if (fs.existsSync(htmlPath)) {
-        if (scripts.length > 0) {
-          const html = fs.readFileSync(htmlPath, 'utf-8')
-          res.type('html').send(injectScripts(html))
-        } else {
-          res.type('html').sendFile(htmlPath)
-        }
+        const html = fs.readFileSync(htmlPath, 'utf-8')
+        res.type('html').send(injectAll(html))
         return
       }
 
       // Fallback to DB content
       if (deliverable.content) {
         let html = deliverable.content
-        // If content is a multi-file code project (JSON array), build HTML on the fly
-        if (isCodeProject(html)) {
+
+        // v2 manifest: read files from disk
+        if (html.startsWith('{"type":"project-v2"') && conv?.id) {
+          const files = await readAllProjectFiles(conv.id)
+          if (files.length > 0) {
+            html = buildCodeProjectHtml(JSON.stringify(files))
+          }
+        } else if (isCodeProject(html)) {
+          // Legacy: multi-file code project (JSON array), build HTML on the fly
           html = buildCodeProjectHtml(html)
         }
-        res.type('html').send(injectScripts(html))
+        res.type('html').send(injectAll(html))
         return
       }
 

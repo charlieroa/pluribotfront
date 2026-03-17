@@ -79,6 +79,10 @@ export const DEV_TEMPLATES: Record<string, { name: string; description: string }
     name: 'Document Manager',
     description: 'Gestor de documentos: carpetas, subida de archivos, preview, busqueda, compartir, permisos',
   },
+  LMS_PLATFORM: {
+    name: 'LMS / Academia Online',
+    description: 'Plataforma LMS: login, dashboard, cursos con roadmap de aprendizaje, modulos internos con objetivos ("lo que vas a aprender"), curriculum sidebar sticky, builder drag-and-drop de lecciones y contenido didactico (quizzes, ejercicios, flashcards), grilla de videos, paywall freemium post modulo 1, progreso del estudiante con curva de aprendizaje, certificados y panel instructor/admin',
+  },
   PROJECT_MANAGER: {
     name: 'Project Manager',
     description: 'Gestor de proyectos: lista de proyectos, tareas, timeline, miembros, progreso, comentarios',

@@ -13,6 +13,7 @@ interface ProjectPayloadShape {
 }
 
 const PATH_RE = /^(src|public)\/[a-zA-Z0-9._/-]+$|^(package\.json|vite\.config\.(js|ts)|tailwind\.config\.js|postcss\.config\.js|index\.html|README\.md)$/
+const LOCAL_CSS_IMPORT_RE = /import\s+['"](\.\/|\.\.\/)[^'"]+\.css['"]/g
 
 function fallbackAppFile(): ProjectFile {
   return {
@@ -57,6 +58,30 @@ export function validateProjectFiles(input: unknown): ValidatedProject {
     throw new Error('El proyecto no contiene archivos validos')
   }
 
+  const existingPaths = new Set(files.map(file => file.path))
+  const missingCssFiles = new Set<string>()
+
+  for (const file of files) {
+    if (!/^src\/.*\.(js|jsx|ts|tsx)$/.test(file.path)) continue
+    for (const match of file.content.matchAll(LOCAL_CSS_IMPORT_RE)) {
+      const rawImport = match[0].match(/['"]([^'"]+\.css)['"]/)?.[1]
+      if (!rawImport) continue
+      const resolvedPath = resolveRelativeProjectPath(file.path, rawImport)
+      if (resolvedPath && !existingPaths.has(resolvedPath)) {
+        missingCssFiles.add(resolvedPath)
+      }
+    }
+  }
+
+  for (const cssPath of missingCssFiles) {
+    warnings.push(`Se agrego ${cssPath} vacio porque estaba importado pero no fue generado`)
+    files.push({
+      path: cssPath,
+      content: '/* Archivo CSS agregado automaticamente para evitar ENOENT en preview/refine. */\n',
+    })
+    existingPaths.add(cssPath)
+  }
+
   const hasApp = files.some(file => file.path === 'src/App.jsx' || file.path === 'src/App.tsx')
   if (!hasApp) {
     warnings.push('Se agrego src/App.jsx fallback porque el proyecto no lo incluia')
@@ -69,6 +94,25 @@ export function validateProjectFiles(input: unknown): ValidatedProject {
   }
 
   return { files, warnings }
+}
+
+function resolveRelativeProjectPath(fromPath: string, importPath: string): string | null {
+  const fromParts = fromPath.split('/').slice(0, -1)
+  const importParts = importPath.split('/')
+  const resolved: string[] = [...fromParts]
+
+  for (const part of importParts) {
+    if (!part || part === '.') continue
+    if (part === '..') {
+      if (resolved.length <= 1) return null
+      resolved.pop()
+      continue
+    }
+    resolved.push(part)
+  }
+
+  const normalized = resolved.join('/')
+  return normalized.startsWith('src/') ? normalized : null
 }
 
 function unwrapProjectPayload(input: unknown): unknown {

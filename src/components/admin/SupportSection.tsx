@@ -48,6 +48,12 @@ const SupportSection = () => {
   }, [filter])
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      fetchConversations()
+    }, 15000)
+    return () => window.clearInterval(interval)
+  }, [fetchConversations])
 
   const handleAssign = async (convId: string) => {
     try {
@@ -95,6 +101,7 @@ const SupportSection = () => {
         <div>
           <h2 className="text-lg font-bold text-ink">Soporte Humano</h2>
           <p className="text-xs text-ink-faint mt-0.5">Conversaciones que necesitan atencion humana</p>
+          <p className="text-[11px] text-ink-faint mt-1">Actualizacion automatica cada 15s</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 rounded-lg">

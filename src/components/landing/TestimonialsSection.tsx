@@ -6,7 +6,7 @@ gsap.registerPlugin(ScrollTrigger)
 
 const testimonials = [
   {
-    quote: 'Reemplazamos 3 herramientas con Plury. En una semana teniamos landing, branding y campana de ads listos.',
+    quote: 'Reemplazamos varias herramientas con Plury. En una semana teniamos marca, landing y campana listas.',
     name: 'Sofia Ramirez',
     role: 'CEO, Studio Digital',
     avatar: 'S',
@@ -14,7 +14,7 @@ const testimonials = [
     metric: '3x mas rapido',
   },
   {
-    quote: 'Lo que antes me tomaba 2 semanas con un disenador ahora lo hago en una tarde. La calidad del codigo es impresionante.',
+    quote: 'Antes resolvia branding por un lado y producto por otro. Aqui pude bajar la idea completa en una sola plataforma.',
     name: 'Carlos Mendez',
     role: 'Founder, TechStartup MX',
     avatar: 'C',
@@ -22,7 +22,7 @@ const testimonials = [
     metric: '$8K ahorrados/mes',
   },
   {
-    quote: 'Mis clientes creen que tengo un equipo de 10 personas. La marca blanca fue un game changer.',
+    quote: 'La marca blanca nos ordeno la operacion. Ahora presentamos proyectos mas completos sin multiplicar el equipo.',
     name: 'Ana Torres',
     role: 'Directora, Agencia Bloom',
     avatar: 'A',
@@ -30,15 +30,15 @@ const testimonials = [
     metric: '40+ proyectos entregados',
   },
   {
-    quote: 'Pedi un e-commerce completo por WhatsApp y en 15 minutos ya tenia algo funcional desplegado.',
+    quote: 'Pedi una idea de negocio y Plury me devolvio mensajes, web y estructura inicial para salir a probar.',
     name: 'Miguel Herrera',
     role: 'E-commerce Manager',
     avatar: 'M',
     color: 'from-amber-400 to-orange-500',
-    metric: '15 min → app live',
+    metric: '15 min a primera version',
   },
   {
-    quote: 'El agente SEO encontro problemas tecnicos que 2 agencias anteriores pasaron por alto. Nivel senior.',
+    quote: 'Lo mejor no es solo la velocidad. Es que todo tiene continuidad entre branding, contenido y ejecucion.',
     name: 'Laura Diaz',
     role: 'Marketing Lead, SaaSCo',
     avatar: 'L',
@@ -46,7 +46,7 @@ const testimonials = [
     metric: '+180% trafico organico',
   },
   {
-    quote: 'Publicamos 5 landings en un mes para diferentes campanas. Antes nos tomaba un trimestre entero.',
+    quote: 'Cuando un proyecto se puso tecnico, pedimos senior y se resolvio sin perder el hilo de lo que ya estaba construido.',
     name: 'Diego Navarro',
     role: 'Growth, FinApp',
     avatar: 'D',
@@ -75,16 +75,17 @@ const TestimonialsSection = () => {
     <section ref={sectionRef} className="py-20 sm:py-28 px-4">
       <div className="max-w-[1100px] mx-auto">
         <div className="test-anim text-center mb-14">
-          <p className="text-[12px] text-[#a78bfa] uppercase tracking-[0.15em] font-semibold mb-3">Casos de exito</p>
+          <p className="text-[12px] text-[#a78bfa] uppercase tracking-[0.15em] font-semibold mb-3">Resultados</p>
           <h2 className="text-[32px] sm:text-[44px] font-bold tracking-[-0.03em] text-white mb-4">
-            Resultados reales de negocios reales
+            Lo que cambia
+            <br />
+            cuando usas Plury
           </h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {testimonials.map((t, i) => (
-            <div key={i} className="test-anim bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all">
-              {/* Metric badge */}
+          {testimonials.map((t) => (
+            <div key={t.name} className="test-anim bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:bg-white/[0.05] hover:border-white/[0.1] transition-all">
               <div className="inline-flex px-2.5 py-1 text-[11px] font-bold text-[#a78bfa] bg-[#a78bfa]/10 border border-[#a78bfa]/15 rounded-full mb-4">
                 {t.metric}
               </div>

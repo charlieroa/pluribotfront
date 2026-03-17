@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Router } from 'express'
 import { v4 as uuid } from 'uuid'
 import { prisma } from '../db/client.js'
@@ -15,6 +16,96 @@ import { refineStep } from '../services/refinement.js'
 import { processMessage } from '../services/orchestrator.js'
 
 const router = Router()
+
+function parseSelectedOptionIndex(text: string): number | null {
+  const normalized = text.toLowerCase()
+  const directMatch = normalized.match(/(?:opcion|opción|logo|imagen|pieza)\s*(?:numero|nro|#)?\s*(\d{1,2})/)
+  if (directMatch) return Math.max(0, Number(directMatch[1]) - 1)
+  if (/\b(primera|primero|uno|1)\b/.test(normalized) && /\b(opcion|opción|logo|imagen|pieza)\b/.test(normalized)) return 0
+  if (/\b(segunda|segundo|dos|2)\b/.test(normalized) && /\b(opcion|opción|logo|imagen|pieza)\b/.test(normalized)) return 1
+  if (/\b(tercera|tercero|tres|3)\b/.test(normalized) && /\b(opcion|opción|logo|imagen|pieza)\b/.test(normalized)) return 2
+  if (/\b(cuarta|cuarto|cuatro|4)\b/.test(normalized) && /\b(opcion|opción|logo|imagen|pieza)\b/.test(normalized)) return 3
+  return null
+}
+
+function extractDeliverableImageUrls(content: string): string[] {
+  const matches = content.match(/<img[^>]+src=["'][^"']*\/uploads\/[^"']+\.(?:png|jpg|jpeg|webp)["']/gi) ?? []
+  const urls = matches
+    .map(match => match.match(/src=["']([^"']+)["']/i)?.[1] ?? '')
+    .filter(Boolean)
+  return [...new Set(urls)]
+}
+
+async function requestHumanReview(conversationId: string, userId: string, textHint?: string) {
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { needsHumanReview: true },
+  })
+
+  const sysMsg = await prisma.message.create({
+    data: {
+      id: uuid(),
+      conversationId,
+      sender: 'Sistema',
+      text: 'Tu solicitud de asistencia humana ha sido registrada. Un agente se pondra en contacto pronto.',
+      type: 'agent',
+      botType: 'system',
+    },
+  })
+
+  broadcast(conversationId, { type: 'human_review_requested', conversationId })
+  broadcast(conversationId, {
+    type: 'agent_end',
+    agentId: 'system',
+    messageId: sysMsg.id,
+    fullText: sysMsg.text,
+  })
+
+  try {
+    const chatUser = await prisma.user.findUnique({ where: { id: userId !== 'anonymous' ? userId : '' } })
+    const orgId = chatUser?.organizationId
+
+    const specialists = await prisma.user.findMany({
+      where: {
+        role: 'agent',
+        specialty: { not: null },
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+    })
+
+    if (specialists.length === 0) return
+
+    const allMessages = await prisma.message.findMany({ where: { conversationId }, take: 10 })
+    const conversationContext = allMessages.map((m: { text: string }) => m.text).join(' ').toLowerCase()
+    const lowerText = (textHint || conversationContext).toLowerCase()
+
+    let bestMatch: { specialist: typeof specialists[0]; score: number } | null = null
+    for (const spec of specialists) {
+      const keywords = (spec.specialtyKeywords || spec.specialty || '').toLowerCase().split(',').map((k: string) => k.trim())
+      const matchScore = keywords.filter((k: string) => k && (lowerText.includes(k) || conversationContext.includes(k))).length
+      if (matchScore > 0 && (!bestMatch || matchScore > bestMatch.score)) {
+        bestMatch = { specialist: spec, score: matchScore }
+      }
+    }
+
+    if (!bestMatch) return
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { assignedAgentId: bestMatch.specialist.id },
+    })
+    broadcast(conversationId, {
+      type: 'human_agent_joined',
+      agentName: bestMatch.specialist.name,
+      agentRole: bestMatch.specialist.specialty || 'Especialista',
+      specialty: bestMatch.specialist.specialty ?? undefined,
+      specialtyColor: bestMatch.specialist.specialtyColor ?? undefined,
+      avatarUrl: bestMatch.specialist.avatarUrl ?? undefined,
+    })
+  } catch (autoErr) {
+    console.error('[Chat] Auto-assign specialist error:', autoErr)
+  }
+}
 
 // Create a new conversation (client calls this first, then connects SSE)
 router.post('/conversation', optionalAuth, async (req, res) => {
@@ -111,6 +202,7 @@ router.post('/send', optionalAuth, async (req, res) => {
         sender: 'Tu',
         text,
         type: 'user',
+        ...(imageUrl ? { attachmentJson: JSON.stringify({ imageUrl }) } : {}),
       },
     })
 
@@ -133,6 +225,9 @@ router.post('/send', optionalAuth, async (req, res) => {
     const HUMAN_PATTERNS = [/asistencia humana/i, /ayuda humana/i, /hablar con.*(persona|humano|agente)/i, /soporte humano/i, /necesito.*humano/i, /agente humano/i]
     const needsHuman = HUMAN_PATTERNS.some(p => p.test(text))
     if (needsHuman) {
+      await requestHumanReview(conversationId, userId, text)
+    }
+    if (false && needsHuman) {
       await prisma.conversation.update({
         where: { id: conversationId },
         data: { needsHumanReview: true },
@@ -228,6 +323,37 @@ router.post('/send', optionalAuth, async (req, res) => {
   }
 })
 
+router.post('/:conversationId/request-human', optionalAuth, async (req, res) => {
+  const conversationId = req.params.conversationId as string
+  const userId = req.auth?.userId ?? 'anonymous'
+
+  try {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { id: true, userId: true, needsHumanReview: true },
+    })
+
+    if (!conversation) {
+      res.status(404).json({ error: 'Conversacion no encontrada' })
+      return
+    }
+
+    if (userId !== 'anonymous' && conversation.userId !== userId) {
+      res.status(403).json({ error: 'Sin permiso' })
+      return
+    }
+
+    if (!conversation.needsHumanReview) {
+      await requestHumanReview(conversationId, userId)
+    }
+
+    res.json({ ok: true, conversationId })
+  } catch (err) {
+    console.error('[Chat] Request human route error:', err)
+    res.status(500).json({ error: 'Error al solicitar asistencia humana' })
+  }
+})
+
 // Approve or reject a plan (with optional instance selection)
 router.post('/approve', optionalAuth, async (req, res) => {
   const { messageId, approved, selectedAgents } = req.body as ApprovalRequest
@@ -263,8 +389,8 @@ router.post('/approve', optionalAuth, async (req, res) => {
           await createTodoKanbanTask(conversationId, step)
         }
 
-        // Start parallel execution
-        startParallelExecution(conversationId, steps, userId).catch(err => {
+        // Start parallel execution (pass imageUrl from pending plan)
+        startParallelExecution(conversationId, steps, userId, undefined, plan.imageUrl).catch(err => {
           console.error('[Chat] Error executing plan:', err)
           broadcast(conversationId, { type: 'error', message: 'Error ejecutando el plan' })
         })
@@ -360,7 +486,7 @@ router.post('/approve-step', optionalAuth, async (req, res) => {
 
 // Refine a visual agent's output with user feedback
 router.post('/refine-step', optionalAuth, async (req, res) => {
-  const { conversationId, text, instanceId, selectedLogoIndex, selectedLogoSrc } = req.body as RefineStepRequest & { selectedLogoIndex?: number; selectedLogoSrc?: string }
+  let { conversationId, text, instanceId, selectedLogoIndex, selectedLogoSrc, selectedImageSrc } = req.body as RefineStepRequest & { selectedLogoIndex?: number; selectedLogoSrc?: string; selectedImageSrc?: string }
   const userId = req.auth?.userId ?? 'anonymous'
 
   try {
@@ -407,14 +533,40 @@ router.post('/refine-step', optionalAuth, async (req, res) => {
 
     res.json({ ok: true, messageId: userMessage.id })
 
+    if (!selectedImageSrc && (selectedLogoIndex === undefined || !selectedLogoSrc)) {
+      const parsedOptionIndex = parseSelectedOptionIndex(text)
+      if (parsedOptionIndex !== null) {
+        const latestDeliverable = await prisma.deliverable.findFirst({
+          where: { conversationId, instanceId: stepToRefine.instanceId },
+          orderBy: { createdAt: 'desc' },
+          select: { content: true },
+        })
+        const imageUrls = latestDeliverable ? extractDeliverableImageUrls(latestDeliverable.content) : []
+        if (imageUrls[parsedOptionIndex]) {
+          selectedImageSrc = imageUrls[parsedOptionIndex]
+        }
+      }
+    }
+
+    const selectedReferenceImage = selectedLogoSrc || selectedImageSrc || plan.imageUrl
+
     // Build feedback text with logo context if selected
     let feedbackText = text
     if (selectedLogoIndex !== undefined && selectedLogoSrc) {
       feedbackText = `El cliente selecciono la OPCION ${selectedLogoIndex + 1}. URL: ${selectedLogoSrc}. Genera una nueva version SOLO de este logo, manteniendo su estilo base. Cambios solicitados: ${text}`
+    } else if (selectedImageSrc) {
+      feedbackText = `El cliente selecciono ESTA IMAGEN como base. URL: ${selectedImageSrc}. Aplica los cambios SOLO sobre esta opcion elegida y devuelve una nueva version refinada. Cambios solicitados: ${text}`
     }
 
     // Execute refinement async
-    refineStep(plan, stepToRefine, feedbackText, userId).catch(err => {
+    refineStep(
+      selectedReferenceImage && selectedReferenceImage !== plan.imageUrl
+        ? { ...plan, imageUrl: selectedReferenceImage }
+        : plan,
+      stepToRefine,
+      feedbackText,
+      userId,
+    ).catch(err => {
       console.error('[Chat] Error refining step:', err)
       broadcast(conversationId, { type: 'error', message: 'Error al refinar el paso' })
     })

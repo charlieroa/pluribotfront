@@ -35,6 +35,21 @@ const PRESET_COLORS = [
 
 const FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px', '64px']
 
+const FONT_FAMILIES = [
+  { label: 'Poppins', value: "'Poppins', sans-serif" },
+  { label: 'Inter', value: "'Inter', sans-serif" },
+  { label: 'Roboto', value: "'Roboto', sans-serif" },
+  { label: 'Open Sans', value: "'Open Sans', sans-serif" },
+  { label: 'Montserrat', value: "'Montserrat', sans-serif" },
+  { label: 'Lato', value: "'Lato', sans-serif" },
+  { label: 'Playfair', value: "'Playfair Display', serif" },
+  { label: 'Merriweather', value: "'Merriweather', serif" },
+  { label: 'Raleway', value: "'Raleway', sans-serif" },
+  { label: 'Nunito', value: "'Nunito', sans-serif" },
+  { label: 'DM Sans', value: "'DM Sans', sans-serif" },
+  { label: 'Space Grotesk', value: "'Space Grotesk', sans-serif" },
+]
+
 const LOGO_STYLES = [
   { label: 'Minimalista', prompt: 'Regenera el logo con estilo minimalista, lineas limpias y formas simples' },
   { label: 'Moderno', prompt: 'Regenera el logo con estilo moderno y contemporaneo, geometrico y bold' },
@@ -55,6 +70,8 @@ const LOGO_COLOR_PALETTES = [
 
 function isLogoDeliverable(d: Deliverable | null): boolean {
   if (!d) return false
+  // Dev projects (multi-file apps) are never logos, even if the title mentions "marca"
+  if (d.botType === 'dev') return false
   const title = d.title.toLowerCase()
   return title.includes('logo') || title.includes('identidad') || title.includes('marca') || title.includes('brand')
 }
@@ -67,6 +84,7 @@ const EditPanel = ({
   onEditText,
   onChangeImage,
   onApplyStyle,
+  onReplaceImage,
   selectedLogo,
   detectedSections = [],
   onHighlightSection,
@@ -210,6 +228,16 @@ const EditPanel = ({
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
 
+  // Auto-open relevant section when element type changes
+  useEffect(() => {
+    if (!selectedElement) return
+    if (selectedElement.isImage) {
+      setActiveSection('image')
+    } else {
+      setActiveSection('text')
+    }
+  }, [selectedElement?.tag, selectedElement?.isImage])
+
   // Listen for undo state updates from iframe
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -232,10 +260,13 @@ const EditPanel = ({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header with undo/redo */}
-      <div className="px-4 py-2.5 border-b border-edge flex-shrink-0 bg-blue-500/5 flex items-center justify-between">
-        <p className="text-[11px] text-blue-600 font-medium">
-          Click para seleccionar, doble-click para editar
-        </p>
+      <div className="px-4 py-2.5 border-b border-edge flex-shrink-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <p className="text-[11px] text-blue-600 font-medium">
+            Modo edicion activo
+          </p>
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => dispatchToIframe('undo')}
@@ -284,22 +315,53 @@ const EditPanel = ({
             onSendMessage={onSendMessage}
           />
         ) : !selectedElement ? (
-          <div className="p-6 flex flex-col items-center justify-center text-center gap-3 h-full">
-            <MousePointer size={32} className="text-blue-400" />
-            <p className="text-sm text-ink-faint">
-              Haz click en un elemento del canvas para editarlo
-            </p>
+          <div className="p-6 flex flex-col items-center justify-center text-center gap-4 h-full">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 flex items-center justify-center">
+              <MousePointer size={24} className="text-blue-400" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-ink mb-1">
+                Selecciona un elemento
+              </p>
+              <p className="text-[11px] text-ink-faint leading-relaxed">
+                Haz click en cualquier elemento del canvas.<br/>
+                Doble-click para editar texto inline.
+              </p>
+            </div>
+            <div className="w-full space-y-1.5 mt-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-subtle rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="text-[10px] text-ink-faint">Textos y titulos</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-subtle rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-purple-500" />
+                <span className="text-[10px] text-ink-faint">Imagenes y media</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-subtle rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-[10px] text-ink-faint">Secciones y layout</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-subtle rounded-lg">
+                <div className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-[10px] text-ink-faint">Botones y enlaces</span>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="p-4 space-y-1">
             {/* Selected element info */}
-            <div className="px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg mb-3">
-              <p className="text-[11px] font-medium text-blue-600">
-                Elemento: &lt;{selectedElement.tag}&gt;
-              </p>
+            <div className="px-3 py-2.5 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-lg mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-500 text-white">
+                  {selectedElement.elementLabel || selectedElement.tag.toUpperCase()}
+                </span>
+                <span className="text-[10px] text-ink-faint">
+                  &lt;{selectedElement.tag}&gt;
+                </span>
+              </div>
               {selectedElement.text && (
-                <p className="text-[10px] text-ink-faint mt-0.5 truncate">
-                  {selectedElement.text}
+                <p className="text-[10px] text-ink-faint mt-1.5 truncate leading-relaxed">
+                  "{selectedElement.text}"
                 </p>
               )}
             </div>
@@ -376,6 +438,30 @@ const EditPanel = ({
                   </div>
                 </div>
 
+                {/* Font family */}
+                <div className="mt-3">
+                  <label className="text-[10px] text-ink-faint font-medium uppercase tracking-wider">Fuente</label>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {FONT_FAMILIES.map(font => (
+                      <button
+                        key={font.label}
+                        onClick={() => {
+                          onApplyStyle({ fontFamily: font.value })
+                          // Inject Google Font into iframe if not already loaded
+                          const fontName = font.label.replace(/ /g, '+')
+                          window.dispatchEvent(new CustomEvent('inject-font-to-iframe', { detail: fontName }))
+                          // Also send directly to all iframes (for WebContainer dev projects)
+                          document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'inject-font', fontName }, '*'))
+                        }}
+                        className="px-2 py-1 text-[10px] text-ink-light bg-subtle hover:bg-edge rounded transition-colors"
+                        style={{ fontFamily: font.value }}
+                      >
+                        {font.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Font weight & style */}
                 <div className="flex gap-1 mt-3">
                   <button
@@ -425,6 +511,34 @@ const EditPanel = ({
                   className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
                 >
                   <ImageIcon size={14} /> Buscar foto en Unsplash
+                </button>
+                <button
+                  onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.accept = 'image/*'
+                    input.onchange = async () => {
+                      const file = input.files?.[0]
+                      if (!file) return
+                      const formData = new FormData()
+                      formData.append('file', file)
+                      try {
+                        const res = await fetch('/api/upload', { method: 'POST', body: formData, headers: { Authorization: `Bearer ${localStorage.getItem('plury_token')}` } })
+                        if (res.ok) {
+                          const data = await res.json()
+                          if (data.url) {
+                            onReplaceImage(data.url, file.name)
+                          }
+                        }
+                      } catch (e) {
+                        console.error('Upload error:', e)
+                      }
+                    }
+                    input.click()
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-medium text-ink bg-subtle hover:bg-edge rounded-lg transition-colors mt-1.5"
+                >
+                  <ImageIcon size={14} /> Subir desde mi PC
                 </button>
               </Section>
             )}

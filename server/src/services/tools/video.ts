@@ -14,11 +14,23 @@ if (!fs.existsSync(videosDir)) {
 // ─── LTX-2 API config ───
 const LTX_API_BASE = 'https://api.ltx.video/v1'
 
-// Map aspect ratios to LTX resolution strings
-const RESOLUTION_MAP: Record<string, string> = {
-  '16:9': '1080p',
-  '9:16': '1080p',
-  '1:1': '1080p',
+type SupportedAspectRatio = '16:9' | '9:16'
+
+const RESOLUTION_MAP: Record<SupportedAspectRatio, string> = {
+  '16:9': '1920x1080',
+  '9:16': '1080x1920',
+}
+
+function normalizeAspectRatio(value: string): { requested: string; resolved: SupportedAspectRatio; fallbackApplied: boolean } {
+  if (value === '9:16') return { requested: value, resolved: '9:16', fallbackApplied: false }
+  if (value === '16:9') return { requested: value, resolved: '16:9', fallbackApplied: false }
+  return { requested: value, resolved: '16:9', fallbackApplied: true }
+}
+
+function normalizeDuration(value: number): 6 | 8 | 10 {
+  if (value <= 6) return 6
+  if (value <= 8) return 8
+  return 10
 }
 
 export const videoTools: ToolDefinition[] = [
@@ -48,7 +60,7 @@ export const videoTools: ToolDefinition[] = [
     execute: async (input) => {
       const prompt = input.prompt as string
       const aspectRatio = (input.aspectRatio as string) || '16:9'
-      const duration = parseInt((input.duration as string) || '5', 10)
+      const requestedDuration = parseInt((input.duration as string) || '5', 10)
 
       const apiKey = process.env.LTX_API_KEY
       if (!apiKey) {
@@ -56,9 +68,10 @@ export const videoTools: ToolDefinition[] = [
       }
 
       try {
-        console.log(`[Video/LTX-2] Generating video... (${aspectRatio}, ${duration}s)`)
-
-        const resolution = RESOLUTION_MAP[aspectRatio] || '1080p'
+        const normalizedAspect = normalizeAspectRatio(aspectRatio)
+        const duration = normalizeDuration(requestedDuration)
+        const resolution = RESOLUTION_MAP[normalizedAspect.resolved]
+        console.log(`[Video/LTX-2] Generating video... (${normalizedAspect.resolved}, ${duration}s, ${resolution})`)
 
         const response = await fetch(`${LTX_API_BASE}/text-to-video`, {
           method: 'POST',
@@ -96,7 +109,11 @@ export const videoTools: ToolDefinition[] = [
           success: true,
           url,
           prompt,
-          aspectRatio,
+          aspectRatio: normalizedAspect.resolved,
+          requestedAspectRatio: normalizedAspect.requested,
+          duration,
+          requestedDuration,
+          ...(normalizedAspect.fallbackApplied ? { note: 'Square video fallback applied as 16:9 for ltx-2-3-fast.' } : {}),
         })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Layout, TrendingUp, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Info } from 'lucide-react'
+import { Search, Layout, TrendingUp, Film, ArrowRight, Zap, MessageSquare, Sparkles, Power, Info, Box } from 'lucide-react'
 import BotAvatar3D from '../avatars/BotAvatar3D'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -10,7 +10,7 @@ interface MarketplaceViewProps {
 const categories = [
   { id: 'all', label: 'Todos' },
   { id: 'marketing', label: 'Marketing' },
-  { id: 'diseno', label: 'Diseño' },
+  { id: 'diseno', label: 'Diseno' },
   { id: 'desarrollo', label: 'Desarrollo' },
   { id: 'contenido', label: 'Contenido' },
 ]
@@ -20,43 +20,55 @@ const bots = [
     id: 'seo',
     name: 'Lupa',
     role: 'Estratega SEO',
-    desc: 'Auditorías SEO completas, investigación de keywords, análisis de backlinks, estudio de competencia y estrategias de posicionamiento en Google.',
+    desc: 'Auditorias SEO completas, investigacion de keywords, analisis de backlinks, estudio de competencia y estrategias de posicionamiento en Google.',
     color: '#3b82f6',
     icon: <Search size={20} />,
     category: 'marketing',
-    capabilities: ['Keyword Research', 'Backlink Audit', 'Análisis Competencia', 'SEO On-Page'],
+    capabilities: ['Keyword Research', 'Backlink Audit', 'Analisis Competencia', 'SEO On-Page'],
     prompt: 'Analiza el SEO de mi sitio web',
     featured: true,
   },
   {
     id: 'web',
     name: 'Pixel',
-    role: 'Diseñador Visual',
-    desc: 'Logos, branding, posts para redes, banners, flyers, stories, moodboards y todo lo gráfico con Midjourney. Tu diseñador visual completo.',
+    role: 'Disenador Visual',
+    desc: 'Logos, branding, posts para redes, banners, flyers, stories, moodboards y todo lo grafico con IA. Tu disenador visual completo.',
     color: '#a78bfa',
     icon: <Layout size={20} />,
     category: 'diseno',
     capabilities: ['Logos con IA', 'Posts Redes', 'Banners', 'Moodboards'],
-    prompt: 'Diseña un logo para mi negocio',
+    prompt: 'Disena un logo para mi negocio',
+    featured: true,
+  },
+  {
+    id: 'voxel',
+    name: 'Voxel',
+    role: 'Artista 3D',
+    desc: 'Convierte una foto de tu carro o producto en un modelo 3D descargable con preview y fallback visual listo para usar.',
+    color: '#06b6d4',
+    icon: <Box size={20} />,
+    category: 'diseno',
+    capabilities: ['Imagen a 3D', 'Modelos GLB', 'Preview', 'Fallback visual'],
+    prompt: 'Convierte esta imagen en un modelo 3D listo para descargar',
     featured: true,
   },
   {
     id: 'ads',
     name: 'Metric',
     role: 'Especialista en Publicidad',
-    desc: 'Campañas de Meta Ads y Google Ads optimizadas, copywriting publicitario, segmentación de audiencias y optimización de ROAS.',
+    desc: 'Campanas de Meta Ads y Google Ads optimizadas, copywriting publicitario, segmentacion de audiencias y optimizacion de ROAS.',
     color: '#10b981',
     icon: <TrendingUp size={20} />,
     category: 'marketing',
     capabilities: ['Meta Ads', 'Google Ads', 'Copywriting', 'A/B Testing'],
-    prompt: 'Crea una campaña publicitaria para mi producto',
+    prompt: 'Crea una campana publicitaria para mi producto',
     featured: false,
   },
   {
     id: 'video',
     name: 'Reel',
     role: 'Creador de Video',
-    desc: 'Videos cortos generados con IA (Veo 3): reels promocionales, clips de producto, contenido audiovisual para redes sociales y publicidad.',
+    desc: 'Videos cortos generados con IA: reels promocionales, clips de producto, contenido audiovisual para redes sociales y publicidad.',
     color: '#ef4444',
     icon: <Film size={20} />,
     category: 'contenido',
@@ -84,7 +96,10 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
 
   const filtered = bots.filter(b => {
     const matchCategory = activeCategory === 'all' || b.category === activeCategory
-    const matchSearch = !searchQuery || b.name.toLowerCase().includes(searchQuery.toLowerCase()) || b.role.toLowerCase().includes(searchQuery.toLowerCase()) || b.desc.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchSearch = !searchQuery
+      || b.name.toLowerCase().includes(searchQuery.toLowerCase())
+      || b.role.toLowerCase().includes(searchQuery.toLowerCase())
+      || b.desc.toLowerCase().includes(searchQuery.toLowerCase())
     return matchCategory && matchSearch
   })
 
@@ -93,7 +108,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar bg-page">
       <div className="max-w-6xl mx-auto py-8 px-6">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#a78bfa] to-[#8b5cf6] flex items-center justify-center">
@@ -106,17 +120,15 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
           </div>
         </div>
 
-        {/* Activation explainer */}
         {isAuthenticated && (
           <div className="flex items-start gap-3 p-4 mb-6 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
             <Info size={16} className="text-[#a78bfa] flex-shrink-0 mt-0.5" />
             <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-              <strong>Cada agente es un miembro de tu equipo digital.</strong> Activalos para que participen automaticamente cuando les pidas crear logos, webs, campanas, videos o codigo.
+              <strong>Cada agente es un miembro de tu equipo digital.</strong> Activalos para que participen automaticamente cuando les pidas crear logos, webs, campanas, videos, codigo o assets 3D.
             </p>
           </div>
         )}
 
-        {/* Search */}
         <div className="relative mb-6">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint" />
           <input
@@ -128,7 +140,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
           />
         </div>
 
-        {/* Categories */}
         <div className="flex gap-2 mb-8 overflow-x-auto pb-1">
           {categories.map(cat => (
             <button
@@ -145,7 +156,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
           ))}
         </div>
 
-        {/* Featured Section */}
         {activeCategory === 'all' && !searchQuery && (
           <div className="mb-10">
             <h2 className="text-sm font-bold text-ink mb-4 flex items-center gap-2">
@@ -180,7 +190,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
           </div>
         )}
 
-        {/* All Bots Grid */}
         <div>
           <h2 className="text-sm font-bold text-ink mb-4">
             {activeCategory === 'all' ? 'Todos los agentes' : `Agentes de ${categories.find(c => c.id === activeCategory)?.label}`}
@@ -194,7 +203,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                 className="bg-surface rounded-2xl border border-edge hover:border-primary/30 transition-all overflow-hidden"
               >
                 <div className="p-5">
-                  {/* Top row */}
                   <div className="flex items-start gap-4 mb-4">
                     <BotAvatar3D seed={bot.name} color={bot.color} isActive={false} size="lg" />
                     <div className="flex-1 min-w-0">
@@ -220,10 +228,8 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                     </div>
                   </div>
 
-                  {/* Description */}
                   <p className="text-xs text-ink-light leading-relaxed mb-4">{bot.desc}</p>
 
-                  {/* Capabilities */}
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {bot.capabilities.map(cap => (
                       <span key={cap} className="text-[10px] font-medium text-ink-faint bg-subtle px-2.5 py-1 rounded-full border border-edge">
@@ -232,7 +238,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                     ))}
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => onUseBot(bot.prompt)}
@@ -264,7 +269,6 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                   </div>
                 </div>
 
-                {/* Expanded profile */}
                 {expandedBot === bot.id && (
                   <div className="px-5 pb-5 pt-0 border-t border-edge mt-0">
                     <div className="pt-4 grid grid-cols-2 gap-4">
@@ -275,17 +279,18 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                       <div>
                         <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Herramientas</p>
                         <p className="text-xs text-ink">
-                          {bot.id === 'web' ? 'Midjourney + Stock Photos' :
-                           bot.id === 'video' ? 'Veo 3 (video IA)' :
-                           bot.id === 'seo' ? 'Keywords, Backlinks, Competencia' :
-                           bot.id === 'ads' ? 'Copys, Campañas' :
-                           'React + Stock Photos'}
+                          {bot.id === 'web' ? 'Imagenes + Stock Photos' :
+                            bot.id === 'voxel' ? 'Meshy image-to-3D + preview HTML' :
+                            bot.id === 'video' ? 'Veo 3 (video IA)' :
+                            bot.id === 'seo' ? 'Keywords, Backlinks, Competencia' :
+                            bot.id === 'ads' ? 'Copys, Campanas' :
+                            'React + Stock Photos'}
                         </p>
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-ink-faint uppercase tracking-wider mb-2">Tipo de entrega</p>
                         <p className="text-xs text-ink">
-                          {['web', 'dev', 'video'].includes(bot.id) ? 'Visual (Canvas)' : 'Texto detallado'}
+                          {['web', 'dev', 'video', 'voxel'].includes(bot.id) ? 'Visual (Canvas)' : 'Texto detallado'}
                         </p>
                       </div>
                       <div>
@@ -299,7 +304,7 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
                         onClick={() => onUseBot(bot.prompt)}
                         className="text-xs text-primary hover:underline cursor-pointer"
                       >
-                        "{bot.prompt}" →
+                        "{bot.prompt}" -&gt;
                       </button>
                     </div>
                   </div>
@@ -309,12 +314,11 @@ const MarketplaceView = ({ onUseBot }: MarketplaceViewProps) => {
           </div>
         </div>
 
-        {/* Coming soon */}
         <div className="mt-10 p-6 rounded-2xl border-2 border-dashed border-edge text-center">
           <Sparkles size={24} className="text-ink-faint mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-ink mb-1">Más agentes próximamente</h3>
+          <h3 className="text-sm font-bold text-ink mb-1">Mas agentes proximamente</h3>
           <p className="text-xs text-ink-faint max-w-md mx-auto">
-            Estamos desarrollando nuevos bots especializados: Community Manager, Email Marketing, Analytics, Copywriter y más.
+            Estamos desarrollando nuevos bots especializados: Community Manager, Email Marketing, Analytics, Copywriter y mas.
           </p>
         </div>
       </div>

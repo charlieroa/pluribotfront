@@ -122,8 +122,7 @@ interface PublicProject {
   type: string
   agent: string
   botType: string
-  netlifyUrl: string | null
-  shareSlug: string | null
+  publishSlug: string | null
   createdAt: string
 }
 
@@ -287,9 +286,9 @@ const PortfolioView = ({ onContactBot }: PortfolioViewProps) => {
                           <span className="text-[11px] font-semibold text-ink-faint">{project.agent}</span>
                         </div>
                         <div className="flex gap-1.5">
-                          {project.netlifyUrl && (
+                          {project.publishSlug && (
                             <a
-                              href={project.netlifyUrl}
+                              href={`https://${project.publishSlug}.plury.co`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-600 bg-emerald-500/10 rounded-md hover:bg-emerald-500/20 transition-colors"

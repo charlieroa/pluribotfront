@@ -154,9 +154,9 @@ function buildGraphFromDraft(
 export default function WorkflowEditor({ initialPrompt = '', onClose, onShowChat }: Props) {
   const [prompt, setPrompt] = useState(initialPrompt)
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9')
-  const [draft, setDraft] = useState<WorkflowDraft | null>(null)
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [_draft, setDraft] = useState<WorkflowDraft | null>(null)
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [isAssisting, setIsAssisting] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -247,16 +247,16 @@ export default function WorkflowEditor({ initialPrompt = '', onClose, onShowChat
     let imageUrl = typeof d.imageUrl === 'string' ? d.imageUrl : null
 
     if (!imageUrl) {
-      updateNode(node.id, { status: 'running', progress: 20 })
-      const imgRes = await fetch(`${API_BASE}/generate-image`, {
+      updateNode(node.id, { status: 'running', progress: 35 })
+      const vidRes = await fetch(`${API_BASE}/text-to-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ prompt: d.prompt, aspectRatio }),
+        body: JSON.stringify({ prompt: d.prompt, aspectRatio, duration: d.duration || '5' }),
       })
-      const imgData = await imgRes.json()
-      if (!imgData.success || !imgData.url) throw new Error('image')
-      imageUrl = imgData.url
-      updateNode(node.id, { imageUrl, progress: 50 })
+      const vidData = await vidRes.json()
+      if (!vidData.success || !vidData.url) throw new Error('video')
+      updateNode(node.id, { videoUrl: vidData.url, status: 'complete', progress: 100 })
+      return vidData.url as string
     }
 
     updateNode(node.id, { status: 'running', progress: 60 })

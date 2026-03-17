@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Check, X, FileText, ExternalLink, KanbanSquare, Play, ChevronRight, Pencil, Layers, UserCircle, FolderPlus, Star, Crown } from 'lucide-react'
+import { Check, X, FileText, ExternalLink, KanbanSquare, Play, ChevronRight, Pencil, Layers, UserCircle, FolderPlus, Star, Crown, Globe, Palette, Video, Code2, FileCode, Download, ImagePlus, Share2 } from 'lucide-react'
 import type { Agent, Message, Deliverable, PlanStep } from '../../types'
 import type { ProposedPlan, StepApproval } from '../../hooks/useChat'
 
@@ -9,6 +9,8 @@ interface MessageBubbleProps {
   onApprove?: (id: string, selectedAgents?: string[]) => void
   onReject?: (id: string) => void
   onOpenDeliverable?: (d: Deliverable, clickedImageUrl?: string) => void
+  onEditImage?: (imageUrl: string) => void
+  onUseAsReference?: (imageUrl: string) => void
   proposedPlan?: ProposedPlan | null
   pendingStepApproval?: StepApproval | null
   onApproveStep?: (conversationId: string, approved: boolean) => void
@@ -16,10 +18,94 @@ interface MessageBubbleProps {
   humanRequested?: boolean
 }
 
+// ─── Image Modal ───
+function ImageModal({ url, onClose, onReference, onEdit }: { url: string; onClose: () => void; onReference: (url: string) => void; onEdit?: (url: string) => void }) {
+  const [shared, setShared] = useState(false)
+  const [sharing, setSharing] = useState(false)
+
+  const handleShare = async () => {
+    setSharing(true)
+    try {
+      const token = localStorage.getItem('plury_token')
+      await fetch('/api/community/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ imageUrl: url, model: url.includes('gemini-') ? 'gemini-pro' : 'ideogram' }),
+      })
+      setShared(true)
+    } catch { /* ignore */ }
+    setSharing(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+      <div className="relative max-w-4xl max-h-[90vh] m-4 animate-[scaleIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
+        <style>{`@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }`}</style>
+        <img src={url} alt="Preview" className="max-w-full max-h-[78vh] rounded-2xl shadow-2xl object-contain" />
+        <div className="absolute top-3 right-3">
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors backdrop-blur-sm">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex gap-2.5 justify-center mt-4">
+          <button
+            onClick={() => onReference(url)}
+            className="flex items-center gap-2 px-5 py-3 bg-violet-600 text-white rounded-2xl text-sm font-bold hover:bg-violet-700 transition-colors shadow-lg"
+          >
+            <ImagePlus size={16} />
+            Referencia
+          </button>
+          {onEdit && (
+            <button
+              onClick={() => onEdit(url)}
+              className="flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-black transition-colors shadow-lg"
+            >
+              <Pencil size={16} />
+              Editar
+            </button>
+          )}
+          <a
+            href={url}
+            download={`plury-${Date.now()}.png`}
+            className="flex items-center gap-2 px-5 py-3 bg-white text-black rounded-2xl text-sm font-bold hover:bg-gray-100 transition-colors shadow-lg"
+            onClick={e => e.stopPropagation()}
+          >
+            <Download size={16} />
+            Descargar
+          </a>
+          <button
+            onClick={handleShare}
+            disabled={shared || sharing}
+            className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold transition-colors shadow-lg ${shared ? 'bg-green-500 text-white' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
+          >
+            <Share2 size={16} />
+            {shared ? 'Compartido!' : sharing ? 'Compartiendo...' : 'Compartir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Inline Image Grid ───
+function ImageGrid({ images, onClickImage }: { images: { alt: string; url: string }[]; onClickImage: (url: string) => void }) {
+  if (images.length === 0) return null
+  const cols = images.length >= 3 ? 'grid-cols-3' : images.length === 2 ? 'grid-cols-2' : 'grid-cols-1'
+  return (
+    <div className={`grid ${cols} gap-4 my-3 w-full max-w-3xl`}>
+      {images.map((img, i) => (
+        <ImageWithSkeleton key={i} url={img.url} index={i} onClick={() => onClickImage(img.url)} />
+      ))}
+    </div>
+  )
+}
+
 const agentColors: Record<string, string> = {
   seo: '#3b82f6',
   brand: '#ec4899',
   web: '#a855f7',
+  voxel: '#06b6d4',
   content: '#f97316',
   ads: '#10b981',
   dev: '#f59e0b',
@@ -33,6 +119,7 @@ const agentInitials: Record<string, string> = {
   seo: 'L',
   brand: 'B',
   web: 'P',
+  voxel: 'V',
   content: 'C',
   ads: 'M',
   dev: 'D',
@@ -46,37 +133,93 @@ const agentInitials: Record<string, string> = {
 function ImageWithSkeleton({ url, index, onClick }: { url: string; index: number; onClick: () => void }) {
   const [loaded, setLoaded] = useState(false)
   return (
-    <div
-      className="relative group cursor-pointer rounded-xl overflow-hidden border border-edge hover:border-primary/50 transition-all hover:shadow-lg"
-      onClick={onClick}
-    >
-      {!loaded && (
-        <div className="w-full aspect-square bg-subtle animate-pulse flex items-center justify-center">
-          <div className="w-10 h-10 rounded-full bg-edge/50 animate-pulse" />
-        </div>
-      )}
-      <img
-        src={url}
-        alt={`Opcion ${index + 1}`}
-        className={`w-full aspect-square object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-        loading="lazy"
-        onLoad={() => setLoaded(true)}
-      />
-      {loaded && (
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-end justify-between p-2 opacity-0 group-hover:opacity-100">
-          <span className="text-[10px] font-bold text-white bg-black/60 px-2 py-0.5 rounded-full">Opcion {index + 1}</span>
-          <a href={url} download className="text-white bg-black/60 p-1 rounded-full hover:bg-black/80 transition-colors" onClick={e => e.stopPropagation()}>
-            <ExternalLink size={12} />
-          </a>
-        </div>
-      )}
+    <div className="space-y-1.5">
+      <span className="text-[11px] font-bold text-ink-faint uppercase tracking-wider px-0.5">Opcion {index + 1}</span>
+      <div
+        className="relative group cursor-pointer rounded-2xl overflow-hidden border border-edge hover:border-primary/40 transition-all hover:shadow-xl"
+        onClick={onClick}
+      >
+        {!loaded && (
+          <div className="w-full aspect-[4/5] bg-subtle animate-pulse flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-edge/50 animate-pulse" />
+          </div>
+        )}
+        <img
+          src={url}
+          alt={`Opcion ${index + 1}`}
+          className={`w-full aspect-[4/5] object-cover transition-all duration-300 group-hover:scale-[1.03] ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+        />
+        {loaded && (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
+            <span className="text-[12px] font-bold text-white bg-black/50 backdrop-blur-sm px-4 py-1.5 rounded-full">
+              Ampliar
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDeliverable, proposedPlan, onRequestHuman, humanRequested }: MessageBubbleProps) => {
+// ─── Agent text with inline image grid + modal ───
+function AgentTextWithImages({ text, onUseAsReference, onEditImage }: { text: string; onUseAsReference?: (url: string) => void; onEditImage?: (url: string) => void }) {
+  const [modalImage, setModalImage] = useState<string | null>(null)
+
+  const parts = text.split(/(\!\[.*?\]\(.*?\))/)
+  const images: { alt: string; url: string }[] = []
+  const textParts: string[] = []
+
+  for (const part of parts) {
+    const imgMatch = part.match(/^\!\[(.*?)\]\((.*?)\)$/)
+    if (imgMatch) {
+      images.push({ alt: imgMatch[1], url: imgMatch[2] })
+    } else if (part.trim()) {
+      textParts.push(part)
+    }
+  }
+
+  const hasImages = images.length > 0
+
+  const handleReference = (url: string) => {
+    setModalImage(null)
+    onUseAsReference?.(url)
+  }
+
+  // If there are images, show minimal text (first sentence only) + grid
+  // If no images, show full text
+  const displayText = hasImages
+    ? '' // No text when images are present — the images speak for themselves
+    : textParts.join('\n').trim()
+
+  return (
+    <>
+      {displayText && (
+        <p className="text-sm leading-relaxed text-ink-light whitespace-pre-wrap">{displayText}</p>
+      )}
+      {hasImages && (
+        <>
+          <ImageGrid images={images} onClickImage={setModalImage} />
+          <p className="text-[11px] text-ink-faint mt-1">Haz clic en una imagen para ampliar o usar como referencia</p>
+        </>
+      )}
+      {modalImage && (
+        <ImageModal
+          url={modalImage}
+          onClose={() => setModalImage(null)}
+          onReference={handleReference}
+          onEdit={onEditImage ? (url) => { setModalImage(null); onEditImage(url) } : undefined}
+        />
+      )}
+    </>
+  )
+}
+
+const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDeliverable, onEditImage, onUseAsReference, proposedPlan, onRequestHuman, humanRequested }: MessageBubbleProps) => {
   const agent = agents.find(a => a.id === m.botType)
   const agentColor = agent?.color || agentColors[m.botType || ''] || '#6366f1'
+  const [selectedImageSrc, setSelectedImageSrc] = useState<string | null>(null)
 
   // Plan proposal card with checkboxes
   if (m.type === 'approval' && proposedPlan && proposedPlan.messageId === m.id && m.approved === undefined) {
@@ -196,7 +339,7 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
   const initial = agentInitials[m.botType || ''] || m.sender?.charAt(0)?.toUpperCase() || '?'
 
   return (
-    <div className="flex items-start gap-3 max-w-2xl">
+    <div className="flex items-start gap-3 max-w-3xl">
       <div
         className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5"
         style={{ backgroundColor: agentColor }}
@@ -208,7 +351,7 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
         {m.imageUrl && (
           <img src={m.imageUrl} alt="Adjunto" className="max-w-xs max-h-48 rounded-xl object-cover" />
         )}
-        <p className="text-sm leading-relaxed text-ink-light whitespace-pre-wrap">{m.text}</p>
+        <AgentTextWithImages text={m.text} onUseAsReference={onUseAsReference} onEditImage={onEditImage} />
 
         {/* Attachment: code block */}
         {m.attachment?.type === 'code' && (
@@ -228,37 +371,66 @@ const MessageBubble = ({ message: m, agents, onApprove, onReject, onOpenDelivera
           <div>
             <div className={`grid gap-2 ${m.attachment.images.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-2 max-w-md'}`}>
               {m.attachment.images.map((url, i) => (
-                <ImageWithSkeleton
-                  key={i}
-                  url={url}
-                  index={i}
-                  onClick={() => m.attachment?.deliverable && onOpenDeliverable?.(m.attachment.deliverable, url)}
-                />
+                <div key={i} className="relative">
+                  <ImageWithSkeleton
+                    url={url}
+                    index={i}
+                    onClick={() => setSelectedImageSrc(url)}
+                  />
+                </div>
               ))}
             </div>
             <p className="text-xs text-ink-faint mt-2">
-              {m.attachment.images.length > 1
-                ? `Haz clic en la que mas te guste para verla en grande. Puedes pedir ajustes desde el chat.`
-                : `Haz clic para verla en grande. Puedes pedir cambios desde el chat.`}
+              Haz clic en una imagen para ampliarla, usarla como referencia o editarla.
             </p>
+            {selectedImageSrc && (
+              <ImageModal
+                url={selectedImageSrc}
+                onClose={() => setSelectedImageSrc(null)}
+                onReference={(url) => {
+                  setSelectedImageSrc(null)
+                  onUseAsReference?.(url)
+                }}
+                onEdit={(url) => {
+                  setSelectedImageSrc(null)
+                  ;(window as any).__selectedImageForRefine = { src: url, deliverableId: m.attachment?.deliverable?.id }
+                  onEditImage?.(url)
+                }}
+              />
+            )}
           </div>
         )}
 
         {/* Attachment: deliverable preview */}
-        {m.attachment?.type === 'preview' && m.attachment.deliverable && (
-          <button
-            onClick={() => onOpenDeliverable?.(m.attachment!.deliverable!)}
-            className="w-full text-left bg-surface-alt border border-edge rounded-xl p-4 hover:border-primary/40 transition-colors group"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-ink group-hover:text-primary transition-colors">{m.attachment.title}</p>
-                <p className="text-xs text-ink-faint mt-1">{m.attachment.content}</p>
+        {m.attachment?.type === 'preview' && m.attachment.deliverable && (() => {
+          const del = m.attachment!.deliverable!
+          const typeInfo: Record<string, { icon: typeof Globe; label: string; color: string }> = {
+            design: { icon: Palette, label: 'Propuesta visual', color: '#a855f7' },
+            code: { icon: Code2, label: 'Proyecto', color: '#f59e0b' },
+            copy: { icon: FileText, label: 'Contenido', color: '#f97316' },
+            video: { icon: Video, label: 'Video', color: '#ef4444' },
+            report: { icon: FileCode, label: 'Reporte', color: '#3b82f6' },
+          }
+          const info = typeInfo[del.type || ''] || { icon: Globe, label: 'Resultado', color: '#6366f1' }
+          const TypeIcon = info.icon
+          return (
+            <button
+              onClick={() => onOpenDeliverable?.(del)}
+              className="w-full text-left bg-surface-alt border border-edge rounded-xl p-4 hover:border-primary/40 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${info.color}15` }}>
+                  <TypeIcon size={18} style={{ color: info.color }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-ink group-hover:text-primary transition-colors truncate">{m.attachment!.title}</p>
+                  <p className="text-xs text-ink-faint mt-0.5">{info.label} — Abrir en canvas</p>
+                </div>
+                <ExternalLink size={16} className="text-ink-faint group-hover:text-primary transition-colors flex-shrink-0" />
               </div>
-              <ExternalLink size={16} className="text-ink-faint group-hover:text-primary transition-colors flex-shrink-0" />
-            </div>
-          </button>
-        )}
+            </button>
+          )
+        })()}
 
         {/* Action buttons after deliverable */}
         {m.attachment?.type === 'preview' && m.attachment.deliverable && (
@@ -499,7 +671,7 @@ export interface StepApprovalCardProps {
 }
 
 export const StepApprovalCard = ({ step, onApproveStep, onRequestHuman, humanRequested }: StepApprovalCardProps) => {
-  const isVisualAgent = ['web', 'dev'].includes(step.agentId)
+  const isVisualAgent = ['web', 'brand', 'dev', 'video'].includes(step.agentId)
   const color = agentColors[step.agentId] ?? '#6b7280'
 
   const stepInitial = agentInitials[step.agentId] || step.agentName?.charAt(0)?.toUpperCase() || '?'

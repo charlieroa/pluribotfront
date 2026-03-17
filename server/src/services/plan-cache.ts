@@ -6,6 +6,9 @@ export interface OrchestratorStep {
   task: string
   userDescription: string     // human-readable summary
   dependsOn?: string[]        // references instanceIds
+  phaseIndex?: number
+  phaseTotal?: number
+  phaseTitle?: string
 }
 
 interface ExecutionGroup {
@@ -28,20 +31,27 @@ export interface ExecutingPlan {
 // Clean up plans older than 30 minutes
 const PLAN_TTL = 30 * 60 * 1000
 
-export async function setPendingPlan(messageId: string, plan: { steps: OrchestratorStep[] }): Promise<void> {
+export async function setPendingPlan(messageId: string, plan: { steps: OrchestratorStep[]; imageUrl?: string }): Promise<void> {
+  // Store imageUrl alongside steps in the JSON blob
+  const payload = JSON.stringify({ steps: plan.steps, imageUrl: plan.imageUrl })
   await prisma.pendingPlan.upsert({
     where: { id: messageId },
-    update: { stepsJson: JSON.stringify(plan.steps) },
-    create: { id: messageId, stepsJson: JSON.stringify(plan.steps) },
+    update: { stepsJson: payload },
+    create: { id: messageId, stepsJson: payload },
   })
   cleanupOldPlans().catch(console.error)
 }
 
-export async function getPendingPlan(messageId: string): Promise<{ steps: OrchestratorStep[]; createdAt: number } | undefined> {
+export async function getPendingPlan(messageId: string): Promise<{ steps: OrchestratorStep[]; imageUrl?: string; createdAt: number } | undefined> {
   const row = await prisma.pendingPlan.findUnique({ where: { id: messageId } })
   if (!row) return undefined
+  const parsed = JSON.parse(row.stepsJson)
+  // Support both old format (plain array) and new format ({ steps, imageUrl })
+  const steps = Array.isArray(parsed) ? parsed : parsed.steps
+  const imageUrl = Array.isArray(parsed) ? undefined : parsed.imageUrl
   return {
-    steps: JSON.parse(row.stepsJson) as OrchestratorStep[],
+    steps: steps as OrchestratorStep[],
+    imageUrl,
     createdAt: row.createdAt.getTime(),
   }
 }

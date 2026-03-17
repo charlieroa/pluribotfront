@@ -13,6 +13,7 @@ import { handleAnonymousMessage } from './anonymous-handler.js'
 import { resolveModelConfig, resolveAvailableConfig } from './model-resolver.js'
 import { startParallelExecution } from './execution-engine.js'
 import { getToolDefinitions, executeToolCall } from './tools/executor.js'
+import { buildProjectAppExecutionBrief, inferProjectAppType, type ProjectAppType } from './project-apps.js'
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -27,8 +28,13 @@ export interface OrchestratorOutput {
     task: string
     userDescription?: string
     dependsOn?: string[]
+    phaseIndex?: number
+    phaseTotal?: number
+    phaseTitle?: string
   }>
 }
+
+const PHASE_DESC_RE = /^fase\s+(\d+)\s*\/\s*(\d+)\s*:\s*(.+)$/i
 
 function stripCodeFences(text: string): string {
   return text
@@ -112,6 +118,9 @@ function normalizeOrchestratorOutput(output: Partial<OrchestratorOutput>, fallba
           ...(step.instanceId ? { instanceId: step.instanceId } : {}),
           ...(step.userDescription ? { userDescription: step.userDescription } : {}),
           ...(Array.isArray(step.dependsOn) ? { dependsOn: step.dependsOn.filter(dep => typeof dep === 'string') } : {}),
+          ...(typeof step.phaseIndex === 'number' && Number.isFinite(step.phaseIndex) ? { phaseIndex: Math.max(1, Math.floor(step.phaseIndex)) } : {}),
+          ...(typeof step.phaseTotal === 'number' && Number.isFinite(step.phaseTotal) ? { phaseTotal: Math.max(1, Math.floor(step.phaseTotal)) } : {}),
+          ...(typeof step.phaseTitle === 'string' && step.phaseTitle.trim() ? { phaseTitle: step.phaseTitle.trim() } : {}),
         }))
     : []
 
@@ -124,6 +133,74 @@ function normalizeOrchestratorOutput(output: Partial<OrchestratorOutput>, fallba
     quickReplies,
     steps,
   }
+}
+
+function parsePhaseFromDescription(userDescription?: string): Pick<OrchestratorStep, 'phaseIndex' | 'phaseTotal' | 'phaseTitle'> {
+  if (!userDescription) return {}
+  const match = userDescription.trim().match(PHASE_DESC_RE)
+  if (!match) return {}
+
+  const phaseIndex = Number.parseInt(match[1], 10)
+  const phaseTotal = Number.parseInt(match[2], 10)
+  const phaseTitle = match[3]?.trim()
+
+  return {
+    ...(Number.isFinite(phaseIndex) && phaseIndex > 0 ? { phaseIndex } : {}),
+    ...(Number.isFinite(phaseTotal) && phaseTotal > 0 ? { phaseTotal } : {}),
+    ...(phaseTitle ? { phaseTitle } : {}),
+  }
+}
+
+function computeDerivedPhaseIndices(steps: Array<Pick<OrchestratorStep, 'instanceId' | 'dependsOn'>>): Map<string, number> {
+  const stepMap = new Map(steps.map(step => [step.instanceId, step]))
+  const memo = new Map<string, number>()
+  const visiting = new Set<string>()
+
+  const visit = (instanceId: string): number => {
+    if (memo.has(instanceId)) return memo.get(instanceId)!
+    if (visiting.has(instanceId)) return 1
+
+    visiting.add(instanceId)
+    const step = stepMap.get(instanceId)
+    const depDepths = (step?.dependsOn ?? [])
+      .filter(dep => stepMap.has(dep))
+      .map(dep => visit(dep))
+    visiting.delete(instanceId)
+
+    const depth = depDepths.length > 0 ? Math.max(...depDepths) + 1 : 1
+    memo.set(instanceId, depth)
+    return depth
+  }
+
+  for (const step of steps) visit(step.instanceId)
+  return memo
+}
+
+export function enrichPhaseMetadata<T extends OrchestratorStep>(steps: T[]): T[] {
+  if (steps.length === 0) return steps
+
+  const derivedPhaseIndices = computeDerivedPhaseIndices(steps)
+  const describedPhases = steps.map(step => parsePhaseFromDescription(step.userDescription))
+  const explicitTotals = steps
+    .flatMap(step => [step.phaseTotal, parsePhaseFromDescription(step.userDescription).phaseTotal])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+  const derivedTotal = Math.max(...Array.from(derivedPhaseIndices.values()), 1)
+  const globalPhaseTotal = Math.max(...explicitTotals, derivedTotal)
+  const shouldAnnotate = globalPhaseTotal > 1 || steps.some(step => typeof step.phaseIndex === 'number' || typeof step.phaseTitle === 'string')
+
+  return steps.map((step, index) => {
+    const described = describedPhases[index]
+    const phaseIndex = step.phaseIndex ?? described.phaseIndex ?? (shouldAnnotate ? derivedPhaseIndices.get(step.instanceId) : undefined)
+    const phaseTotal = step.phaseTotal ?? described.phaseTotal ?? (phaseIndex ? globalPhaseTotal : undefined)
+    const phaseTitle = step.phaseTitle?.trim() || described.phaseTitle || undefined
+
+    return {
+      ...step,
+      ...(phaseIndex ? { phaseIndex } : {}),
+      ...(phaseTotal ? { phaseTotal: Math.max(phaseIndex ?? 1, phaseTotal) } : {}),
+      ...(phaseTitle ? { phaseTitle } : {}),
+    }
+  })
 }
 
 function parseOrchestratorOutput(fullText: string): OrchestratorOutput {
@@ -149,6 +226,172 @@ function parseOrchestratorOutput(fullText: string): OrchestratorOutput {
     directResponse: cleaned || fullText,
     quickReplies: [],
     steps: [],
+  }
+}
+
+const FAST_TRACK_APP_TYPES: ProjectAppType[] = ['delivery', 'chatflow', 'mobility', 'saas', 'ecommerce', 'generic']
+const VIDEO_DIRECT_REPLY_PREFIX = 'Quiero que me entregues el video directamente en el chat. Idea:'
+const VIDEO_WORKFLOW_REPLY_PREFIX = 'Quiero ajustar los nodos de este video en el editor. Idea:'
+const VIDEO_INTENT_RE = /\b(video|reel|clip|animacion|animación|audiovisual|story|stories|short)\b/i
+const VIDEO_WORKFLOW_RE = /\b(nodos|workflow|editor visual|editor de video)\b/i
+const VIDEO_DIRECT_RE = /\b(video directo|entregame el video|entrégame el video|entregar el video|directamente en el chat|dame el video en el chat)\b/i
+
+function deriveProjectName(source: string): string {
+  const cleaned = source
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return cleaned.slice(0, 48) || 'Proyecto'
+}
+
+export function getVisualFastTrack(text: string): OrchestratorStep | null {
+  const lower = text.toLowerCase()
+  if (/https?:\/\//.test(lower)) return null
+
+  const isLogo = /\b(logo|logotipo|isotipo|imagotipo|identidad visual|marca|branding|monograma)\b/.test(lower)
+  const isCampaign = /\b(flyer|flayer|banner|post|story|stories|afiche|volante|pendon|pendón|anuncio|pieza grafica|pieza gráfica|carrusel)\b/.test(lower)
+
+  if (!isLogo && !isCampaign) return null
+
+  // If user wants a full app/system WITH visual, let orchestrator decide (e.g. "hazme una tienda con logo" = multi-agent)
+  // But "logo para mi tienda" = just a logo
+  const hasAppIntent = /\b(landing|pagina|página|web|sitio|app|saas|sistema|plataforma|dashboard|delivery|ecommerce|crm)\b/.test(lower)
+  if (hasAppIntent && !isLogo && !isCampaign) return null
+
+  return {
+    agentId: 'web',
+    instanceId: isLogo ? 'brand-1' : 'visual-1',
+    task: text,
+    userDescription: isLogo ? 'Creando propuestas de logo' : 'Creando pieza visual',
+  }
+}
+
+export function getFastTrackProjectAppType(text: string, hasExistingDevProject = false): ProjectAppType | null {
+  if (hasExistingDevProject) return null
+
+  const lower = text.toLowerCase()
+  if (/https?:\/\//.test(lower)) return null
+
+  const type = inferProjectAppType(lower)
+  if (!FAST_TRACK_APP_TYPES.includes(type)) return null
+
+  const matchedVerticals = [
+    /(delivery|domicilio|restaurante|pedido|repartidor)/.test(lower),
+    /(chatflow|workflow|chatbot|nodos|builder)/.test(lower),
+    /(uber|ride|movilidad|conductor|viaje)/.test(lower),
+  ].filter(Boolean).length
+
+  if (matchedVerticals > 1) return null
+
+  if (['saas', 'ecommerce', 'generic'].includes(type)) {
+    if (!/\b(saas|sistema|plataforma|crm|erp|dashboard|backoffice|panel|clinica|cl[ií]nica|consultorio|hospital|inventario|gestion|gesti[oó]n|ecommerce|tienda|checkout|carrito|marketplace|admin)\b/.test(lower)) {
+      return null
+    }
+  }
+
+  if (/\b(todo|completo|completa|fases|fase|multiapp|plataforma|saas|ademas|tambien|junto|paralelo|landing|web publica|dashboard y)\b/.test(lower)) {
+    return null
+  }
+
+  return type
+}
+
+export function getVideoRequestMode(text: string): 'workflow' | 'direct' | 'prompt' | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  if (trimmed.startsWith(VIDEO_WORKFLOW_REPLY_PREFIX)) return 'workflow'
+  if (trimmed.startsWith(VIDEO_DIRECT_REPLY_PREFIX)) return 'direct'
+
+  if (!VIDEO_INTENT_RE.test(trimmed)) return null
+  if (VIDEO_WORKFLOW_RE.test(trimmed)) return 'workflow'
+  if (VIDEO_DIRECT_RE.test(trimmed)) return 'direct'
+  return 'prompt'
+}
+
+function stripVideoReplyPrefix(text: string, prefix: string): string {
+  return text.startsWith(prefix) ? text.slice(prefix.length).trim() : text.trim()
+}
+
+function buildVideoDirectStep(text: string): OrchestratorStep {
+  const cleanText = stripVideoReplyPrefix(text, VIDEO_DIRECT_REPLY_PREFIX) || text.trim()
+  return {
+    agentId: 'video',
+    instanceId: 'video-1',
+    task: `[VIDEO_DIRECT_CHAT] ${cleanText}`,
+    userDescription: cleanText,
+  }
+}
+
+function buildVideoWorkflowStep(text: string): OrchestratorStep {
+  const cleanText = stripVideoReplyPrefix(text, VIDEO_WORKFLOW_REPLY_PREFIX) || text.trim()
+  return {
+    agentId: 'video',
+    instanceId: 'video-1',
+    task: cleanText,
+    userDescription: cleanText,
+  }
+}
+
+async function sendDirectResponse(
+  conversationId: string,
+  text: string,
+  quickReplies?: Array<{ label: string; value: string; icon?: string }>
+): Promise<void> {
+  const directMsg = await prisma.message.create({
+    data: {
+      id: uuid(),
+      conversationId,
+      sender: 'Pluria',
+      text,
+      type: 'agent',
+      botType: 'base',
+    },
+  })
+
+  broadcast(conversationId, {
+    type: 'agent_end',
+    agentId: 'base',
+    messageId: directMsg.id,
+    fullText: text,
+  })
+
+  if (quickReplies && quickReplies.length > 0) {
+    broadcast(conversationId, {
+      type: 'quick_replies',
+      options: quickReplies,
+    })
+  }
+}
+
+function buildFastTrackStep(text: string, type: ProjectAppType): OrchestratorStep {
+  const projectName = deriveProjectName(text)
+  const brief = buildProjectAppExecutionBrief(type, projectName, 1)
+
+  return {
+    agentId: 'dev',
+    instanceId: 'dev-1',
+    task: `${brief.prompt} Requisitos especificos del usuario: ${text}.`,
+    userDescription: `Fase ${brief.phaseIndex}/1: ${brief.title}`,
+    phaseIndex: brief.phaseIndex,
+    phaseTotal: 1,
+    phaseTitle: brief.phaseTitle,
+  }
+}
+
+function buildExistingProjectExtensionStep(text: string, instanceId: string): OrchestratorStep {
+  const cleanText = text.trim()
+
+  return {
+    agentId: 'dev',
+    instanceId,
+    task: cleanText,
+    userDescription: cleanText,
+    phaseIndex: 1,
+    phaseTotal: 1,
+    phaseTitle: 'Extension',
   }
 }
 
@@ -204,6 +447,24 @@ export async function processMessage(conversationId: string, text: string, userI
     content: m.text,
   }))
 
+  // If no imageUrl provided directly, recover it from recent chat history (e.g. user sent image then replied to quickReplies)
+  if (!imageUrl) {
+    const recentWithImage = await prisma.message.findFirst({
+      where: { conversationId, type: 'user', attachmentJson: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { attachmentJson: true },
+    })
+    if (recentWithImage?.attachmentJson) {
+      try {
+        const att = JSON.parse(recentWithImage.attachmentJson) as { imageUrl?: string }
+        if (att.imageUrl) {
+          imageUrl = att.imageUrl
+          console.log(`[processMessage] Recovered imageUrl from DB: ${imageUrl}`)
+        }
+      } catch {}
+    }
+  }
+
   if (imageUrl) {
     const encoded = await readAndEncodeImage(imageUrl)
     if (encoded) {
@@ -211,7 +472,9 @@ export async function processMessage(conversationId: string, text: string, userI
       if (lastUserMsg) {
         lastUserMsg.images = [{ type: 'image', source: encoded.source, mediaType: encoded.mediaType }]
         // Append the image URL to the text so the orchestrator can pass it to agents (e.g. for remove_background tool)
-        lastUserMsg.content += `\n\n[Imagen adjunta por el usuario: ${imageUrl}]`
+        if (!lastUserMsg.content.includes('[Imagen adjunta por el usuario:')) {
+          lastUserMsg.content += `\n\n[Imagen adjunta por el usuario: ${imageUrl}]`
+        }
       }
     }
   }
@@ -242,6 +505,79 @@ export async function processMessage(conversationId: string, text: string, userI
       }
     }
     console.log(`[processMessage] Existing dev project found: ${existingDevProject.instanceId}, injecting context`)
+  }
+
+  const videoMode = getVideoRequestMode(text)
+  if (videoMode === 'workflow') {
+    await startParallelExecution(conversationId, [buildVideoWorkflowStep(text)], userId, modelOverride, imageUrl)
+    return
+  }
+  if (videoMode === 'direct') {
+    await startParallelExecution(conversationId, [buildVideoDirectStep(text)], userId, modelOverride, imageUrl)
+    return
+  }
+  if (videoMode === 'prompt') {
+    const cleanIdea = text.trim()
+    await sendDirectResponse(
+      conversationId,
+      'Quieres ajustar los nodos de tu video o prefieres que te lo entregue directo en el chat?',
+      [
+        { label: 'Entrega directa', value: `${VIDEO_DIRECT_REPLY_PREFIX} ${cleanIdea}` },
+        { label: 'Ajustar nodos', value: `${VIDEO_WORKFLOW_REPLY_PREFIX} ${cleanIdea}` },
+      ],
+    )
+    return
+  }
+
+  // If user selected an image model [IMAGE_MODEL: xxx], ALWAYS route to Pixel visual agent
+  const imageModelTag = text.match(/\[IMAGE_MODEL:\s*(\S+)\]/)
+  if (imageModelTag) {
+    console.log(`[processMessage] IMAGE_MODEL detected: ${imageModelTag[1]} — forcing visual route`)
+    broadcast(conversationId, {
+      type: 'agent_thinking',
+      agentId: 'base',
+      agentName: 'Pluria',
+      step: 'Generando imagen con ' + imageModelTag[1] + '...',
+    })
+    const visualStep: OrchestratorStep = {
+      agentId: 'web',
+      instanceId: 'visual-1',
+      task: text,
+      userDescription: 'Generando imagen',
+    }
+    await startParallelExecution(conversationId, [visualStep], userId, modelOverride, imageUrl)
+    return
+  }
+
+  // Fast-track visual tasks (logo, flyer, banner, post) — skip orchestrator LLM, go direct to Pixel
+  // MUST run before app fast-track to prevent "logo para mi tienda" being captured as ecommerce
+  const visualFastTrack = getVisualFastTrack(text)
+  if (visualFastTrack) {
+    console.log(`[processMessage] Visual fast-track: ${visualFastTrack.instanceId}`)
+    broadcast(conversationId, {
+      type: 'agent_thinking',
+      agentId: 'base',
+      agentName: 'Pluria',
+      step: 'Activando agente de diseno...',
+    })
+    await startParallelExecution(conversationId, [visualFastTrack], userId, modelOverride, imageUrl)
+    return
+  }
+
+  const fastTrackType = getFastTrackProjectAppType(text, !!existingDevProject)
+  if (fastTrackType) {
+    const step = buildFastTrackStep(text, fastTrackType)
+    console.log(`[processMessage] Fast-track app detected: ${fastTrackType}`)
+
+    broadcast(conversationId, {
+      type: 'agent_thinking',
+      agentId: 'base',
+      agentName: 'Pluria',
+      step: `Activando ruta rapida para ${fastTrackType}...`,
+    })
+
+    await startParallelExecution(conversationId, [step], userId, modelOverride, imageUrl)
+    return
   }
 
   broadcast(conversationId, {
@@ -313,13 +649,6 @@ export async function processMessage(conversationId: string, text: string, userI
   console.log('[processMessage] Output:', orchestratorOutput ? 'ready' : 'null')
   if (!orchestratorOutput) return
 
-  broadcast(conversationId, {
-    type: 'agent_thinking',
-    agentId: 'base',
-    agentName: 'Pluria',
-    step: 'Preparando plan de ejecucion...',
-  })
-
   const output = orchestratorOutput as OrchestratorOutput
   if (!Array.isArray(output.steps)) output.steps = []
 
@@ -334,13 +663,66 @@ export async function processMessage(conversationId: string, text: string, userI
     }
   }
 
+  output.steps = enrichPhaseMetadata(output.steps as OrchestratorStep[]) as typeof output.steps
+
+  if (output.steps.length === 0) {
+    const directResponseLooksLikeAck = !!output.directResponse
+      && output.directResponse.length < 280
+      && !output.quickReplies?.length
+      && /\b(voy a crear|voy a construir|tengo claro|excelente|perfecto|entiendo|veo que|necesitas)\b/i.test(output.directResponse)
+
+    if (existingDevProject?.instanceId && directResponseLooksLikeAck) {
+      console.log(`[processMessage] Fallback extension activated for existing dev project: ${existingDevProject.instanceId}`)
+      broadcast(conversationId, {
+        type: 'agent_thinking',
+        agentId: 'base',
+        agentName: 'Pluria',
+        step: 'Convirtiendo tu pedido en cambios sobre el proyecto actual...',
+      })
+      await startParallelExecution(
+        conversationId,
+        [buildExistingProjectExtensionStep(text, existingDevProject.instanceId)],
+        userId,
+        modelOverride,
+        imageUrl,
+      )
+      return
+    }
+
+    if (!existingDevProject) {
+      const fallbackFastTrackType = getFastTrackProjectAppType(text, false)
+
+      if (fallbackFastTrackType && directResponseLooksLikeAck) {
+        console.log(`[processMessage] Fallback fast-track activated after non-structured reply: ${fallbackFastTrackType}`)
+        broadcast(conversationId, {
+          type: 'agent_thinking',
+          agentId: 'base',
+          agentName: 'Pluria',
+          step: `Activando ejecucion directa para ${fallbackFastTrackType}...`,
+        })
+        await startParallelExecution(conversationId, [buildFastTrackStep(text, fallbackFastTrackType)], userId, modelOverride, imageUrl)
+        return
+      }
+    }
+  }
+
   if (output.steps.length > 0) {
+    broadcast(conversationId, {
+      type: 'agent_thinking',
+      agentId: 'base',
+      agentName: 'Pluria',
+      step: 'Preparando plan de ejecucion...',
+    })
+
     const stepsForExec: OrchestratorStep[] = output.steps.map(s => ({
       agentId: s.agentId,
       instanceId: s.instanceId!,
       task: s.task,
       userDescription: s.userDescription!,
       dependsOn: s.dependsOn,
+      phaseIndex: s.phaseIndex,
+      phaseTotal: s.phaseTotal,
+      phaseTitle: s.phaseTitle,
     }))
 
     const getAgentName = (agentId: string) => agentConfigs.find(a => a.id === agentId)?.name ?? agentId
@@ -358,7 +740,7 @@ export async function processMessage(conversationId: string, text: string, userI
         },
       })
 
-      await setPendingPlan(approvalMsg.id, { steps: stepsForExec })
+      await setPendingPlan(approvalMsg.id, { steps: stepsForExec, imageUrl })
 
       broadcast(conversationId, {
         type: 'plan_proposal',
@@ -371,6 +753,9 @@ export async function processMessage(conversationId: string, text: string, userI
           task: s.task,
           userDescription: s.userDescription,
           dependsOn: s.dependsOn,
+          phaseIndex: s.phaseIndex,
+          phaseTotal: s.phaseTotal,
+          phaseTitle: s.phaseTitle,
         })),
       })
     } else {

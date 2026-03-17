@@ -26,22 +26,22 @@ const TEMPLATE_FILES: Record<string, string> = {
       'tailwind-merge': '^3.3.1',
     },
     devDependencies: {
+      '@tailwindcss/vite': '^4.0.0',
       '@types/react': '^18.3.28',
       '@types/react-dom': '^18.3.7',
       '@vitejs/plugin-react': '^4.7.0',
-      autoprefixer: '^10.4.19',
-      postcss: '^8.4.38',
-      tailwindcss: '^3.4.4',
+      tailwindcss: '^4.0.0',
       typescript: '^5.9.3',
       vite: '^6.4.1',
     },
   }, null, 2),
 
-  'vite.config.js': `import { defineConfig } from 'vite'
+  'vite.config.js': `import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tailwindcss(), react()],
 })
 `,
 
@@ -67,14 +67,6 @@ export default {
     },
   },
   plugins: [],
-}
-`,
-
-  'postcss.config.js': `export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
 }
 `,
 
@@ -107,9 +99,30 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 `,
 
-  'src/index.css': `@tailwind base;
-@tailwind components;
-@tailwind utilities;
+  'src/index.css': `@import "tailwindcss";
+
+@theme {
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(222.2 84% 4.9%);
+  --color-primary: hsl(222.2 47.4% 11.2%);
+  --color-primary-foreground: hsl(210 40% 98%);
+  --color-secondary: hsl(210 40% 96.1%);
+  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  --color-muted: hsl(210 40% 96.1%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-accent: hsl(210 40% 96.1%);
+  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222.2 84% 4.9%);
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
+  --font-sans: 'Poppins', system-ui, -apple-system, sans-serif;
+}
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
@@ -155,6 +168,8 @@ interface NormalizedProject {
   files: Record<string, string>
   packageJson: PackageJsonShape
 }
+
+const LOCAL_CSS_IMPORT_RE = /import\s+['"](\.\/|\.\.\/)[^'"]+\.css['"]/g
 
 // Convert flat file map to WebContainer's FileSystemTree format
 function filesToTree(files: Record<string, string>) {
@@ -207,10 +222,326 @@ function ensureFile(files: Record<string, string>, path: string, content: string
   if (!files[path]) files[path] = content
 }
 
+function resolveRelativeProjectPath(fromPath: string, importPath: string): string | null {
+  const fromParts = fromPath.split('/').slice(0, -1)
+  const importParts = importPath.split('/')
+  const resolved = [...fromParts]
+
+  for (const part of importParts) {
+    if (!part || part === '.') continue
+    if (part === '..') {
+      if (resolved.length <= 1) return null
+      resolved.pop()
+      continue
+    }
+    resolved.push(part)
+  }
+
+  const normalized = resolved.join('/')
+  return normalized.startsWith('src/') ? normalized : null
+}
+
+function ensureMissingCssImports(files: Record<string, string>) {
+  const paths = new Set(Object.keys(files))
+  const missing = new Set<string>()
+
+  for (const [path, content] of Object.entries(files)) {
+    if (!/^src\/.*\.(js|jsx|ts|tsx)$/.test(path)) continue
+    for (const match of content.matchAll(LOCAL_CSS_IMPORT_RE)) {
+      const importPath = match[0].match(/['"]([^'"]+\.css)['"]/)?.[1]
+      if (!importPath) continue
+      const resolved = resolveRelativeProjectPath(path, importPath)
+      if (resolved && !paths.has(resolved)) missing.add(resolved)
+    }
+  }
+
+  for (const cssPath of missing) {
+    files[cssPath] = '/* Archivo CSS agregado automaticamente para evitar ENOENT en WebContainer. */\n'
+  }
+}
+
+function sanitizeInjectedApiClient(content: string): string {
+  return content
+    .replace(/]\.join\('\r?\n'\)/g, "].join('\\\\n')")
+    .replace(/]\.join\("\r?\n"\)/g, '].join("\\\\n")')
+}
+
+// Script injected into every project's index.html — handles theme changes, visual editing, and edit tracking
+const PLURY_BRIDGE_SCRIPT = `<script>
+(function(){
+  // ─── Edit tracking ───
+  window.__pluryEdits = [];
+  window.__pluryTheme = null;
+
+  function getSelector(el) {
+    if (!el || el === document.body || el === document.documentElement) return 'body';
+    var path = [];
+    var current = el;
+    while (current && current !== document.body && current !== document.documentElement) {
+      var parent = current.parentElement;
+      if (!parent) break;
+      var siblings = Array.from(parent.children);
+      var index = siblings.indexOf(current) + 1;
+      var tag = current.tagName.toLowerCase();
+      path.unshift(tag + ':nth-child(' + index + ')');
+      current = parent;
+    }
+    return 'body > ' + path.join(' > ');
+  }
+
+  function trackEdit(edit) {
+    window.__pluryEdits = window.__pluryEdits.filter(function(e) {
+      return !(e.type === edit.type && e.selector === edit.selector);
+    });
+    window.__pluryEdits.push(edit);
+    window.parent.postMessage({ type: 'plury-has-edits', count: window.__pluryEdits.length }, '*');
+  }
+
+  // ─── Theme listener ───
+  window.addEventListener('message', function(e) {
+    if (!e.data) return;
+    if (e.data.type === 'apply-theme') {
+      var theme = e.data.theme;
+      window.__pluryTheme = theme;
+      var style = document.getElementById('plury-theme-override');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'plury-theme-override';
+        document.head.appendChild(style);
+      }
+      var css = '';
+      if (theme.fontFamily) {
+        var fontName = theme.fontFamily.replace(/ /g, '+');
+        if (!document.querySelector('link[href*="' + fontName + '"]')) {
+          var link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://fonts.googleapis.com/css2?family=' + fontName + ':wght@300;400;500;600;700;800;900&display=swap';
+          document.head.appendChild(link);
+        }
+        css += '*, *::before, *::after { font-family: "' + theme.fontFamily + '", system-ui, -apple-system, sans-serif !important; }\\n';
+      }
+      if (theme.colors) {
+        if (theme.colors.primary && theme.colors.primary.DEFAULT)
+          css += '[class*="bg-primary"] { background-color: ' + theme.colors.primary.DEFAULT + ' !important; }\\n'
+            + '[class*="text-primary"] { color: ' + theme.colors.primary.DEFAULT + ' !important; }\\n'
+            + '[class*="border-primary"] { border-color: ' + theme.colors.primary.DEFAULT + ' !important; }\\n';
+        if (theme.colors.secondary && theme.colors.secondary.DEFAULT)
+          css += '[class*="bg-secondary"] { background-color: ' + theme.colors.secondary.DEFAULT + ' !important; }\\n'
+            + '[class*="text-secondary"] { color: ' + theme.colors.secondary.DEFAULT + ' !important; }\\n';
+        if (theme.colors.accent && theme.colors.accent.DEFAULT)
+          css += '[class*="bg-accent"] { background-color: ' + theme.colors.accent.DEFAULT + ' !important; }\\n'
+            + '[class*="text-accent"] { color: ' + theme.colors.accent.DEFAULT + ' !important; }\\n';
+        if (theme.colors.background)
+          css += '.bg-background, [class*="bg-background"] { background-color: ' + theme.colors.background + ' !important; }\\n';
+      }
+      style.textContent = css;
+    }
+
+    // ─── Visual edit mode ───
+    if (e.data.type === 'toggle-edit-mode') {
+      window.__pluryEditMode = e.data.enabled;
+      document.body.style.cursor = e.data.enabled ? 'crosshair' : '';
+      if (!e.data.enabled && window.__plurySelectedEl) {
+        window.__plurySelectedEl = null;
+        var ov = document.getElementById('plury-edit-overlay');
+        if (ov) ov.style.display = 'none';
+        var lb = document.getElementById('plury-edit-label');
+        if (lb) lb.style.display = 'none';
+      }
+    }
+
+    if (e.data.type === 'apply-style' && window.__plurySelectedEl) {
+      var styles = e.data.styles;
+      for (var prop in styles) {
+        if (styles.hasOwnProperty(prop)) {
+          var kebab = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+          window.__plurySelectedEl.style.setProperty(kebab, styles[prop], 'important');
+        }
+      }
+      trackEdit({ type: 'style', selector: getSelector(window.__plurySelectedEl), styles: styles });
+    }
+
+    if (e.data.type === 'replace-image' && window.__plurySelectedEl && window.__plurySelectedEl.tagName === 'IMG') {
+      window.__plurySelectedEl.src = e.data.url;
+      if (e.data.alt) window.__plurySelectedEl.alt = e.data.alt;
+      trackEdit({ type: 'image', selector: getSelector(window.__plurySelectedEl), src: e.data.url });
+    }
+
+    if (e.data.type === 'delete-element' && window.__plurySelectedEl) {
+      var delSel = getSelector(window.__plurySelectedEl);
+      window.__plurySelectedEl.remove();
+      window.__plurySelectedEl = null;
+      var ov2 = document.getElementById('plury-edit-overlay');
+      if (ov2) ov2.style.display = 'none';
+      window.parent.postMessage({ type: 'element-deselected' }, '*');
+      trackEdit({ type: 'style', selector: delSel, styles: { display: 'none' } });
+    }
+
+    if (e.data.type === 'inject-font') {
+      var fn = e.data.fontName;
+      if (fn && !document.querySelector('link[href*="' + fn + '"]')) {
+        var lk = document.createElement('link');
+        lk.rel = 'stylesheet';
+        lk.href = 'https://fonts.googleapis.com/css2?family=' + fn + ':wght@300;400;500;600;700;800;900&display=swap';
+        document.head.appendChild(lk);
+      }
+    }
+
+    // ─── Collect edits for save ───
+    if (e.data.type === 'get-visual-edits') {
+      window.parent.postMessage({
+        type: 'visual-edits-response',
+        edits: window.__pluryEdits,
+        theme: window.__pluryTheme
+      }, '*');
+    }
+  });
+
+  // ─── Click/hover handling for visual edit ───
+  function getLabel(el) {
+    if (!el) return 'Elemento';
+    var tag = el.tagName;
+    if (tag === 'IMG') return 'Imagen';
+    if (tag === 'VIDEO') return 'Video';
+    if (tag === 'NAV') return 'Navegacion';
+    if (tag === 'HEADER') return 'Header';
+    if (tag === 'FOOTER') return 'Footer';
+    if (tag === 'SECTION') return 'Seccion';
+    if (tag === 'H1') return 'Titulo H1';
+    if (tag === 'H2') return 'Titulo H2';
+    if (tag === 'H3') return 'Titulo H3';
+    if (tag === 'P') return 'Parrafo';
+    if (tag === 'BUTTON') return 'Boton';
+    if (tag === 'A') return 'Enlace';
+    if (tag === 'SPAN') return 'Texto';
+    if (tag === 'DIV') {
+      var cls = (el.className || '').toLowerCase();
+      if (cls.includes('hero') || cls.includes('banner')) return 'Hero';
+      if (cls.includes('card')) return 'Tarjeta';
+      return 'Bloque';
+    }
+    return tag.toLowerCase();
+  }
+
+  function showOverlay(el) {
+    var ov = document.getElementById('plury-edit-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'plury-edit-overlay';
+      ov.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;border:2px solid #3b82f6;border-radius:3px;box-shadow:0 0 0 1px rgba(255,255,255,0.5);transition:all 0.1s ease;';
+      document.body.appendChild(ov);
+    }
+    var lb = document.getElementById('plury-edit-label');
+    if (!lb) {
+      lb = document.createElement('div');
+      lb.id = 'plury-edit-label';
+      lb.style.cssText = 'position:fixed;pointer-events:none;z-index:100000;font-family:system-ui;font-size:10px;font-weight:700;padding:2px 8px;border-radius:0 0 4px 0;background:#3b82f6;color:#fff;white-space:nowrap;transition:all 0.1s ease;';
+      document.body.appendChild(lb);
+    }
+    var r = el.getBoundingClientRect();
+    ov.style.top = r.top + 'px';
+    ov.style.left = r.left + 'px';
+    ov.style.width = r.width + 'px';
+    ov.style.height = r.height + 'px';
+    ov.style.display = 'block';
+    lb.textContent = getLabel(el);
+    lb.style.top = Math.max(0, r.top) + 'px';
+    lb.style.left = r.left + 'px';
+    lb.style.display = 'block';
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!window.__pluryEditMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var el = e.target;
+    if (el.id === 'plury-edit-overlay' || el.id === 'plury-edit-label') return;
+    window.__plurySelectedEl = el;
+    showOverlay(el);
+    var r = el.getBoundingClientRect();
+    window.parent.postMessage({
+      type: 'element-selected',
+      tag: el.tagName.toLowerCase(),
+      text: el.textContent ? el.textContent.substring(0, 100) : '',
+      isImage: el.tagName === 'IMG',
+      imageSrc: el.tagName === 'IMG' ? el.src : null,
+      rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+      classes: el.className || '',
+      elementLabel: getLabel(el)
+    }, '*');
+  }, true);
+
+  document.addEventListener('mousemove', function(e) {
+    if (!window.__pluryEditMode) return;
+    var el = e.target;
+    if (el.id === 'plury-edit-overlay' || el.id === 'plury-edit-label') return;
+    if (el !== window.__plurySelectedEl) {
+      var ov = document.getElementById('plury-edit-overlay');
+      var lb = document.getElementById('plury-edit-label');
+      if (ov && lb) {
+        var r = el.getBoundingClientRect();
+        ov.style.top = r.top + 'px';
+        ov.style.left = r.left + 'px';
+        ov.style.width = r.width + 'px';
+        ov.style.height = r.height + 'px';
+        ov.style.border = '1.5px dashed #3b82f6';
+        ov.style.display = 'block';
+        lb.textContent = getLabel(el);
+        lb.style.top = Math.max(0, r.top) + 'px';
+        lb.style.left = r.left + 'px';
+        lb.style.display = 'block';
+      }
+    }
+  });
+
+  document.addEventListener('dblclick', function(e) {
+    if (!window.__pluryEditMode) return;
+    var el = e.target;
+    if (el.tagName === 'IMG' || el.tagName === 'SCRIPT') return;
+    var editSel = getSelector(el);
+    el.contentEditable = 'true';
+    el.style.outline = '2px solid #3b82f6';
+    el.focus();
+    el.addEventListener('blur', function handler() {
+      el.contentEditable = 'false';
+      el.style.outline = '';
+      el.removeEventListener('blur', handler);
+      trackEdit({ type: 'text', selector: editSel, text: el.textContent || '' });
+    });
+  });
+
+  document.addEventListener('mouseleave', function() {
+    if (!window.__pluryEditMode) return;
+    var ov = document.getElementById('plury-edit-overlay');
+    var lb = document.getElementById('plury-edit-label');
+    if (ov) ov.style.display = 'none';
+    if (lb) lb.style.display = 'none';
+  });
+
+  // ─── Notify parent that bridge is ready (handles Vite HMR reloads) ───
+  window.parent.postMessage({ type: 'plury-bridge-ready' }, '*');
+})();
+</script>`
+
+/** Inject the Plury bridge script into index.html if not already present */
+function injectBridgeScript(html: string): string {
+  if (html.includes('plury-theme-override') || html.includes('plury-edit-overlay')) return html
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${PLURY_BRIDGE_SCRIPT}\n</body>`)
+  }
+  return html + PLURY_BRIDGE_SCRIPT
+}
+
 function normalizeProjectFiles(inputFiles?: ProjectFile[]): NormalizedProject {
   const mergedFiles: Record<string, string> = { ...TEMPLATE_FILES }
   for (const file of inputFiles ?? []) {
     mergedFiles[file.path] = file.content
+  }
+
+  ensureMissingCssImports(mergedFiles)
+
+  if (mergedFiles['src/lib/api.js']) {
+    mergedFiles['src/lib/api.js'] = sanitizeInjectedApiClient(mergedFiles['src/lib/api.js'])
   }
 
   const hasTypescript = Object.keys(mergedFiles).some(path => /\.(ts|tsx)$/.test(path))
@@ -263,8 +594,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   ensureFile(mergedFiles, 'src/index.css', TEMPLATE_FILES['src/index.css'])
   ensureFile(mergedFiles, 'vite.config.js', TEMPLATE_FILES['vite.config.js'])
   ensureFile(mergedFiles, 'tailwind.config.js', TEMPLATE_FILES['tailwind.config.js'])
-  ensureFile(mergedFiles, 'postcss.config.js', TEMPLATE_FILES['postcss.config.js'])
   ensureFile(mergedFiles, 'index.html', TEMPLATE_FILES['index.html'].replace('/src/main.jsx', `/${mainEntry}`))
+  delete mergedFiles['postcss.config.js']
+  // Inject the Plury bridge script (theme listener + visual editor) into index.html
+  mergedFiles['index.html'] = injectBridgeScript(mergedFiles['index.html'])
 
   const templatePkg = safeJsonParse<PackageJsonShape>(TEMPLATE_FILES['package.json'], {
     name: 'plury-app',
@@ -294,13 +627,17 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   if (combinedSource.includes('class-variance-authority')) inferredDeps['class-variance-authority'] = '^0.7.1'
   if (combinedSource.includes('tailwind-merge')) inferredDeps['tailwind-merge'] = '^3.3.1'
   if (combinedSource.includes('clsx')) inferredDeps.clsx = '^2.1.1'
+  if (combinedSource.includes('@react-three/fiber') || combinedSource.includes('react-three')) {
+    inferredDeps.three = '^0.172.0'
+    inferredDeps['@react-three/fiber'] = '^8.18.0'
+    inferredDeps['@react-three/drei'] = '^9.122.0'
+  }
 
   const inferredDevDeps: Record<string, string> = {
+    '@tailwindcss/vite': '^4.0.0',
     vite: '^6.4.1',
     '@vitejs/plugin-react': '^4.7.0',
-    tailwindcss: '^3.4.4',
-    autoprefixer: '^10.4.19',
-    postcss: '^8.4.38',
+    tailwindcss: '^4.0.0',
   }
   if (hasTypescript) {
     inferredDevDeps.typescript = '^5.9.3'
@@ -336,7 +673,20 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 }
 
 function extractTerminalIssues(chunk: string): string[] {
-  const lines = chunk
+  // Strip ANSI escape codes for reliable matching
+  const clean = chunk.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\[[\d;]*m/g, '')
+  const cleanLower = clean.toLowerCase()
+
+  // Filter out transient Vite restart errors (WebContainer mounts files in phases)
+  if (cleanLower.includes('server is being restarted or closed')
+    || cleanLower.includes('request is outdated')
+    || cleanLower.includes('failed to scan for dependencies')
+    || cleanLower.includes('server restarted')
+    || cleanLower.includes('vite:dep-scan')) {
+    return []
+  }
+
+  const lines = clean
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean)
@@ -348,7 +698,7 @@ function extractTerminalIssues(chunk: string): string[] {
       || lower.includes('internal server error')
       || lower.includes('pre-transform error')
       || lower.includes('error when starting dev server')
-      || lower.startsWith('error:')
+      || (lower.startsWith('error:') && !lower.includes('dep-scan') && !lower.includes('restarted'))
   })
 }
 
@@ -371,6 +721,7 @@ export default function WebContainerPreview({
   const statusRef = useRef(status)
   const bootRunRef = useRef(0)
   const initialBootDoneRef = useRef(false)
+  const syncGraceRef = useRef(false)
   statusRef.current = status
 
   const normalized = useMemo(() => normalizeProjectFiles(files), [files])
@@ -389,6 +740,8 @@ export default function WebContainerPreview({
 
   const handleProcessOutput = useCallback((chunk: string) => {
     addTerminalLine(chunk)
+    // Skip error detection during sync grace period (Vite restarts cause transient errors)
+    if (syncGraceRef.current) return
     const issues = extractTerminalIssues(chunk)
     if (issues.length > 0) {
       setDetectedIssues(prev => [...prev, ...issues].slice(-8))
@@ -432,6 +785,9 @@ export default function WebContainerPreview({
         const currentNormalized = normalizedRef.current
         const tree = filesToTree(currentNormalized.files)
         await wc.mount(tree)
+        try {
+          await wc.fs.rm('postcss.config.js')
+        } catch {}
         // Force-write package.json to ensure our scripts override any cached version
         await wc.fs.writeFile('package.json', currentNormalized.files['package.json'] ?? JSON.stringify(currentNormalized.packageJson, null, 2))
         addTerminalLine(`> Mounted ${Object.keys(currentNormalized.files).length} files`)
@@ -460,6 +816,10 @@ export default function WebContainerPreview({
         setStatus('starting')
         addTerminalLine(`> Starting dev server: ${currentNormalized.packageJson.scripts?.dev ?? 'npm run dev'}`)
 
+        // Grace period during initial boot — Vite dep-scan may fail transiently
+        syncGraceRef.current = true
+        setTimeout(() => { syncGraceRef.current = false }, 10000)
+
         const devProcess = await wc.spawn('npm', ['run', 'dev'])
         moduleDevProcess = devProcess
         devProcess.output.pipeTo(
@@ -484,6 +844,9 @@ export default function WebContainerPreview({
           addTerminalLine(`> Dev server ready at ${url}`)
           setPreviewUrl(url)
           setStatus('ready')
+          // Clear transient errors from boot/restart — server recovered successfully
+          setDetectedIssues([])
+          syncGraceRef.current = false
           // Mark initial boot done so the file sync effect skips the first trigger
           setTimeout(() => { initialBootDoneRef.current = true }, 500)
           onReady?.()
@@ -514,10 +877,13 @@ export default function WebContainerPreview({
   }, [bootNonce, addTerminalLine, handleProcessOutput, onError, onReady, stopDevProcess])
 
   // Sync source files to WebContainer when files change AFTER initial boot.
-  // Skip package.json to avoid reinstall loops — other config files (tailwind, index.html) are allowed
-  // so user theme/font changes apply via Vite HMR.
+  // Skip package.json to avoid reinstall loops.
+  // Skip vite.config.js — writing it triggers full Vite restart + dep-scan race.
+  // Allow tailwind.config.js and index.html — they change when user edits theme/font in DevSettingsPanel
+  // and Vite HMR picks them up without a full restart.
   const SKIP_SYNC_FILES = useMemo(() => new Set([
     'package.json',
+    'vite.config.js',
   ]), [])
   const prevNormalizedRef = useRef(normalized)
   useEffect(() => {
@@ -529,6 +895,11 @@ export default function WebContainerPreview({
     async function updateFiles() {
       const wc = webcontainerInstance!
       let synced = 0
+      // Enable grace period to suppress transient Vite restart errors
+      syncGraceRef.current = true
+      try {
+        await wc.fs.rm('postcss.config.js')
+      } catch {}
       for (const [path, content] of Object.entries(normalized.files)) {
         if (SKIP_SYNC_FILES.has(path)) continue
         const dir = path.split('/').slice(0, -1).join('/')
@@ -539,6 +910,8 @@ export default function WebContainerPreview({
         synced++
       }
       if (synced > 0) addTerminalLine(`> Synced ${synced} source files`)
+      // Keep grace period for 8s while Vite restarts and stabilizes
+      setTimeout(() => { syncGraceRef.current = false }, 8000)
     }
 
     updateFiles().catch(err => {
@@ -734,6 +1107,27 @@ export default function WebContainerPreview({
       )}
     </div>
   )
+}
+
+/**
+ * Force-inject the Plury bridge script into the running WebContainer's index.html.
+ * Call this before enabling edit mode to ensure the visual editor is active
+ * even if the project was booted before the bridge script existed.
+ */
+export async function ensureBridgeScriptInWebContainer(): Promise<boolean> {
+  if (!webcontainerInstance) return false
+  try {
+    const wc = webcontainerInstance
+    const currentHtml = await wc.fs.readFile('index.html', 'utf-8')
+    if (currentHtml.includes('plury-edit-overlay')) return true // already has it
+    const injected = injectBridgeScript(currentHtml)
+    await wc.fs.writeFile('index.html', injected)
+    // Vite HMR will pick up index.html change and refresh the page
+    return true
+  } catch (err) {
+    console.error('[ensureBridgeScript] Failed:', err)
+    return false
+  }
 }
 
 // Export helper to parse Claude's multi-file output

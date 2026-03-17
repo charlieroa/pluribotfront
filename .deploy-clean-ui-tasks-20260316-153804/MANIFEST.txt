@@ -1,0 +1,5 @@
+src/App.tsx
+src/components/layout/Header.tsx
+src/components/tasks/TaskTimeline.tsx
+src/hooks/useChat.ts
+src/components/admin/AdminConversationView.tsx

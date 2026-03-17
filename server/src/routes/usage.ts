@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import { optionalAuth, authMiddleware } from '../middleware/auth.js'
 import { getMonthlyUsage } from '../services/token-tracker.js'
-import { getCreditUsage, adminGrantCredits } from '../services/credit-tracker.js'
+import { getCreditUsage } from '../services/credit-tracker.js'
 import { prisma } from '../db/client.js'
 import { getPlan, getCreditPackage, creditPackages } from '../config/plans.js'
+import { createCreditCheckout, isStripeConfigured } from '../services/stripe.js'
 
 const router = Router()
 
@@ -47,8 +48,6 @@ router.get('/credit-packages', (_req, res) => {
 })
 
 /* ───── Purchase credit add-on ───── */
-// TODO: Integrate Stripe payment processing before granting credits.
-//       Currently credits are granted immediately for testing purposes.
 router.post('/purchase-credits', authMiddleware, async (req, res) => {
   try {
     const userId = req.auth!.userId
@@ -65,20 +64,19 @@ router.post('/purchase-credits', authMiddleware, async (req, res) => {
       return
     }
 
-    // TODO: Process payment via Stripe here before granting credits
-    // const paymentIntent = await stripe.paymentIntents.create({ amount: pkg.price * 100, currency: 'usd', ... })
+    if (!isStripeConfigured()) {
+      res.status(503).json({ error: 'Stripe no esta configurado. No es posible comprar creditos todavia.' })
+      return
+    }
 
-    // Grant the credits to the user
-    const result = await adminGrantCredits(
-      userId,
-      pkg.credits,
-      `Compra de paquete: ${pkg.name} ($${pkg.price} USD)`
-    )
+    const checkout = await createCreditCheckout(userId, pkg.id)
 
     res.json({
       success: true,
       package: { id: pkg.id, name: pkg.name, credits: pkg.credits, price: pkg.price },
-      newBalance: result.balance,
+      requiresRedirect: true,
+      checkoutId: checkout.checkoutId,
+      checkoutUrl: checkout.checkoutUrl,
     })
   } catch (err) {
     console.error('[purchase-credits] Error:', err)

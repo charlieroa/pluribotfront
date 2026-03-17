@@ -48,7 +48,13 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false, onCreditUpdate, onProjectCreated }: UseChatOptions = {}) {
-  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationId, setConversationIdRaw] = useState<string | null>(() => {
+    try { return localStorage.getItem('plury_active_conv') } catch { return null }
+  })
+  const setConversationId = useCallback((id: string | null) => {
+    setConversationIdRaw(id)
+    try { if (id) localStorage.setItem('plury_active_conv', id); else localStorage.removeItem('plury_active_conv') } catch {}
+  }, [])
   const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>(isAuthenticated ? initialTasks : [])
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [projects, setProjects] = useState<ProjectItem[]>([])
@@ -89,11 +95,16 @@ export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false
         }
         return
       case 'human_agent_joined':
+        setHumanRequested(true)
         setAssignedHumanAgent({ name: data.agentName as string, role: data.agentRole as string, specialty: data.specialty as string, specialtyColor: data.specialtyColor as string, avatarUrl: data.avatarUrl as string })
         planFlow.handleSSEEvent(data)
         return
       case 'human_agent_left':
         setAssignedHumanAgent(null)
+        setHumanRequested(false)
+        return
+      case 'human_review_requested':
+        setHumanRequested(true)
         return
       case 'human_message':
         setMessages(prev => [...prev, {
@@ -239,6 +250,7 @@ export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false
       setStreamingText('')
 
       if (data.assignedAgent) {
+        setHumanRequested(true)
         setAssignedHumanAgent({
           name: data.assignedAgent.name,
           role: data.assignedAgent.specialty || (data.assignedAgent.role === 'superadmin' ? 'Supervisor' : data.assignedAgent.role === 'org_admin' ? 'Administrador' : 'Agente'),
@@ -248,6 +260,7 @@ export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false
         })
       } else {
         setAssignedHumanAgent(null)
+        setHumanRequested(Boolean(data.needsHumanReview))
       }
       setStreamingAgent(null)
       planFlow.setThinkingSteps([])
@@ -293,6 +306,14 @@ export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false
       console.error('[Chat] Load conversation error:', err)
     }
   }
+
+  // Restore active conversation on mount (page reload)
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current || !isAuthenticated || !conversationId) return
+    restoredRef.current = true
+    loadConversation(conversationId)
+  }, [isAuthenticated]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const deleteConversation = async (convId: string) => {
     try {
@@ -403,6 +424,10 @@ export function useChat({ onDeliverable, onOpenWorkflow, isAuthenticated = false
     pendingStepApproval: planFlow.pendingStepApproval,
     selectedModel: actions.selectedModel,
     setSelectedModel: actions.setSelectedModel,
+    selectedImageModel: actions.selectedImageModel,
+    setSelectedImageModel: actions.setSelectedImageModel,
+    referenceImageUrl: actions.referenceImageUrl,
+    setReferenceImageUrl: actions.setReferenceImageUrl,
     thinkingSteps: planFlow.thinkingSteps,
     coordinationAgents: planFlow.coordinationAgents,
     isRefineMode: actions.isRefineMode,

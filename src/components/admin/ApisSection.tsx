@@ -4,7 +4,7 @@ import { Wifi, WifiOff, RefreshCw, ShieldAlert, CheckCircle, CreditCard, AlertCi
 // ─── Provider Health ───
 
 interface ProviderHealth {
-  provider: 'anthropic' | 'openai' | 'google'
+  provider: 'anthropic' | 'ideogram' | 'ltx' | 'meshy' | 'unsplash' | 'meta' | 'stripe'
   status: 'active' | 'no_key' | 'invalid_key' | 'no_credits' | 'error'
   label: string
   message: string
@@ -199,7 +199,7 @@ const ApisSection = () => {
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {providers.map(p => {
               const cfg = providerStatusConfig[p.status] ?? providerStatusConfig.error
               const StatusIcon = p.status === 'active' ? CheckCircle : p.status === 'no_credits' ? CreditCard : p.status === 'no_key' ? WifiOff : AlertCircle
@@ -246,7 +246,7 @@ const ApisSection = () => {
               <Key size={18} className="text-primary" />
               API Keys
             </h2>
-            <p className="text-xs text-ink-faint">Gestionar las claves de acceso a proveedores de IA</p>
+            <p className="text-xs text-ink-faint">Las integraciones del servidor se verifican arriba. Aqui solo gestionas keys guardadas en base de datos.</p>
           </div>
           <button
             onClick={() => setShowAddKey(!showAddKey)}
@@ -268,8 +268,6 @@ const ApisSection = () => {
                   className="px-3 py-2 text-sm bg-page border border-edge rounded-lg focus:outline-none focus:border-primary text-ink"
                 >
                   <option value="anthropic">Anthropic</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="google">Google</option>
                 </select>
               </div>
               <div className="flex-1">

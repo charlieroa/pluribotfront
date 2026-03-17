@@ -6,14 +6,30 @@ export const apiCostsPerMillionTokens: Record<string, { input: number; output: n
   'claude-haiku-4-5-20251001':      { input: 1.00,  output: 5.00   },
 }
 
-// Real API costs in USD per tool call
+// Approximate direct vendor costs in USD per tool call where measurable.
 export const toolApiCosts: Record<string, number> = {
-  generate_image:      0.05,  // ~average Imagen 4 cost
-  generate_video:      0.30,  // ~average LTX-2 cost (5s fast=$0.20, 10s=$0.40)
+  generate_image:      0.08,  // Ideogram average generation
+  edit_image:          0.08,  // Ideogram edit
+  reframe_image:       0.08,  // Ideogram reframe
+  upscale_image:       0.08,  // Ideogram upscale
+  describe_image:      0.02,  // Ideogram describe
+  generate_video:      0.30,  // LTX-2 fast average
+  generate_3d_model:   0.60,  // Meshy image-to-3D estimate
   search_stock_photo:  0,
   search_web:          0,
   run_code:            0,
   deploy_site:         0,
+}
+
+export const toolProviderMap: Record<string, string> = {
+  generate_image: 'ideogram',
+  edit_image: 'ideogram',
+  reframe_image: 'ideogram',
+  upscale_image: 'ideogram',
+  describe_image: 'ideogram',
+  generate_video: 'ltx',
+  generate_3d_model: 'meshy',
+  search_stock_photo: 'unsplash',
 }
 
 export function getProviderForModel(_model: string): 'anthropic' {
